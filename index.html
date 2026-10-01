@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f6f4" />
+    <title>Pipeline — make your next move</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#home" aria-label="Pipeline home"><span class="brand-mark"><i data-lucide="git-branch"></i></span><span>Pipeline</span></a>
+        <div class="workspace-label">YOUR SPACE</div>
+        <nav class="primary-nav" aria-label="Main navigation">
+          <button class="nav-item active" data-view="home"><i data-lucide="layout-dashboard"></i><span>Overview</span></button>
+          <button class="nav-item" data-view="profile"><i data-lucide="contact-round"></i><span>My profile</span><span class="nav-dot"></span></button>
+          <button class="nav-item" data-view="network"><i data-lucide="users-round"></i><span>My Grid</span><span class="nav-count">4</span></button>
+          <button class="nav-item" data-view="surf-grid" aria-label="Surf the Grid" title="Surf the Grid"><i data-lucide="radar"></i><span>Surf the Grid</span></button>
+          <button class="nav-item" data-view="opportunities"><i data-lucide="briefcase-business"></i><span>Opportunities</span></button>
+          <button class="nav-item" data-view="messages"><i data-lucide="messages-square"></i><span>Messages</span><span class="message-count">2</span></button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="profile-progress">
+            <div class="progress-top"><span>Profile strength</span><span id="progress-number">68%</span></div>
+            <div class="progress-track"><span id="progress-fill"></span></div>
+            <p>A little more detail helps the right people find you.</p>
+            <button class="text-button" data-view="profile">Finish your profile <i data-lucide="arrow-up-right"></i></button>
+          </div>
+          <button class="sidebar-user" aria-label="Account settings">
+            <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80" alt="Truman Pauley" />
+            <span class="user-meta"><strong>Truman Pauley</strong><small>Student · Boston, MA</small></span>
+            <i data-lucide="chevrons-up-down"></i>
+          </button>
+        </div>
+      </aside>
+
+      <main class="main-area" id="home-view">
+        <header class="topbar">
+          <div class="breadcrumb"><span>My workspace</span><i data-lucide="chevron-right"></i><strong id="breadcrumb-current">Overview</strong></div>
+          <div class="top-actions">
+            <label class="search-box"><i data-lucide="search"></i><input id="global-search" type="search" placeholder="Search people, roles..." aria-label="Search people and roles" /><kbd>⌘ K</kbd></label>
+            <button class="icon-button notification-button" aria-label="Notifications"><i data-lucide="bell"></i><span></span></button>
+            <button class="top-avatar" aria-label="Your profile"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80" alt="" /></button>
+          </div>
+        </header>
+
+        <div class="page-content" id="dashboard-content">
+          <section class="welcome-row" id="welcome-section">
+            <div>
+              <p class="eyebrow"><span class="live-dot"></span> YOUR CAREER, IN MOTION</p>
+              <h1>Good morning, Truman<span class="wave">.</span></h1>
+              <p class="welcome-subtitle">Big things happen through people. Here's your next step.</p>
+            </div>
+            <button class="button button-dark" id="upload-open"><i data-lucide="upload"></i> Build your profile</button>
+          </section>
+
+          <section class="hero-strip" aria-label="Networking tip">
+            <div class="hero-copy"><span class="tip-label"><i data-lucide="sparkles"></i> YOUR WEEKLY NUDGE</span><p>One good conversation can change your whole trajectory.</p><span class="hero-caption">You have 3 warm introductions waiting to happen.</span></div>
+            <div class="hero-art" aria-hidden="true"><span class="orbit-line orbit-one"></span><span class="orbit-line orbit-two"></span><span class="orbit-core"><i data-lucide="arrow-up-right"></i></span><span class="orbit-person person-one">J</span><span class="orbit-person person-two">M</span><span class="orbit-person person-three">A</span></div>
+            <button class="hero-link" data-view="network">See your people <i data-lucide="arrow-right"></i></button>
+          </section>
+
+          <div class="dashboard-grid">
+            <div class="main-column">
+              <section class="section-block profile-section" id="profile-section">
+                <div class="section-heading">
+                  <div><p class="eyebrow muted-eyebrow">YOUR FOUNDATION</p><h2>Profile review <span class="review-pill" id="review-count">3 to review</span></h2></div>
+                  <button class="text-button" data-view="profile">View full profile <i data-lucide="arrow-up-right"></i></button>
+                </div>
+                <div class="profile-card">
+                  <div class="profile-card-head">
+                    <div class="profile-person"><div class="profile-photo-wrap"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80" alt="Truman Pauley" /><span class="online-indicator"></span></div><div><h3>Truman Pauley</h3><p>Computer science student <span class="separator">·</span> Boston, MA</p></div></div>
+                    <button class="icon-button edit-profile" aria-label="Edit profile" data-view="profile"><i data-lucide="square-pen"></i></button>
+                  </div>
+                  <div class="profile-bio">Curious builder exploring the intersection of software, people, and big ideas.</div>
+                  <div class="profile-meta"><span><i data-lucide="graduation-cap"></i> Harvard University</span><span><i data-lucide="briefcase-business"></i> Open to internships</span><span><i data-lucide="users-round"></i> <b id="connection-count">128</b> connections</span></div>
+                  <div class="review-divider"></div>
+                  <div class="review-heading"><div><span class="review-indicator"></span><strong>New from your resume</strong><span class="review-subtext">Check that everything looks right</span></div><button class="upload-inline" id="upload-inline"><i data-lucide="file-up"></i> Upload resume</button></div>
+                  <div id="review-list" class="review-list"></div>
+                  <button class="add-item" id="add-item"><i data-lucide="plus"></i> Add a detail</button>
+                </div>
+              </section>
+
+              <section class="section-block network-section" id="network-section">
+                <div class="section-heading">
+                  <div><p class="eyebrow muted-eyebrow">GOOD PEOPLE, GOOD TIMING</p><h2>People to know <span class="heading-context">· based on your path</span></h2></div>
+                  <button class="text-button" data-view="network">Explore network <i data-lucide="arrow-up-right"></i></button>
+                </div>
+                <div class="people-list" id="people-list"></div>
+              </section>
+            </div>
+
+            <aside class="right-column">
+              <section class="section-block momentum-section">
+                <div class="section-heading compact-heading"><div><p class="eyebrow muted-eyebrow">YOUR MOMENTUM</p><h2>This week</h2></div><button class="icon-button" aria-label="More activity options"><i data-lucide="ellipsis"></i></button></div>
+                <div class="momentum-number">04<span> / 06</span></div><p class="momentum-copy">networking goals completed</p>
+                <div class="goal-track"><span></span></div>
+                <div class="activity-list"><div class="activity-item"><span class="activity-icon coral"><i data-lucide="user-plus"></i></span><span><strong>2 new connections</strong><small>You're building good momentum</small></span><time>Today</time></div><div class="activity-item"><span class="activity-icon green"><i data-lucide="send"></i></span><span><strong>1 intro requested</strong><small>Alex is making the connection</small></span><time>Yesterday</time></div><div class="activity-item"><span class="activity-icon blue"><i data-lucide="eye"></i></span><span><strong>Profile viewed 8 times</strong><small>Up 3 from last week</small></span><time>Mon</time></div></div>
+                <button class="activity-link" id="goal-button">Set a weekly goal <i data-lucide="arrow-right"></i></button>
+              </section>
+
+              <section class="section-block opportunity-section">
+                <div class="section-heading compact-heading"><div><p class="eyebrow muted-eyebrow">A GOOD FIT FOR YOU</p><h2>On your radar</h2></div><span class="new-tag">NEW</span></div>
+                <div class="opportunity-item"><div class="company-mark mark-coral">S</div><div class="opportunity-copy"><strong>Product engineering intern</strong><span>Stripe <span class="separator">·</span> San Francisco, CA</span><small><i data-lucide="sparkles"></i> 4 skills match your profile</small></div><button class="icon-button save-opportunity" aria-label="Save opportunity"><i data-lucide="bookmark"></i></button></div>
+                <div class="opportunity-item"><div class="company-mark mark-blue">V</div><div class="opportunity-copy"><strong>Software intern, summer</strong><span>Vercel <span class="separator">·</span> Remote</span><small><i data-lucide="sparkles"></i> 3 skills match your profile</small></div><button class="icon-button save-opportunity" aria-label="Save opportunity"><i data-lucide="bookmark"></i></button></div>
+                <button class="activity-link" data-view="opportunities">See all opportunities <i data-lucide="arrow-right"></i></button>
+              </section>
+
+              <div class="quote-note"><span class="quote-mark">“</span><p>Careers are built on conversations, not applications.</p><span>THE PIPELINE PRINCIPLE</span></div>
+            </aside>
+          </div>
+          <footer class="page-footer"><span>Made for what comes next.</span><span>© Pipeline 2025</span></footer>
+        </div>
+        <div class="page-content surf-grid-page" id="surf-grid-view" hidden>
+          <header class="surf-grid-heading">
+            <div class="surf-grid-title-block">
+              <div class="surf-grid-title-line"><h1>Surf the Grid</h1><span class="beta-badge">Beta V1.0</span></div>
+              <p>Explore the people and paths that could shape your next step.</p>
+            </div>
+            <button class="button button-dark surf-back-button" data-view="home"><i data-lucide="arrow-left"></i> Back to overview</button>
+          </header>
+
+          <div class="surf-grid-layout">
+            <section class="surf-chat-panel" aria-label="Pipeline Guide chat">
+              <header class="guide-header">
+                <div class="guide-avatar"><i data-lucide="git-branch"></i></div>
+                <div class="guide-identity"><strong>Pipeline Guide</strong><span><i></i> Ready to explore</span></div>
+                <span class="guide-beta">BETA</span>
+              </header>
+              <div class="guide-messages" id="guide-messages" role="log" aria-live="polite" aria-relevant="additions">
+                <article class="guide-message assistant-message"><span class="message-avatar"><i data-lucide="git-branch"></i></span><p>Where do you want to go? Explore a career, find a relevant connection, or discover paths from your background.</p></article>
+              </div>
+              <div class="guide-suggestions" aria-label="Suggested questions">
+                <button type="button" data-guide-prompt="Show me a path into product engineering">Explore product careers <i data-lucide="arrow-up-right"></i></button>
+                <button type="button" data-guide-prompt="Find a relevant connection at Stripe">Find people at Stripe <i data-lucide="arrow-up-right"></i></button>
+                <button type="button" data-guide-prompt="Show how my background connects to new paths">Map my background <i data-lucide="arrow-up-right"></i></button>
+              </div>
+              <form class="guide-composer" id="guide-form">
+                <label class="sr-only" for="guide-input">Ask Pipeline Guide</label>
+                <input id="guide-input" type="text" placeholder="Ask about a path, person, or skill..." autocomplete="off" />
+                <button type="submit" aria-label="Send message"><i data-lucide="arrow-up"></i></button>
+              </form>
+              <p class="guide-disclaimer">Your network, made navigable.</p>
+            </section>
+
+            <section class="grid-map-panel" aria-label="Interactive career network map">
+              <header class="map-toolbar">
+                <div class="map-heading"><div><span class="map-overline">YOUR NETWORK</span><h2>Paths &amp; people</h2></div><span class="map-node-count" id="map-node-count">15 nodes</span></div>
+                <div class="map-tools">
+                  <label class="map-search"><i data-lucide="search"></i><span class="sr-only">Search your network</span><input id="map-search" type="search" placeholder="Search grid" autocomplete="off" /></label>
+                  <label class="sr-only" for="map-filter">Filter map nodes</label>
+                  <select id="map-filter" aria-label="Filter map nodes">
+                    <option value="all">All paths</option>
+                    <option value="person">People</option>
+                    <option value="school">Schools</option>
+                    <option value="organization">Organizations</option>
+                    <option value="skill">Skills</option>
+                    <option value="project">Projects</option>
+                    <option value="role">Career paths</option>
+                  </select>
+                  <div class="zoom-controls" aria-label="Map zoom controls">
+                    <button class="map-control" id="zoom-out" aria-label="Zoom out" title="Zoom out"><i data-lucide="minus"></i></button>
+                    <button class="map-control zoom-level" id="zoom-reset" aria-label="Reset zoom" title="Reset zoom">100%</button>
+                    <button class="map-control" id="zoom-in" aria-label="Zoom in" title="Zoom in"><i data-lucide="plus"></i></button>
+                  </div>
+                </div>
+              </header>
+              <div class="map-legend" aria-label="Map node categories">
+                <span><i class="legend-dot people-dot"></i> People</span><span><i class="legend-dot education-dot"></i> Education</span><span><i class="legend-dot work-dot"></i> Work &amp; projects</span><span><i class="legend-dot skill-dot"></i> Skills</span>
+              </div>
+              <div class="map-stage" id="map-stage">
+                <div class="map-plane" id="map-plane">
+                  <svg class="network-edges" id="network-edges" viewBox="0 0 1000 680" preserveAspectRatio="none" aria-hidden="true"><g id="edge-layer"></g></svg>
+                  <div class="grid-nodes" id="grid-nodes"></div>
+                </div>
+                <div class="map-empty-state" id="map-empty-state" hidden>No paths match that filter.</div>
+                <aside class="node-drawer" id="node-drawer" aria-label="Network connection details" hidden>
+                  <div class="drawer-topline"><span id="drawer-category">CONNECTION</span><button class="drawer-close" id="drawer-close" aria-label="Close connection details"><i data-lucide="x"></i></button></div>
+                  <div class="drawer-node-heading"><span class="drawer-symbol" id="drawer-symbol"></span><div><h3 id="drawer-title"></h3><p id="drawer-subtitle"></p></div></div>
+                  <p class="drawer-description" id="drawer-description"></p>
+                  <div class="drawer-connection"><span class="drawer-section-title">HOW IT CONNECTS</span><p id="drawer-connection"></p></div>
+                  <div class="drawer-related"><span class="drawer-section-title">NEARBY ON YOUR GRID</span><div id="drawer-related-list"></div></div>
+                  <button class="drawer-guide-button" id="drawer-guide-button">Explore this path with Guide <i data-lucide="arrow-up-right"></i></button>
+                </aside>
+              </div>
+              <footer class="map-footer"><span><i class="map-status-dot"></i> Connected through your background</span><span>Sample network · based on your profile</span></footer>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="upload-modal" aria-hidden="true">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <button class="modal-close icon-button" id="modal-close" aria-label="Close upload dialog"><i data-lucide="x"></i></button>
+        <div class="modal-icon"><i data-lucide="file-user"></i></div>
+        <p class="eyebrow muted-eyebrow">LET'S GET TO KNOW YOU</p>
+        <h2 id="modal-title">Start with your resume.</h2>
+        <p class="modal-description">We'll pick out the details and let you decide what belongs on your profile.</p>
+        <label class="drop-zone" id="drop-zone" for="resume-file"><i data-lucide="cloud-upload"></i><strong>Drop your resume here</strong><span>or <u>browse files</u> · PDF, DOCX, or TXT · up to 10 MB</span><input id="resume-file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" /></label>
+        <div class="upload-status" id="upload-status" aria-live="polite"></div>
+        <div class="modal-footnote"><i data-lucide="lock-keyhole"></i> Your resume stays private until you choose what to share.</div>
+      </section>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
