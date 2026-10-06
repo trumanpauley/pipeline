@@ -14,8 +14,8 @@ Then visit `http://localhost:4173`.
 
 ## Prototype interactions
 
-- Upload a text-based PDF, DOCX, or TXT resume and review the extracted details.
+- Upload a PDF, DOCX, or TXT resume and review structured sections and entries before using the details on your profile.
 - Edit, approve, reject, or add profile details. Review state is saved in browser local storage.
 - Send and withdraw suggested connection requests, save roles, search suggested people, and explore the dashboard.
 
-Resume extraction happens in the browser using PDF.js and Mammoth. Scanned image-only PDFs and advanced resume layouts need OCR or a more robust parsing service; this prototype keeps uploaded files private and does not send them to a server.
+Resume extraction happens in the browser. PDF.js preserves positioned text, font size, and font-weight signals; JSZip reads DOCX paragraph, run, style, spacing, indentation, and table structure. The parser stores normalized section and entry JSON separately from the review UI, while retaining source lines and uncertain text for confirmation. Scanned image-only PDFs still need OCR, and unusual layouts may require manual review. Uploaded files are processed locally and are not sent to a server.

@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="styles.css" />
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -22,6 +22,7 @@
           <button class="nav-item active" data-view="home"><i data-lucide="layout-dashboard"></i><span>Overview</span></button>
           <button class="nav-item" data-view="profile"><i data-lucide="contact-round"></i><span>My profile</span><span class="nav-dot"></span></button>
           <button class="nav-item" data-view="network"><i data-lucide="users-round"></i><span>My Grid</span><span class="nav-count">4</span></button>
+                    <button class="nav-item" data-view="groups"><i data-lucide="users"></i><span>Groups</span></button>
           <button class="nav-item" data-view="surf-grid" aria-label="Surf the Grid" title="Surf the Grid"><i data-lucide="radar"></i><span>Surf the Grid</span></button>
           <button class="nav-item" data-view="opportunities"><i data-lucide="briefcase-business"></i><span>Opportunities</span></button>
           <button class="nav-item" data-view="messages"><i data-lucide="messages-square"></i><span>Messages</span><span class="message-count">2</span></button>
@@ -34,8 +35,8 @@
             <button class="text-button" data-view="profile">Finish your profile <i data-lucide="arrow-up-right"></i></button>
           </div>
           <button class="sidebar-user" aria-label="Account settings">
-            <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80" alt="Truman Pauley" />
-            <span class="user-meta"><strong>Truman Pauley</strong><small>Student · Boston, MA</small></span>
+            <img id="sidebar-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80" alt="Truman Pauley" />
+            <span class="user-meta"><strong id="sidebar-profile-name">Truman Pauley</strong><small id="sidebar-profile-meta">Student · Boston, MA</small></span>
             <i data-lucide="chevrons-up-down"></i>
           </button>
         </div>
@@ -47,7 +48,7 @@
           <div class="top-actions">
             <label class="search-box"><i data-lucide="search"></i><input id="global-search" type="search" placeholder="Search people, roles..." aria-label="Search people and roles" /><kbd>⌘ K</kbd></label>
             <button class="icon-button notification-button" aria-label="Notifications"><i data-lucide="bell"></i><span></span></button>
-            <button class="top-avatar" aria-label="Your profile"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80" alt="" /></button>
+            <button class="top-avatar" aria-label="Your profile"><img id="top-avatar-img" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80" alt="" /></button>
           </div>
         </header>
 
@@ -55,36 +56,25 @@
           <section class="welcome-row" id="welcome-section">
             <div>
               <p class="eyebrow"><span class="live-dot"></span> YOUR CAREER, IN MOTION</p>
-              <h1>Good morning, Truman<span class="wave">.</span></h1>
+              <h1>Good morning, <span id="welcome-name">Truman</span><span class="wave">.</span></h1>
               <p class="welcome-subtitle">Big things happen through people. Here's your next step.</p>
             </div>
-            <button class="button button-dark" id="upload-open"><i data-lucide="upload"></i> Build your profile</button>
-          </section>
-
-          <section class="hero-strip" aria-label="Networking tip">
-            <div class="hero-copy"><span class="tip-label"><i data-lucide="sparkles"></i> YOUR WEEKLY NUDGE</span><p>One good conversation can change your whole trajectory.</p><span class="hero-caption">You have 3 warm introductions waiting to happen.</span></div>
-            <div class="hero-art" aria-hidden="true"><span class="orbit-line orbit-one"></span><span class="orbit-line orbit-two"></span><span class="orbit-core"><i data-lucide="arrow-up-right"></i></span><span class="orbit-person person-one">J</span><span class="orbit-person person-two">M</span><span class="orbit-person person-three">A</span></div>
-            <button class="hero-link" data-view="network">See your people <i data-lucide="arrow-right"></i></button>
+            <button class="button button-dark" data-view="profile"><i data-lucide="contact-round"></i> View my profile</button>
           </section>
 
           <div class="dashboard-grid">
             <div class="main-column">
-              <section class="section-block profile-section" id="profile-section">
+              <section class="section-block profile-section" id="overview-profile-section">
                 <div class="section-heading">
-                  <div><p class="eyebrow muted-eyebrow">YOUR FOUNDATION</p><h2>Profile review <span class="review-pill" id="review-count">3 to review</span></h2></div>
+                  <div><p class="eyebrow muted-eyebrow">YOUR FOUNDATION</p><h2>Profile snapshot</h2></div>
                   <button class="text-button" data-view="profile">View full profile <i data-lucide="arrow-up-right"></i></button>
                 </div>
-                <div class="profile-card">
+                <div class="profile-card overview-profile-card">
                   <div class="profile-card-head">
-                    <div class="profile-person"><div class="profile-photo-wrap"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80" alt="Truman Pauley" /><span class="online-indicator"></span></div><div><h3>Truman Pauley</h3><p>Computer science student <span class="separator">·</span> Boston, MA</p></div></div>
-                    <button class="icon-button edit-profile" aria-label="Edit profile" data-view="profile"><i data-lucide="square-pen"></i></button>
+                    <div class="profile-person"><div class="profile-photo-wrap"><img id="overview-profile-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80" alt="Truman Pauley" /></div><div><h3 id="overview-profile-name">Truman Pauley</h3><p><span id="overview-profile-headline">Computer science student</span> <span class="separator">·</span> <span id="overview-profile-location">Boston, MA</span></p></div></div>
                   </div>
-                  <div class="profile-bio">Curious builder exploring the intersection of software, people, and big ideas.</div>
-                  <div class="profile-meta"><span><i data-lucide="graduation-cap"></i> Harvard University</span><span><i data-lucide="briefcase-business"></i> Open to internships</span><span><i data-lucide="users-round"></i> <b id="connection-count">128</b> connections</span></div>
-                  <div class="review-divider"></div>
-                  <div class="review-heading"><div><span class="review-indicator"></span><strong>New from your resume</strong><span class="review-subtext">Check that everything looks right</span></div><button class="upload-inline" id="upload-inline"><i data-lucide="file-up"></i> Upload resume</button></div>
-                  <div id="review-list" class="review-list"></div>
-                  <button class="add-item" id="add-item"><i data-lucide="plus"></i> Add a detail</button>
+                  <p class="overview-profile-bio" id="overview-profile-bio">Curious builder exploring the intersection of software, people, and big ideas.</p>
+                  <div class="profile-meta"><span><i data-lucide="graduation-cap"></i> <span id="overview-profile-school">Harvard University</span></span><span><i data-lucide="users-round"></i> <b id="overview-connection-count">128</b> connections</span></div>
                 </div>
               </section>
 
@@ -98,14 +88,6 @@
             </div>
 
             <aside class="right-column">
-              <section class="section-block momentum-section">
-                <div class="section-heading compact-heading"><div><p class="eyebrow muted-eyebrow">YOUR MOMENTUM</p><h2>This week</h2></div><button class="icon-button" aria-label="More activity options"><i data-lucide="ellipsis"></i></button></div>
-                <div class="momentum-number">04<span> / 06</span></div><p class="momentum-copy">networking goals completed</p>
-                <div class="goal-track"><span></span></div>
-                <div class="activity-list"><div class="activity-item"><span class="activity-icon coral"><i data-lucide="user-plus"></i></span><span><strong>2 new connections</strong><small>You're building good momentum</small></span><time>Today</time></div><div class="activity-item"><span class="activity-icon green"><i data-lucide="send"></i></span><span><strong>1 intro requested</strong><small>Alex is making the connection</small></span><time>Yesterday</time></div><div class="activity-item"><span class="activity-icon blue"><i data-lucide="eye"></i></span><span><strong>Profile viewed 8 times</strong><small>Up 3 from last week</small></span><time>Mon</time></div></div>
-                <button class="activity-link" id="goal-button">Set a weekly goal <i data-lucide="arrow-right"></i></button>
-              </section>
-
               <section class="section-block opportunity-section">
                 <div class="section-heading compact-heading"><div><p class="eyebrow muted-eyebrow">A GOOD FIT FOR YOU</p><h2>On your radar</h2></div><span class="new-tag">NEW</span></div>
                 <div class="opportunity-item"><div class="company-mark mark-coral">S</div><div class="opportunity-copy"><strong>Product engineering intern</strong><span>Stripe <span class="separator">·</span> San Francisco, CA</span><small><i data-lucide="sparkles"></i> 4 skills match your profile</small></div><button class="icon-button save-opportunity" aria-label="Save opportunity"><i data-lucide="bookmark"></i></button></div>
@@ -113,10 +95,146 @@
                 <button class="activity-link" data-view="opportunities">See all opportunities <i data-lucide="arrow-right"></i></button>
               </section>
 
-              <div class="quote-note"><span class="quote-mark">“</span><p>Careers are built on conversations, not applications.</p><span>THE PIPELINE PRINCIPLE</span></div>
             </aside>
           </div>
           <footer class="page-footer"><span>Made for what comes next.</span><span>© Pipeline 2025</span></footer>
+        </div>
+        <div class="page-content network-page" id="network-view" hidden>
+                    <header class="network-page-heading">
+                      <div><p class="eyebrow muted-eyebrow">YOUR CONNECTIONS</p><h1>My Grid</h1><p>See how your background connects to people, teams, and paths.</p></div>
+                      <button class="button button-dark" data-view="surf-grid"><i data-lucide="radar"></i> Explore with Guide</button>
+                    </header>
+                    <section class="grid-map-panel network-example-panel" aria-label="Example network graph">
+                      <header class="map-toolbar">
+                        <div class="map-heading"><div><span class="map-overline">EXAMPLE NETWORK</span><h2>Education, skills &amp; people</h2></div><span class="map-node-count">15 nodes</span></div>
+                      </header>
+                      <div class="map-legend" aria-label="Node categories">
+                        <span><i class="legend-dot people-dot"></i> People</span><span><i class="legend-dot education-dot"></i> Education</span><span><i class="legend-dot work-dot"></i> Work &amp; projects</span><span><i class="legend-dot skill-dot"></i> Skills</span>
+                      </div>
+                      <div class="network-example-scroll">
+                        <div class="map-stage network-example-stage" role="img" aria-label="Sample grid connecting your profile to Harvard, skills, projects, people, and a product engineering path.">
+                          <svg class="network-edges" viewBox="0 0 1000 680" preserveAspectRatio="none" aria-hidden="true"><g id="example-edge-layer"></g></svg>
+                          <div class="grid-nodes" id="example-grid-nodes" aria-hidden="true"></div>
+                        </div>
+                      </div>
+                      <footer class="map-footer"><span><i class="map-status-dot"></i> Connected through your background</span><span>Sample network · based on your profile</span></footer>
+                    </section>
+                  </div>
+                  <div class="page-content groups-page" id="groups-view" hidden>
+                    <header class="groups-page-heading">
+                      <div><p class="eyebrow muted-eyebrow">YOUR COMMUNITIES</p><h1>Groups</h1><p>The communities that build your network.</p></div>
+                      <button class="button button-dark" id="groups-create-open" type="button"><i data-lucide="plus"></i> Create Group</button>
+                    </header>
+                    <label class="groups-search"><i data-lucide="search"></i><input id="groups-search" type="search" placeholder="Search groups" aria-label="Search groups" autocomplete="off" /></label>
+                    <div id="groups-list-view">
+                      <section class="groups-section">
+                        <div class="groups-section-heading"><h2>Your Groups</h2><span id="your-groups-count">0</span></div>
+                        <div class="groups-card-grid" id="your-groups-list"></div>
+                        <p class="groups-empty" id="your-groups-empty" hidden>No groups match your search.</p>
+                      </section>
+                      <section class="groups-section discover-section">
+                        <div class="groups-section-heading"><h2>Discover Groups</h2><span>Suggested for your network</span></div>
+                        <div class="group-filters" role="group" aria-label="Filter discovered groups">
+                          <button class="group-filter active" type="button" data-group-filter="all" aria-pressed="true">All</button>
+                          <button class="group-filter" type="button" data-group-filter="university" aria-pressed="false">Universities</button>
+                          <button class="group-filter" type="button" data-group-filter="club" aria-pressed="false">Clubs</button>
+                          <button class="group-filter" type="button" data-group-filter="team" aria-pressed="false">Teams</button>
+                          <button class="group-filter" type="button" data-group-filter="class" aria-pressed="false">Classes</button>
+                          <button class="group-filter" type="button" data-group-filter="company" aria-pressed="false">Companies</button>
+                          <button class="group-filter" type="button" data-group-filter="organization" aria-pressed="false">Organizations</button>
+                        </div>
+                        <div class="groups-card-grid" id="discover-groups-list"></div>
+                        <p class="groups-empty" id="discover-groups-empty" hidden>No groups found. Try another search or filter.</p>
+                      </section>
+                    </div>
+                    <section class="group-detail-view" id="group-detail-view" hidden></section>
+                  </div>
+                  <div class="page-content messages-page" id="messages-view" hidden>
+                    <header class="messages-page-heading">
+                      <div><p class="eyebrow muted-eyebrow">BETA V1.0</p><h1>Messaging Portal</h1><p>Context-rich conversations for the people already shaping your path.</p></div>
+                      <button class="button button-dark" id="new-message-trigger" type="button"><i data-lucide="plus"></i> New Message</button>
+                    </header>
+
+                    <div class="messaging-shell">
+                      <aside class="messages-sidebar">
+                        <div class="messages-search-wrap">
+                          <label class="messages-search"><i data-lucide="search"></i><input id="messages-search" type="search" placeholder="Search conversations" aria-label="Search conversations" /></label>
+                        </div>
+                        <div class="message-thread-list" id="message-thread-list"></div>
+                        <div class="message-picker" id="message-picker" hidden>
+                          <div class="message-picker-header">
+                            <strong>Choose someone</strong>
+                            <button class="ghost-close" id="message-picker-close" type="button" aria-label="Close new message menu"><i data-lucide="x"></i></button>
+                          </div>
+                          <div class="message-picker-list" id="message-picker-list"></div>
+                        </div>
+                      </aside>
+
+                      <section class="message-chat-panel" aria-live="polite">
+                        <header class="message-thread-header">
+                          <div class="message-thread-user">
+                            <div class="message-thread-avatar" id="message-thread-avatar"></div>
+                            <div>
+                              <h2 id="message-thread-name">Select a conversation</h2>
+                              <p id="message-thread-role">Choose someone from your network</p>
+                            </div>
+                          </div>
+                          <span class="message-status" id="message-thread-status">Online</span>
+                        </header>
+
+                        <div class="message-thread-body" id="message-thread-body">
+                          <div class="empty-message-state">Pick a conversation to read the thread.</div>
+                        </div>
+
+                        <div class="help-reach-out-panel" id="help-reach-out-panel" hidden>
+                          <div class="help-header-line"><span class="eyebrow muted-eyebrow">PIPELINE FEATURE</span><h3>Help Me Reach Out</h3></div>
+                          <p class="help-reach-out-summary" id="help-reach-out-summary">This is how you’re connected.</p>
+                          <div class="connection-flow" id="connection-flow"></div>
+                          <div class="suggestion-list" id="suggestion-list"></div>
+                        </div>
+
+                        <form class="message-composer" id="message-compose-form">
+                          <label class="sr-only" for="message-input">Write a message</label>
+                          <input id="message-input" type="text" placeholder="Write a thoughtful note..." autocomplete="off" />
+                          <button type="submit" aria-label="Send message"><i data-lucide="arrow-up"></i></button>
+                        </form>
+                      </section>
+
+                      <aside class="message-context-panel" aria-live="polite">
+                        <div class="context-panel-header">
+                          <span class="eyebrow muted-eyebrow">YOUR CONNECTION</span>
+                          <h3>Why you’re connected</h3>
+                        </div>
+                        <div id="connection-panel-content">
+                          <div class="empty-context-state">Pick a person to see how your paths overlap.</div>
+                        </div>
+                      </aside>
+                    </div>
+                  </div>
+                  <div class="page-content profile-page" id="profile-view" hidden>
+          <header class="profile-page-heading">
+            <div><p class="eyebrow muted-eyebrow">YOUR SPACE</p><h1>My Profile</h1><p>Manage your profile details and review information from your resume.</p></div>
+            <button class="button button-dark" id="upload-open"><i data-lucide="upload"></i> Upload resume</button>
+          </header>
+          <div id="profile-view-content">
+            <section class="section-block profile-section" id="profile-section">
+              <div class="section-heading">
+                <div><p class="eyebrow muted-eyebrow">YOUR FOUNDATION</p><h2>Profile review <span class="review-pill" id="review-count">3 to review</span></h2></div>
+              </div>
+              <div class="profile-card">
+                <div class="profile-card-head">
+                  <div class="profile-person"><div class="profile-photo-wrap"><img id="profile-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80" alt="Truman Pauley" /><span class="online-indicator"></span></div><div><h3 id="profile-name">Truman Pauley</h3><p><span id="profile-headline">Computer science student</span> <span class="separator">·</span> <span id="profile-location">Boston, MA</span></p></div></div>
+                  <button class="icon-button edit-profile" id="profile-edit" type="button" aria-label="Edit profile"><i data-lucide="square-pen"></i></button>
+                </div>
+                <div class="profile-bio" id="profile-bio">Curious builder exploring the intersection of software, people, and big ideas.</div>
+                <div class="profile-meta"><span><i data-lucide="graduation-cap"></i> <span id="profile-school">Harvard University</span></span><span><i data-lucide="briefcase-business"></i> Open to internships</span><span><i data-lucide="users-round"></i> <b id="connection-count">128</b> connections</span></div>
+                <div class="review-divider"></div>
+                <div class="review-heading"><div><span class="review-indicator"></span><strong>Details from your resume</strong><span class="review-subtext">Review and confirm each item</span></div><button class="upload-inline" id="upload-inline"><i data-lucide="file-up"></i> Upload resume</button></div>
+                <div id="review-list" class="review-list"></div>
+                <button class="add-item" id="add-item"><i data-lucide="plus"></i> Add a detail</button>
+              </div>
+            </section>
+          </div>
         </div>
         <div class="page-content surf-grid-page" id="surf-grid-view" hidden>
           <header class="surf-grid-heading">
@@ -207,6 +325,50 @@
         <label class="drop-zone" id="drop-zone" for="resume-file"><i data-lucide="cloud-upload"></i><strong>Drop your resume here</strong><span>or <u>browse files</u> · PDF, DOCX, or TXT · up to 10 MB</span><input id="resume-file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" /></label>
         <div class="upload-status" id="upload-status" aria-live="polite"></div>
         <div class="modal-footnote"><i data-lucide="lock-keyhole"></i> Your resume stays private until you choose what to share.</div>
+      </section>
+    </div>
+    <div class="modal-backdrop" id="profile-modal" aria-hidden="true">
+      <section class="modal profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+        <button class="modal-close icon-button" id="profile-modal-close" type="button" aria-label="Close profile editor"><i data-lucide="x"></i></button>
+        <p class="eyebrow muted-eyebrow">YOUR PIPELINE PROFILE</p>
+        <h2 id="profile-modal-title">Edit your profile</h2>
+        <form id="profile-form">
+          <div class="profile-form-fields">
+            <label>Full name<input name="name" maxlength="80" required /></label>
+            <label>Headline<input name="headline" maxlength="100" placeholder="e.g. Computer science student" /></label>
+            <label>Location<input name="location" maxlength="80" placeholder="City, State" /></label>
+            <label>School or organization<input name="school" maxlength="100" /></label>
+            <label class="profile-bio-field">About you<textarea name="bio" maxlength="280" rows="3"></textarea></label>
+          </div>
+          <section class="photo-editor" aria-labelledby="photo-editor-title">
+            <div class="photo-editor-heading"><div><h3 id="photo-editor-title">Profile photo</h3><p>Upload a professional profile photo for your Pipeline profile</p></div><label class="button photo-select" for="profile-photo-file" tabindex="0" role="button"><i data-lucide="image-plus"></i> Choose photo</label></div>
+            <input id="profile-photo-file" class="visually-hidden-input" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" />
+            <div class="crop-controls" id="crop-controls" hidden>
+              <div class="crop-viewport" id="crop-viewport" role="img" aria-label="Profile photo crop area. Drag the image to reposition it."><img id="crop-image" alt="" draggable="false" /></div>
+              <label class="zoom-control" for="crop-zoom"><span>Zoom</span><input id="crop-zoom" type="range" min="1" max="3" value="1" step="0.01" /><span class="sr-only" id="zoom-value">100%</span></label>
+              <p class="crop-hint">Drag to choose what appears in the circle.</p>
+            </div>
+            <p class="photo-file-status" id="photo-file-status" aria-live="polite">JPG or PNG, up to 8 MB.</p>
+          </section>
+          <div class="profile-form-actions"><button class="button profile-cancel" id="profile-cancel" type="button">Cancel</button><button class="button button-dark" type="submit"><i data-lucide="check"></i> Save profile</button></div>
+        </form>
+      </section>
+    </div>
+    <div class="modal-backdrop" id="group-create-modal" aria-hidden="true">
+      <section class="modal group-create-modal" role="dialog" aria-modal="true" aria-labelledby="group-create-title">
+        <button class="modal-close icon-button" id="group-create-close" type="button" aria-label="Close create group dialog"><i data-lucide="x"></i></button>
+        <p class="eyebrow muted-eyebrow">START A COMMUNITY</p>
+        <h2 id="group-create-title">Create a group</h2>
+        <p class="modal-description">Add an affiliation or community to your network.</p>
+        <form id="group-create-form">
+          <div class="group-form-fields">
+            <label>Group name<input name="name" maxlength="90" placeholder="e.g. Harvard Design Collective" required /></label>
+            <label>Group type<select name="type"><option>Club</option><option>University</option><option>Team</option><option>Class</option><option>Company</option><option>Organization</option></select></label>
+            <label class="group-description-field">Description<textarea name="description" maxlength="280" rows="3" placeholder="What brings this community together?"></textarea></label>
+            <label>Membership<select name="access"><option value="open">Open to join</option><option value="request">Request to join</option></select></label>
+          </div>
+          <div class="profile-form-actions"><button class="button profile-cancel" id="group-create-cancel" type="button">Cancel</button><button class="button button-dark" type="submit"><i data-lucide="plus"></i> Create Group</button></div>
+        </form>
       </section>
     </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
