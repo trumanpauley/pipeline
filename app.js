@@ -11,6 +11,56 @@ const people = [
   { id: 'sam', name: 'Sam Okafor', role: 'CS @ MIT', context: '3 mutual connections', image: 'photo-1507003211169-0a1dd7228f2d', color: 'ded4ef' }
 ];
 
+const defaultOpportunities = [
+  { id: 'job-stripe-intern', kind: 'job', title: 'Product engineering intern', organization: 'Stripe', location: 'San Francisco, CA · Hybrid', description: 'Join a product engineering team building reliable financial tools. Ideal for students who enjoy solving thoughtful technical problems with a close-knit team.', tags: ['Internship', 'Software engineering'], author: 'Pipeline picks', url: '', createdAt: '2026-10-02' },
+  { id: 'group-harvard-builders', kind: 'group', title: 'Build weekend: looking for a frontend collaborator', organization: 'Harvard Product Builders', location: 'Cambridge, MA · In person', description: 'We’re putting together a small team to prototype a tool for student communities. Bring React experience, curiosity, and a few hours this weekend.', tags: ['Project', 'React'], author: 'Harvard Product Builders', url: '', createdAt: '2026-10-01' },
+  { id: 'job-vercel-summer', kind: 'job', title: 'Software engineering intern, summer', organization: 'Vercel', location: 'Remote · United States', description: 'Help improve the tools developers use to build and ship for the web. Students interested in frontend infrastructure and developer experience are encouraged to apply.', tags: ['Internship', 'Developer tools'], author: 'Pipeline picks', url: '', createdAt: '2026-09-29' },
+  { id: 'group-climate-volunteer', kind: 'group', title: 'Community climate data project', organization: 'Boston Student Climate Coalition', location: 'Boston, MA · Flexible', description: 'Help local groups turn public environmental data into clear, useful resources. We’re looking for contributors interested in data, design, and community outreach.', tags: ['Volunteer', 'Data'], author: 'Boston Student Climate Coalition', url: '', createdAt: '2026-09-27' }
+];
+
+const jobCategories = ['Internship', 'Full-Time', 'Part-Time', 'Research', 'Job'];
+
+const opportunityEnrichment = {
+  'job-stripe-intern': {
+    category: 'Internship', arrangement: 'Hybrid', location: 'San Francisco, CA', industry: 'Fintech', nodeId: 'stripe',
+    skills: ['Python', 'React', 'SQL', 'APIs'],
+    about: 'Stripe builds financial infrastructure for the internet, helping businesses of every size accept payments and manage money online.',
+    responsibilities: ['Ship product features alongside a team of engineers and designers.', 'Write and review production code with guidance from senior engineers.', 'Investigate user problems and turn them into thoughtful improvements.', 'Present your project to the wider team at the end of the internship.'],
+    qualifications: ['Currently pursuing a degree in computer science or a related field.', 'Experience with Python, JavaScript, or a similar language.', 'Curiosity about how reliable systems and good product experiences fit together.']
+  },
+  'group-harvard-builders': {
+    category: 'Project', arrangement: 'In person', location: 'Cambridge, MA', industry: 'Technology', nodeId: 'harvard',
+    skills: ['React', 'JavaScript', 'UI design'],
+    about: 'Harvard Product Builders is a student group that prototypes useful tools for campus communities over short, hands-on build weekends.',
+    responsibilities: ['Build the frontend of a prototype tool for student communities.', 'Pair with a designer and a backend teammate to ship a working demo.', 'Share what you learn with the wider builders group.'],
+    qualifications: ['Comfortable building interfaces with React or a similar framework.', 'Available for a few hours this weekend.', 'No prior hackathon experience required.']
+  },
+  'job-vercel-summer': {
+    category: 'Internship', arrangement: 'Remote', location: 'Remote', industry: 'Technology',
+    skills: ['JavaScript', 'React', 'Node.js', 'Developer tools'],
+    about: 'Vercel provides the developer tools and cloud infrastructure that help teams build, preview, and ship fast web experiences.',
+    responsibilities: ['Improve tools that developers use to build and ship for the web.', 'Collaborate with a distributed team through code review and design discussions.', 'Own a scoped project from first idea to release.'],
+    qualifications: ['Interest in frontend infrastructure and developer experience.', 'Familiarity with JavaScript or TypeScript.', 'Comfortable working asynchronously in a remote team.']
+  },
+  'group-climate-volunteer': {
+    category: 'Volunteer', arrangement: 'Hybrid', location: 'Boston, MA', industry: 'Climate & Sustainability',
+    skills: ['Python', 'Data analysis', 'Design', 'Outreach'],
+    about: 'The Boston Student Climate Coalition connects student groups across the city to work on practical local environmental projects.',
+    responsibilities: ['Turn public environmental data into clear resources for local groups.', 'Help design simple visuals and explainers for neighborhood organizers.', 'Join outreach conversations with community partners.'],
+    qualifications: ['Interest in climate and community work.', 'Basic data skills or design experience is helpful.', 'A few flexible hours each week.']
+  }
+};
+
+const additionalOpportunities = [
+  { id: 'job-figma-design-eng', kind: 'job', category: 'Internship', title: 'Design engineering intern', organization: 'Figma', location: 'Remote', arrangement: 'Remote', industry: 'Design', nodeId: 'figma', skills: ['React', 'TypeScript', 'Design systems', 'CSS'], description: 'Work at the boundary of design and engineering, building polished interface details and prototyping new collaboration ideas with product and design teammates.', about: 'Figma makes collaborative design software used by product teams to design, prototype, and build together.', responsibilities: ['Prototype and ship interface improvements with design partners.', 'Contribute to shared components and design systems.', 'Test ideas quickly and share what you learn with the team.'], qualifications: ['Strong interest in both design and frontend engineering.', 'Experience with React, CSS, or TypeScript.', 'A portfolio or projects that show attention to detail.'], author: 'Pipeline picks', url: '', createdAt: '2026-10-07' },
+  { id: 'job-common-thread-founding', kind: 'job', category: 'Internship', title: 'Founding engineer intern', organization: 'Common Thread', location: 'Boston, MA', arrangement: 'Hybrid', industry: 'Education', nodeId: 'common-thread', skills: ['React', 'Python', 'SQL', 'Product thinking'], description: 'Join an early-stage edtech startup and help build the first version of tools that let people learn together. You will work directly with the founder and shape the product.', about: 'Common Thread is an early-stage education technology company focused on helping people learn together.', responsibilities: ['Build and ship features end to end alongside the founding team.', 'Talk with early users and turn feedback into product improvements.', 'Help set up the engineering foundations of a young product.'], qualifications: ['Comfortable working in a small, fast-moving team.', 'Experience building web apps with React or Python.', 'Excited by education and community-centered products.'], author: 'Common Thread', url: '', createdAt: '2026-10-06' },
+  { id: 'group-mit-fintech-case', kind: 'group', category: 'Competition', title: 'Fintech case competition team needs a backend teammate', organization: 'MIT Fintech Society', location: 'Cambridge, MA', arrangement: 'In person', industry: 'Fintech', nodeId: 'mit', groupId: 'mit-fintech-society', skills: ['Python', 'SQL', 'Data analysis'], description: 'We are forming a cross-campus team for a fintech case competition and need someone who can build data pipelines and a simple backend for our prototype.', about: 'MIT Fintech Society is a student club exploring financial technology, responsible software, and the future of finance.', responsibilities: ['Build the data pipeline and backend for the team prototype.', 'Work with teammates on strategy, demo, and final presentation.', 'Attend two evening working sessions on campus.'], qualifications: ['Experience with Python and SQL.', 'Interest in financial technology.', 'Students from any Boston-area school are welcome.'], author: 'MIT Fintech Society', url: '', createdAt: '2026-10-05' },
+  { id: 'job-harvard-hci-research', kind: 'job', category: 'Research', title: 'Research assistant, human-computer interaction', organization: 'Harvard HCI Research Lab', location: 'Cambridge, MA', arrangement: 'In person', industry: 'Research', nodeId: 'harvard', skills: ['Python', 'JavaScript', 'User research'], description: 'Support a research team studying how people interact with collaborative tools. You will help build study prototypes, run sessions with participants, and analyze results.', about: 'A Harvard research group studying how people use software to collaborate, learn, and make decisions together.', responsibilities: ['Build and maintain small web prototypes for user studies.', 'Help run and document sessions with participants.', 'Clean and analyze study data with the research team.'], qualifications: ['Harvard students preferred; open to all levels.', 'Experience with Python or JavaScript.', 'Interest in research and human-centered design.'], author: 'Harvard HCI Research Lab', url: '', createdAt: '2026-10-04' },
+  { id: 'group-harvard-robotics-rover', kind: 'group', category: 'Project', title: 'Software teammates for our autonomous rover project', organization: 'Harvard Robotics Team', location: 'Cambridge, MA', arrangement: 'In person', industry: 'Robotics & Hardware', nodeId: 'harvard', groupId: 'harvard-robotics', skills: ['C', 'Python', 'ROS', 'Embedded systems'], description: 'The robotics team is looking for software-minded members to help with navigation and sensor code for this year’s autonomous rover competition entry.', about: 'The Harvard Robotics Team is a student group building robotics projects, hardware experiments, and software for autonomous systems.', responsibilities: ['Write navigation and sensor-processing code for the rover.', 'Test software on hardware with the mechanical team.', 'Document and hand off your work to future members.'], qualifications: ['Experience with C or Python.', 'Curiosity about robotics; no hardware experience needed.', 'Time for weekly team meetings.'], author: 'Harvard Robotics Team', url: '', createdAt: '2026-10-03' },
+  { id: 'job-northstar-associate', kind: 'job', category: 'Full-Time', title: 'Associate software engineer', organization: 'Northstar Labs', location: 'Boston, MA', arrangement: 'Hybrid', industry: 'Technology', nodeId: 'northstar', skills: ['Java', 'SQL', 'APIs', 'Testing'], description: 'A full-time role for recent graduates joining a software team that builds internal platforms. Interns from past summers are encouraged to apply.', about: 'Northstar Labs is a software company where teams build and maintain products for business customers.', responsibilities: ['Build and test backend services in Java.', 'Work in a small team with regular code reviews and mentorship.', 'Help improve reliability and documentation of internal tools.'], qualifications: ['Degree in computer science or a related field by next summer.', 'Experience with Java and SQL.', 'Previous internship or project experience is a plus.'], author: 'Northstar Labs', url: '', createdAt: '2026-09-30' },
+  { id: 'group-entrepreneurship-cofounder', kind: 'group', category: 'Collaboration', title: 'Looking for a technical co-founder for an edtech idea', organization: 'Harvard College Entrepreneurship Forum', location: 'Cambridge, MA', arrangement: 'Hybrid', industry: 'Education', groupId: 'harvard-entrepreneurship', skills: ['React', 'Python', 'Product thinking'], description: 'A student founder in our community is looking for a technical partner to build and test an early prototype for peer tutoring and study groups.', about: 'The Harvard College Entrepreneurship Forum is a community for students exploring startups, early-stage teams, and new ideas.', responsibilities: ['Build a first prototype with the founder.', 'Run user interviews with students to test the idea.', 'Decide together what to build next.'], qualifications: ['Experience building a web app end to end.', 'Interest in startups and education.', 'Comfortable with ambiguity and fast iteration.'], author: 'Harvard College Entrepreneurship Forum', url: '', createdAt: '2026-09-25' }
+];
+
 const gridNodes = [
   { id: 'truman', name: 'Truman Pauley', category: 'person', meta: 'You · Computer science', x: 50, y: 49, image: 'photo-1500648767791-00dcc994a43e', description: 'Your profile is the starting point for every path on this grid. You are studying computer science at Harvard and exploring software, product, and community.', connection: 'Your education, skills, and projects connect you to people and roles across the grid.' },
   { id: 'harvard', name: 'Harvard University', category: 'school', meta: 'Computer Science · 2027', x: 20, y: 22, icon: 'graduation-cap', description: 'Your education creates shared context with alumni working across technology, product, and early-stage companies.', connection: 'Your Harvard background connects you directly to Maya Chen and to a wider alumni network.' },
@@ -112,6 +162,11 @@ const state = {
   resumeData: loadResumeData(),
   groupMemberships: loadGroupMemberships(),
   createdGroups: loadCreatedGroups(),
+  opportunityPosts: loadOpportunityPosts(),
+  savedOpportunities: loadOpportunityIds('orbit-saved-opportunities'),
+  interestedOpportunities: loadOpportunityIds('orbit-interested-opportunities'),
+  opportunityFilters: { tab: 'for-you', search: '', location: 'all', type: 'all', industry: 'all', sort: 'relevant', savedOnly: false },
+  openOpportunityId: null,
   activeGroupFilter: 'all',
   editingSkills: false,
   profile: loadProfile(),
@@ -444,6 +499,24 @@ function loadCreatedGroups() {
   }
 }
 
+function loadOpportunityPosts() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('orbit-opportunity-posts') || '[]');
+    return Array.isArray(saved) ? saved.filter(post => post && post.id && post.title && post.organization) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadOpportunityIds(key) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(saved) ? new Set(saved.filter(value => typeof value === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 function persist() {
   localStorage.setItem('orbit-items', JSON.stringify(state.items));
   localStorage.setItem('orbit-connected', JSON.stringify([...state.connected]));
@@ -452,6 +525,9 @@ function persist() {
   localStorage.setItem('orbit-resume-data', JSON.stringify(state.resumeData));
   localStorage.setItem('orbit-group-memberships', JSON.stringify(state.groupMemberships));
   localStorage.setItem('orbit-created-groups', JSON.stringify(state.createdGroups));
+  localStorage.setItem('orbit-opportunity-posts', JSON.stringify(state.opportunityPosts));
+  localStorage.setItem('orbit-saved-opportunities', JSON.stringify([...state.savedOpportunities]));
+  localStorage.setItem('orbit-interested-opportunities', JSON.stringify([...state.interestedOpportunities]));
 }
 
 function icon(name) {
@@ -598,6 +674,292 @@ function allGroups() {
     refreshIcons();
   }
 
+const legacyOpportunityTags = ['Job opening', 'Community'];
+
+function normalizeOpportunity(raw) {
+  const enrichment = opportunityEnrichment[raw.id] || {};
+  const category = raw.category || enrichment.category || (raw.kind === 'job' ? 'Job' : 'Collaboration');
+  const arrangement = raw.arrangement || enrichment.arrangement || 'In person';
+  const rawLocation = raw.location || enrichment.location || '';
+  return {
+    id: raw.id,
+    category,
+    kind: jobCategories.includes(category) ? 'job' : 'group',
+    title: raw.title,
+    organization: raw.organization,
+    location: arrangement === 'Remote' ? 'Remote' : (rawLocation || 'Location flexible'),
+    arrangement,
+    industry: raw.industry || enrichment.industry || 'Other',
+    description: raw.description,
+    skills: (raw.skills || enrichment.skills || raw.tags || []).filter(tag => !legacyOpportunityTags.includes(tag)),
+    responsibilities: raw.responsibilities || enrichment.responsibilities || [],
+    qualifications: raw.qualifications || enrichment.qualifications || [],
+    about: raw.about || enrichment.about || '',
+    nodeId: raw.nodeId || enrichment.nodeId || null,
+    groupId: raw.groupId || enrichment.groupId || null,
+    author: raw.author || raw.organization,
+    url: raw.url || '',
+    createdAt: raw.createdAt,
+    posted: Boolean(raw.id && String(raw.id).startsWith('posted-'))
+  };
+}
+
+function opportunityList() {
+  return [...state.opportunityPosts, ...defaultOpportunities, ...additionalOpportunities].map(normalizeOpportunity);
+}
+
+function userSkillSet() {
+  const skills = new Set();
+  const add = text => String(text || '').split(/[,;]/).map(part => part.trim().toLowerCase()).filter(Boolean).forEach(part => skills.add(part));
+  state.items.filter(item => item.label === 'Skills' && item.state !== 'rejected').forEach(item => add(item.value));
+  state.resumeData.sections.filter(section => section.type === 'skills').forEach(section => {
+    (section.entries || []).filter(entry => entry.state !== 'rejected').forEach(entry => add(entry.skill));
+  });
+  return skills;
+}
+
+// Sample data only: connections are derived from the prototype Grid and group data, not from real accounts.
+function opportunityNetwork(opportunity) {
+  const ids = new Set();
+  if (opportunity.nodeId) {
+    gridEdges.forEach(([from, to]) => {
+      if (from === opportunity.nodeId) ids.add(to);
+      if (to === opportunity.nodeId) ids.add(from);
+    });
+  }
+  const group = opportunity.groupId && allGroups().find(candidate => candidate.id === opportunity.groupId);
+  (group?.memberIds || []).forEach(id => ids.add(id));
+  const connections = people.filter(person => ids.has(person.id));
+  const sharedGroups = allGroups().filter(candidate => state.groupMemberships[candidate.id] && state.groupMemberships[candidate.id] !== 'Pending'
+    && (candidate.memberIds || []).some(id => connections.some(person => person.id === id)));
+  return { connections, sharedGroups };
+}
+
+function networkSummaryLines(opportunity, network) {
+  const lines = [];
+  const count = network.connections.length;
+  if (count) lines.push(`${count} ${count === 1 ? 'person' : 'people'} in your Grid ${count === 1 ? 'is' : 'are'} connected to ${opportunity.organization}`);
+  const groupCount = network.sharedGroups.length;
+  if (groupCount) lines.push(`${groupCount} shared ${groupCount === 1 ? 'group' : 'groups'} with people at this organization`);
+  return lines;
+}
+
+function opportunityDateLabel(createdAt) {
+  const date = new Date(`${createdAt}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return 'Recently posted';
+  const days = Math.floor((Date.now() - date.getTime()) / 86400000);
+  if (days <= 0) return 'Posted today';
+  if (days === 1) return 'Posted yesterday';
+  if (days < 14) return `Posted ${days} days ago`;
+  return `Posted ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date)}`;
+}
+
+function opportunityAvatar(opportunity) {
+  return `<span class="opp-avatar ${opportunity.kind === 'job' ? 'opp-avatar-job' : 'opp-avatar-group'}" aria-hidden="true">${escapeHTML((opportunity.organization || '?').trim().charAt(0).toUpperCase())}</span>`;
+}
+
+function filteredOpportunities() {
+  const filters = state.opportunityFilters;
+  const mySkills = userSkillSet();
+  const search = filters.search.trim().toLowerCase();
+  const enriched = opportunityList().map(opportunity => {
+    const network = opportunityNetwork(opportunity);
+    const matchedSkills = opportunity.skills.filter(skill => mySkills.has(skill.toLowerCase()));
+    return { opportunity, network, matchedSkills, score: matchedSkills.length + network.connections.length };
+  });
+  const results = enriched.filter(({ opportunity, score }) => {
+    if (filters.tab === 'job' && opportunity.kind !== 'job') return false;
+    if (filters.tab === 'group' && opportunity.kind !== 'group') return false;
+    if (filters.tab === 'for-you' && score === 0) return false;
+    if (filters.savedOnly && !state.savedOpportunities.has(opportunity.id)) return false;
+    if (filters.location !== 'all' && opportunity.location !== filters.location) return false;
+    if (filters.type !== 'all' && opportunity.category !== filters.type) return false;
+    if (filters.industry !== 'all' && opportunity.industry !== filters.industry) return false;
+    if (!search) return true;
+    return [opportunity.title, opportunity.organization, opportunity.location, opportunity.arrangement, opportunity.category, opportunity.industry, opportunity.description, ...opportunity.skills]
+      .join(' ').toLowerCase().includes(search);
+  });
+  const byDate = (a, b) => String(b.opportunity.createdAt).localeCompare(String(a.opportunity.createdAt));
+  if (filters.sort === 'recent') results.sort(byDate);
+  else if (filters.sort === 'network') results.sort((a, b) => b.network.connections.length - a.network.connections.length || byDate(a, b));
+  else results.sort((a, b) => b.score - a.score || byDate(a, b));
+  return results;
+}
+
+function populateOpportunityFilters() {
+  const all = opportunityList();
+  const fill = (selector, key, values, allLabel) => {
+    const select = document.querySelector(selector);
+    const current = state.opportunityFilters[key];
+    const options = [...new Set(values)].filter(Boolean).sort((a, b) => a.localeCompare(b));
+    select.innerHTML = `<option value="all">${allLabel}</option>${options.map(value => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join('')}`;
+    if (!options.includes(current)) state.opportunityFilters[key] = 'all';
+    select.value = state.opportunityFilters[key];
+  };
+  fill('#opp-filter-location', 'location', all.map(item => item.location), 'All locations');
+  fill('#opp-filter-type', 'type', all.map(item => item.category), 'All types');
+  fill('#opp-filter-industry', 'industry', all.map(item => item.industry), 'All industries');
+}
+
+function opportunityNetworkMarkup(opportunity, network) {
+  const lines = networkSummaryLines(opportunity, network);
+  const faces = network.connections.slice(0, 3).map(person => `<img src="https://images.unsplash.com/${escapeHTML(person.image)}?auto=format&fit=crop&w=48&q=80" alt="" loading="lazy">`).join('');
+  return `<div class="opp-network">
+    <div class="opp-network-head"><strong>${icon('network')} Your Network</strong><span class="opp-prototype-badge" title="Sample Grid data for the prototype. Not verified.">Prototype · unverified</span></div>
+    ${lines.length
+      ? `<div class="opp-network-body">${faces ? `<span class="opp-faces">${faces}</span>` : ''}<ul>${lines.map(line => `<li>${escapeHTML(line)}</li>`).join('')}</ul></div>`
+      : '<p class="opp-network-empty">No connections found in your sample Grid yet.</p>'}
+  </div>`;
+}
+
+function renderOpportunities() {
+  populateOpportunityFilters();
+  const filters = state.opportunityFilters;
+  const results = filteredOpportunities();
+  const savedCount = [...state.savedOpportunities].filter(id => opportunityList().some(item => item.id === id)).length;
+  document.querySelectorAll('[data-opportunity-tab]').forEach(button => {
+    const active = button.dataset.opportunityTab === filters.tab;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  const savedToggle = document.querySelector('#opp-saved-toggle');
+  savedToggle.classList.toggle('active', filters.savedOnly);
+  savedToggle.setAttribute('aria-pressed', String(filters.savedOnly));
+  document.querySelector('#opp-saved-count').textContent = savedCount;
+  document.querySelector('#opp-filter-sort').value = filters.sort;
+  const filtersActive = filters.search || filters.location !== 'all' || filters.type !== 'all' || filters.industry !== 'all' || filters.savedOnly || filters.tab !== 'for-you';
+  document.querySelector('#opp-clear-filters').hidden = !filtersActive;
+  document.querySelector('#opp-results-count').textContent = `${results.length} ${results.length === 1 ? 'opportunity' : 'opportunities'}`;
+
+  document.querySelector('#opportunities-list').innerHTML = results.map(({ opportunity, network, matchedSkills }) => {
+    const saved = state.savedOpportunities.has(opportunity.id);
+    const id = escapeHTML(opportunity.id);
+    const skills = opportunity.skills.slice(0, 4).map(skill => `<span class="opportunity-tag${matchedSkills.includes(skill) ? ' match' : ''}">${escapeHTML(skill)}</span>`).join('');
+    return `<article class="opp-card">
+      <div class="opp-card-top">${opportunityAvatar(opportunity)}
+        <div class="opp-card-title"><h2><button type="button" data-opportunity-view="${id}">${escapeHTML(opportunity.title)}</button></h2><p>${escapeHTML(opportunity.organization)}</p></div>
+        <button class="icon-button opp-bookmark${saved ? ' saved' : ''}" type="button" aria-label="${saved ? 'Remove from saved' : 'Save opportunity'}" aria-pressed="${saved}" data-opportunity-save="${id}">${icon('bookmark')}</button>
+      </div>
+      <div class="opp-meta"><span class="opp-chip type">${escapeHTML(opportunity.category)}</span><span class="opp-chip">${icon('map-pin')}${escapeHTML(opportunity.location)}</span>${opportunity.arrangement === opportunity.location ? '' : `<span class="opp-chip">${icon('laptop')}${escapeHTML(opportunity.arrangement)}</span>`}</div>
+      <p class="opp-description">${escapeHTML(opportunity.description)}</p>
+      <div class="opportunity-card-tags">${skills}</div>
+      ${matchedSkills.length && filters.tab === 'for-you' ? `<p class="opp-match">${icon('sparkles')}${matchedSkills.length} ${matchedSkills.length === 1 ? 'skill matches' : 'skills match'} your profile</p>` : ''}
+      ${opportunityNetworkMarkup(opportunity, network)}
+      <footer class="opp-card-footer"><span class="opportunity-date">${escapeHTML(opportunityDateLabel(opportunity.createdAt))}</span>
+        <div class="opp-actions"><button class="opp-secondary" type="button" data-opportunity-explore="${id}">Explore Connections</button><button class="button opportunity-primary-action" type="button" data-opportunity-view="${id}">View Opportunity</button></div>
+      </footer>
+    </article>`;
+  }).join('');
+
+  const empty = document.querySelector('#opportunities-empty');
+  empty.hidden = results.length > 0;
+  if (!results.length) {
+    document.querySelector('#opp-empty-title').textContent = filters.savedOnly ? 'No saved opportunities match' : 'No opportunities match';
+    document.querySelector('#opp-empty-copy').textContent = filters.tab === 'for-you' && !filters.search && !filters.savedOnly
+      ? 'Add skills to your profile or browse All Opportunities to see more.'
+      : 'Try adjusting your search or clearing some filters.';
+  }
+  refreshIcons();
+}
+
+function toggleOpportunityCollection(collection, key, id) {
+  const wasActive = collection.has(id);
+  if (wasActive) collection.delete(id);
+  else collection.add(id);
+  try {
+    localStorage.setItem(key, JSON.stringify([...collection]));
+  } catch {
+    if (wasActive) collection.add(id);
+    else collection.delete(id);
+    showToast('That change could not be saved. Free up browser storage and try again.');
+    return null;
+  }
+  return !wasActive;
+}
+
+function exploreOpportunityConnections(opportunityId) {
+  const opportunity = opportunityList().find(item => item.id === opportunityId);
+  if (!opportunity) return;
+  const { connections, sharedGroups } = opportunityNetwork(opportunity);
+  closeOpportunityDetail();
+  setView('surf-grid');
+  appendGuideMessage('user', `Who in my network can connect me to “${opportunity.title}” at ${opportunity.organization}?`);
+  const lines = networkSummaryLines(opportunity, { connections, sharedGroups });
+  const names = connections.map(person => person.name).join(', ');
+  const text = opportunity.nodeId && connections.length
+    ? `Sample Grid data (prototype, not verified): ${lines.join('; ')}. People nearby: ${names}. I’ve highlighted ${opportunity.organization} on the map.`
+    : `There is no sample Grid connection for ${opportunity.organization} yet, so I’ve centered the map on you. In a full version, this is where real mutual connections would appear.`;
+  window.setTimeout(() => {
+    appendGuideMessage('assistant', text);
+    selectGridNode(opportunity.nodeId && connections.length ? opportunity.nodeId : 'truman');
+  }, 220);
+}
+
+function listMarkup(items) {
+  return items.length
+    ? `<ul class="opp-detail-list">${items.map(item => `<li>${escapeHTML(item)}</li>`).join('')}</ul>`
+    : '<p class="opp-muted">Not provided by the poster.</p>';
+}
+
+function renderOpportunityDetail(opportunityId) {
+  const opportunity = opportunityList().find(item => item.id === opportunityId);
+  if (!opportunity) return;
+  const network = opportunityNetwork(opportunity);
+  const mySkills = userSkillSet();
+  const saved = state.savedOpportunities.has(opportunity.id);
+  const interested = state.interestedOpportunities.has(opportunity.id);
+  const id = escapeHTML(opportunity.id);
+  const skills = opportunity.skills.length
+    ? opportunity.skills.map(skill => `<span class="opportunity-tag${mySkills.has(skill.toLowerCase()) ? ' match' : ''}">${escapeHTML(skill)}</span>`).join('')
+    : '<span class="opp-muted">No skills listed.</span>';
+  const people_ = network.connections.map(person => `<li><img src="https://images.unsplash.com/${escapeHTML(person.image)}?auto=format&fit=crop&w=64&q=80" alt=""><span><strong>${escapeHTML(person.name)}</strong><small>${escapeHTML(person.role)}</small></span></li>`).join('');
+  const groups = network.sharedGroups.map(group => `<span class="opp-chip">${escapeHTML(group.name)}</span>`).join('');
+  document.querySelector('#opportunity-detail-content').innerHTML = `
+    <header class="opp-detail-head">${opportunityAvatar(opportunity)}
+      <div><span class="opp-chip type">${escapeHTML(opportunity.category)}</span><h2 id="opp-detail-title">${escapeHTML(opportunity.title)}</h2><p>${escapeHTML(opportunity.organization)}</p></div>
+    </header>
+    <dl class="opp-detail-facts">
+      <div><dt>Type</dt><dd>${escapeHTML(opportunity.category)}</dd></div>
+      <div><dt>Location</dt><dd>${escapeHTML(opportunity.location)}</dd></div>
+      <div><dt>Work style</dt><dd>${escapeHTML(opportunity.arrangement)}</dd></div>
+      <div><dt>Industry</dt><dd>${escapeHTML(opportunity.industry)}</dd></div>
+      <div><dt>Posted</dt><dd>${escapeHTML(opportunityDateLabel(opportunity.createdAt).replace('Posted ', ''))}</dd></div>
+      <div><dt>Posted by</dt><dd>${escapeHTML(opportunity.author)}</dd></div>
+    </dl>
+    <section><h3>About this opportunity</h3><p>${escapeHTML(opportunity.description)}</p></section>
+    <section><h3>About ${escapeHTML(opportunity.organization)}</h3><p>${opportunity.about ? escapeHTML(opportunity.about) : '<span class="opp-muted">No organization details were provided.</span>'}</p></section>
+    <section><h3>Responsibilities</h3>${listMarkup(opportunity.responsibilities)}</section>
+    <section><h3>Qualifications</h3>${listMarkup(opportunity.qualifications)}</section>
+    <section><h3>Skills</h3><div class="opportunity-card-tags">${skills}</div></section>
+    <section class="opp-network"><div class="opp-network-head"><strong>${icon('network')} Your Network</strong><span class="opp-prototype-badge">Prototype · unverified</span></div>
+      ${network.connections.length ? `<ul class="opp-people">${people_}</ul>` : '<p class="opp-network-empty">No connections found in your sample Grid yet.</p>'}
+      ${groups ? `<p class="opp-shared-label">Shared groups</p><div class="opp-meta">${groups}</div>` : ''}
+      <p class="opp-fineprint">These connections come from sample Grid data and are not verified.</p>
+    </section>
+    <footer class="opp-detail-actions">
+      <button class="icon-button opp-bookmark${saved ? ' saved' : ''}" type="button" aria-label="${saved ? 'Remove from saved' : 'Save opportunity'}" aria-pressed="${saved}" data-opportunity-save="${id}">${icon('bookmark')}</button>
+      <button class="opp-secondary" type="button" data-opportunity-explore="${id}">Explore My Network</button>
+      <button class="opp-secondary${interested ? ' active' : ''}" type="button" data-opportunity-interest="${id}">${interested ? 'Interest noted' : 'I’m Interested'}</button>
+      ${opportunity.url ? `<a class="button opportunity-primary-action" href="${escapeHTML(opportunity.url)}" target="_blank" rel="noopener noreferrer">Apply ${icon('arrow-up-right')}</a>` : ''}
+    </footer>
+    <p class="opp-fineprint">“I’m Interested” is saved on this device only. Pipeline does not send it to the poster in this prototype.</p>`;
+  refreshIcons();
+}
+
+const opportunityDetailModal = document.querySelector('#opportunity-detail-modal');
+function openOpportunityDetail(opportunityId) {
+  state.openOpportunityId = opportunityId;
+  renderOpportunityDetail(opportunityId);
+  opportunityDetailModal.classList.add('open');
+  opportunityDetailModal.setAttribute('aria-hidden', 'false');
+  document.querySelector('#opportunity-detail-close').focus();
+}
+function closeOpportunityDetail() {
+  state.openOpportunityId = null;
+  opportunityDetailModal.classList.remove('open');
+  opportunityDetailModal.setAttribute('aria-hidden', 'true');
+}
+
   function renderGroupDetail(groupId) {
     const group = allGroups().find(candidate => candidate.id === groupId);
     if (!group) return;
@@ -623,6 +985,15 @@ function allGroups() {
   }
 
   function renderNetworkMap() {
+  const category = document.querySelector('#map-filter').value;
+  const query = document.querySelector('#map-search').value.trim().toLowerCase();
+  const nodeLayer = document.querySelector('#grid-nodes');
+  const edgeLayer = document.querySelector('#edge-layer');
+  const visibleIds = new Set(gridNodes.filter(node => category === 'all' || node.category === category).map(node => node.id));
+  const matchingIds = new Set(gridNodes.filter(node => visibleIds.has(node.id) && (!query || `${node.name} ${node.meta} ${node.description}`.toLowerCase().includes(query))).map(node => node.id));
+
+  if (state.selectedGridNode && !visibleIds.has(state.selectedGridNode)) selectGridNode(null);
+
   nodeLayer.innerHTML = gridNodes.map(node => {
     const nodeImage = node.id === 'truman' ? state.profile.photo : '';
     const nodeIcon = nodeImage
@@ -1430,12 +1801,14 @@ function setView(view) {
   const showingNetwork = target === 'network';
   const showingProfile = target === 'profile';
   const showingGroups = target === 'groups';
+  const showingOpportunities = target === 'opportunities';
   const showingMessages = target === 'messages';
 
-  document.querySelector('#dashboard-content').hidden = showingSurfGrid || showingProfile || showingNetwork || showingGroups || showingMessages;
+  document.querySelector('#dashboard-content').hidden = showingSurfGrid || showingProfile || showingNetwork || showingGroups || showingOpportunities || showingMessages;
   document.querySelector('#network-view').hidden = !showingNetwork;
   document.querySelector('#profile-view').hidden = !showingProfile;
   document.querySelector('#groups-view').hidden = !showingGroups;
+  document.querySelector('#opportunities-view').hidden = !showingOpportunities;
   document.querySelector('#messages-view').hidden = !showingMessages;
   document.querySelector('#surf-grid-view').hidden = !showingSurfGrid;
 
@@ -1451,6 +1824,9 @@ function setView(view) {
     document.querySelector('#group-detail-view').hidden = true;
     renderGroups();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (target === 'opportunities') {
+    renderOpportunities();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   } else if (target === 'messages') {
     renderMessages();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1458,8 +1834,6 @@ function setView(view) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } else if (target === 'surf-grid') {
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  } else {
-    showToast('Opportunity discovery is coming soon. Your matches are below.');
   }
 }
 
@@ -1787,6 +2161,143 @@ document.querySelector('#group-create-form').addEventListener('submit', event =>
   closeGroupCreate();
   renderGroups();
   showToast('Your group has been created.');
+});
+
+const opportunitiesView = document.querySelector('#opportunities-view');
+function handleOpportunityClick(event) {
+  const viewButton = event.target.closest('[data-opportunity-view]');
+  if (viewButton) {
+    openOpportunityDetail(viewButton.dataset.opportunityView);
+    return;
+  }
+  const exploreButton = event.target.closest('[data-opportunity-explore]');
+  if (exploreButton) {
+    exploreOpportunityConnections(exploreButton.dataset.opportunityExplore);
+    return;
+  }
+  const saveButton = event.target.closest('[data-opportunity-save]');
+  if (saveButton) {
+    const nowSaved = toggleOpportunityCollection(state.savedOpportunities, 'orbit-saved-opportunities', saveButton.dataset.opportunitySave);
+    if (nowSaved === null) return;
+    renderOpportunities();
+    if (state.openOpportunityId) renderOpportunityDetail(state.openOpportunityId);
+    showToast(nowSaved ? 'Opportunity saved for later.' : 'Opportunity removed from saved.');
+    return;
+  }
+  const interestButton = event.target.closest('[data-opportunity-interest]');
+  if (interestButton) {
+    const nowInterested = toggleOpportunityCollection(state.interestedOpportunities, 'orbit-interested-opportunities', interestButton.dataset.opportunityInterest);
+    if (nowInterested === null) return;
+    renderOpportunityDetail(state.openOpportunityId);
+    showToast(nowInterested ? 'Interest noted on this device. It is not sent to the poster in this prototype.' : 'Interest removed.');
+  }
+}
+opportunitiesView.addEventListener('click', event => {
+  const tab = event.target.closest('[data-opportunity-tab]');
+  if (tab) {
+    state.opportunityFilters.tab = tab.dataset.opportunityTab;
+    renderOpportunities();
+    return;
+  }
+  if (event.target.closest('#opp-saved-toggle')) {
+    state.opportunityFilters.savedOnly = !state.opportunityFilters.savedOnly;
+    renderOpportunities();
+    return;
+  }
+  if (event.target.closest('#opp-clear-filters')) {
+    state.opportunityFilters = { tab: 'for-you', search: '', location: 'all', type: 'all', industry: 'all', sort: state.opportunityFilters.sort, savedOnly: false };
+    document.querySelector('#opportunities-search').value = '';
+    renderOpportunities();
+    return;
+  }
+  handleOpportunityClick(event);
+});
+opportunityDetailModal.addEventListener('click', event => {
+  if (event.target === opportunityDetailModal) closeOpportunityDetail();
+  else handleOpportunityClick(event);
+});
+document.querySelector('#opportunity-detail-close').addEventListener('click', closeOpportunityDetail);
+document.querySelectorAll('[data-opportunity-select]').forEach(select => {
+  select.addEventListener('change', () => {
+    state.opportunityFilters[select.dataset.opportunitySelect] = select.value;
+    renderOpportunities();
+  });
+});
+document.querySelector('#opportunities-search').addEventListener('input', event => {
+  state.opportunityFilters.search = event.target.value;
+  renderOpportunities();
+});
+
+const opportunityCreateModal = document.querySelector('#opportunity-create-modal');
+function closeOpportunityCreate() {
+  opportunityCreateModal.classList.remove('open');
+  opportunityCreateModal.setAttribute('aria-hidden', 'true');
+}
+document.querySelector('#opportunity-create-open').addEventListener('click', () => {
+  opportunityCreateModal.classList.add('open');
+  opportunityCreateModal.setAttribute('aria-hidden', 'false');
+  document.querySelector('#opportunity-create-form').elements.title.focus();
+});
+document.querySelector('#opportunity-create-close').addEventListener('click', closeOpportunityCreate);
+document.querySelector('#opportunity-create-cancel').addEventListener('click', closeOpportunityCreate);
+opportunityCreateModal.addEventListener('click', event => {
+  if (event.target === opportunityCreateModal) closeOpportunityCreate();
+});
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if (opportunityCreateModal.classList.contains('open')) closeOpportunityCreate();
+  else if (opportunityDetailModal.classList.contains('open')) closeOpportunityDetail();
+});
+document.querySelector('#opportunity-create-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const rawUrl = form.elements.url.value.trim();
+  let url = '';
+  if (rawUrl) {
+    try {
+      const parsedUrl = new URL(rawUrl);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Unsupported link protocol.');
+      url = parsedUrl.href;
+    } catch {
+      showToast('Enter a valid web link beginning with http:// or https://.');
+      form.elements.url.focus();
+      return;
+    }
+  }
+  const lines = value => value.split('\n').map(line => line.trim()).filter(Boolean).slice(0, 10);
+  const category = form.elements.category.value;
+  const organization = form.elements.organization.value.trim();
+  const post = {
+    id: `posted-${Date.now()}`,
+    kind: jobCategories.includes(category) ? 'job' : 'group',
+    category,
+    title: form.elements.title.value.trim(),
+    organization,
+    location: form.elements.location.value.trim(),
+    arrangement: form.elements.arrangement.value,
+    industry: form.elements.industry.value,
+    description: form.elements.description.value.trim(),
+    skills: form.elements.skills.value.split(/[,;]/).map(skill => skill.trim().slice(0, 30)).filter(Boolean).slice(0, 8),
+    responsibilities: lines(form.elements.responsibilities.value),
+    qualifications: lines(form.elements.qualifications.value),
+    author: state.profile.name || organization,
+    url,
+    createdAt: new Date().toISOString().slice(0, 10)
+  };
+  state.opportunityPosts.unshift(post);
+  try {
+    localStorage.setItem('orbit-opportunity-posts', JSON.stringify(state.opportunityPosts));
+  } catch {
+    state.opportunityPosts.shift();
+    showToast('Your opportunity could not be published. Free up browser storage and try again.');
+    return;
+  }
+  form.reset();
+  closeOpportunityCreate();
+  state.opportunityFilters = { tab: 'all', search: '', location: 'all', type: 'all', industry: 'all', sort: 'recent', savedOnly: false };
+  document.querySelector('#opportunities-search').value = '';
+  setView('opportunities');
+  showToast('Your opportunity has been published.');
 });
 
 document.querySelectorAll('[data-view]').forEach(button => {
