@@ -54,11 +54,11 @@ const opportunityEnrichment = {
 const additionalOpportunities = [
   { id: 'job-figma-design-eng', kind: 'job', category: 'Internship', title: 'Design engineering intern', organization: 'Figma', location: 'Remote', arrangement: 'Remote', industry: 'Design', nodeId: 'figma', skills: ['React', 'TypeScript', 'Design systems', 'CSS'], description: 'Work at the boundary of design and engineering, building polished interface details and prototyping new collaboration ideas with product and design teammates.', about: 'Figma makes collaborative design software used by product teams to design, prototype, and build together.', responsibilities: ['Prototype and ship interface improvements with design partners.', 'Contribute to shared components and design systems.', 'Test ideas quickly and share what you learn with the team.'], qualifications: ['Strong interest in both design and frontend engineering.', 'Experience with React, CSS, or TypeScript.', 'A portfolio or projects that show attention to detail.'], author: 'Pipeline picks', url: '', createdAt: '2026-10-07' },
   { id: 'job-common-thread-founding', kind: 'job', category: 'Internship', title: 'Founding engineer intern', organization: 'Common Thread', location: 'Boston, MA', arrangement: 'Hybrid', industry: 'Education', nodeId: 'common-thread', skills: ['React', 'Python', 'SQL', 'Product thinking'], description: 'Join an early-stage edtech startup and help build the first version of tools that let people learn together. You will work directly with the founder and shape the product.', about: 'Common Thread is an early-stage education technology company focused on helping people learn together.', responsibilities: ['Build and ship features end to end alongside the founding team.', 'Talk with early users and turn feedback into product improvements.', 'Help set up the engineering foundations of a young product.'], qualifications: ['Comfortable working in a small, fast-moving team.', 'Experience building web apps with React or Python.', 'Excited by education and community-centered products.'], author: 'Common Thread', url: '', createdAt: '2026-10-06' },
-  { id: 'group-mit-fintech-case', kind: 'group', category: 'Competition', title: 'Fintech case competition team needs a backend teammate', organization: 'MIT Fintech Society', location: 'Cambridge, MA', arrangement: 'In person', industry: 'Fintech', nodeId: 'mit', groupId: 'mit-fintech-society', skills: ['Python', 'SQL', 'Data analysis'], description: 'We are forming a cross-campus team for a fintech case competition and need someone who can build data pipelines and a simple backend for our prototype.', about: 'MIT Fintech Society is a student club exploring financial technology, responsible software, and the future of finance.', responsibilities: ['Build the data pipeline and backend for the team prototype.', 'Work with teammates on strategy, demo, and final presentation.', 'Attend two evening working sessions on campus.'], qualifications: ['Experience with Python and SQL.', 'Interest in financial technology.', 'Students from any Boston-area school are welcome.'], author: 'MIT Fintech Society', url: '', createdAt: '2026-10-05' },
+  { id: 'group-mit-fintech-case', kind: 'group', category: 'Competition', title: 'Fintech case competition team needs a backend teammate', organization: 'MIT Fintech Society', location: 'Cambridge, MA', arrangement: 'In person', industry: 'Fintech', nodeId: 'mit', groupId: 'harvard-financial-analysts', skills: ['Python', 'SQL', 'Data analysis'], description: 'We are forming a cross-campus team for a fintech case competition and need someone who can build data pipelines and a simple backend for our prototype.', about: 'MIT Fintech Society is a student club exploring financial technology, responsible software, and the future of finance.', responsibilities: ['Build the data pipeline and backend for the team prototype.', 'Work with teammates on strategy, demo, and final presentation.', 'Attend two evening working sessions on campus.'], qualifications: ['Experience with Python and SQL.', 'Interest in financial technology.', 'Students from any Boston-area school are welcome.'], author: 'MIT Fintech Society', url: '', createdAt: '2026-10-05' },
   { id: 'job-harvard-hci-research', kind: 'job', category: 'Research', title: 'Research assistant, human-computer interaction', organization: 'Harvard HCI Research Lab', location: 'Cambridge, MA', arrangement: 'In person', industry: 'Research', nodeId: 'harvard', skills: ['Python', 'JavaScript', 'User research'], description: 'Support a research team studying how people interact with collaborative tools. You will help build study prototypes, run sessions with participants, and analyze results.', about: 'A Harvard research group studying how people use software to collaborate, learn, and make decisions together.', responsibilities: ['Build and maintain small web prototypes for user studies.', 'Help run and document sessions with participants.', 'Clean and analyze study data with the research team.'], qualifications: ['Harvard students preferred; open to all levels.', 'Experience with Python or JavaScript.', 'Interest in research and human-centered design.'], author: 'Harvard HCI Research Lab', url: '', createdAt: '2026-10-04' },
-  { id: 'group-harvard-robotics-rover', kind: 'group', category: 'Project', title: 'Software teammates for our autonomous rover project', organization: 'Harvard Robotics Team', location: 'Cambridge, MA', arrangement: 'In person', industry: 'Robotics & Hardware', nodeId: 'harvard', groupId: 'harvard-robotics', skills: ['C', 'Python', 'ROS', 'Embedded systems'], description: 'The robotics team is looking for software-minded members to help with navigation and sensor code for this year’s autonomous rover competition entry.', about: 'The Harvard Robotics Team is a student group building robotics projects, hardware experiments, and software for autonomous systems.', responsibilities: ['Write navigation and sensor-processing code for the rover.', 'Test software on hardware with the mechanical team.', 'Document and hand off your work to future members.'], qualifications: ['Experience with C or Python.', 'Curiosity about robotics; no hardware experience needed.', 'Time for weekly team meetings.'], author: 'Harvard Robotics Team', url: '', createdAt: '2026-10-03' },
+  { id: 'group-harvard-robotics-rover', kind: 'group', category: 'Project', title: 'Software teammates for our autonomous rover project', organization: 'Harvard Robotics Team', location: 'Cambridge, MA', arrangement: 'In person', industry: 'Robotics & Hardware', nodeId: 'harvard', groupId: 'harvard-computer-society', skills: ['C', 'Python', 'ROS', 'Embedded systems'], description: 'The robotics team is looking for software-minded members to help with navigation and sensor code for this year’s autonomous rover competition entry.', about: 'The Harvard Robotics Team is a student group building robotics projects, hardware experiments, and software for autonomous systems.', responsibilities: ['Write navigation and sensor-processing code for the rover.', 'Test software on hardware with the mechanical team.', 'Document and hand off your work to future members.'], qualifications: ['Experience with C or Python.', 'Curiosity about robotics; no hardware experience needed.', 'Time for weekly team meetings.'], author: 'Harvard Robotics Team', url: '', createdAt: '2026-10-03' },
   { id: 'job-northstar-associate', kind: 'job', category: 'Full-Time', title: 'Associate software engineer', organization: 'Northstar Labs', location: 'Boston, MA', arrangement: 'Hybrid', industry: 'Technology', nodeId: 'northstar', skills: ['Java', 'SQL', 'APIs', 'Testing'], description: 'A full-time role for recent graduates joining a software team that builds internal platforms. Interns from past summers are encouraged to apply.', about: 'Northstar Labs is a software company where teams build and maintain products for business customers.', responsibilities: ['Build and test backend services in Java.', 'Work in a small team with regular code reviews and mentorship.', 'Help improve reliability and documentation of internal tools.'], qualifications: ['Degree in computer science or a related field by next summer.', 'Experience with Java and SQL.', 'Previous internship or project experience is a plus.'], author: 'Northstar Labs', url: '', createdAt: '2026-09-30' },
-  { id: 'group-entrepreneurship-cofounder', kind: 'group', category: 'Collaboration', title: 'Looking for a technical co-founder for an edtech idea', organization: 'Harvard College Entrepreneurship Forum', location: 'Cambridge, MA', arrangement: 'Hybrid', industry: 'Education', groupId: 'harvard-entrepreneurship', skills: ['React', 'Python', 'Product thinking'], description: 'A student founder in our community is looking for a technical partner to build and test an early prototype for peer tutoring and study groups.', about: 'The Harvard College Entrepreneurship Forum is a community for students exploring startups, early-stage teams, and new ideas.', responsibilities: ['Build a first prototype with the founder.', 'Run user interviews with students to test the idea.', 'Decide together what to build next.'], qualifications: ['Experience building a web app end to end.', 'Interest in startups and education.', 'Comfortable with ambiguity and fast iteration.'], author: 'Harvard College Entrepreneurship Forum', url: '', createdAt: '2026-09-25' }
+  { id: 'group-entrepreneurship-cofounder', kind: 'group', category: 'Collaboration', title: 'Looking for a technical co-founder for an edtech idea', organization: 'Harvard College Entrepreneurship Forum', location: 'Cambridge, MA', arrangement: 'Hybrid', industry: 'Education', groupId: 'harvard-college-ventures', skills: ['React', 'Python', 'Product thinking'], description: 'A student founder in our community is looking for a technical partner to build and test an early prototype for peer tutoring and study groups.', about: 'The Harvard College Entrepreneurship Forum is a community for students exploring startups, early-stage teams, and new ideas.', responsibilities: ['Build a first prototype with the founder.', 'Run user interviews with students to test the idea.', 'Decide together what to build next.'], qualifications: ['Experience building a web app end to end.', 'Interest in startups and education.', 'Comfortable with ambiguity and fast iteration.'], author: 'Harvard College Entrepreneurship Forum', url: '', createdAt: '2026-09-25' }
 ];
 
 const gridNodes = [
@@ -88,29 +88,95 @@ const gridEdges = [
   ['sam', 'mit', 'studies at'], ['sam', 'jordan', 'mutual network'], ['jordan', 'common-thread', 'founded'],
   ['truman', 'alex', 'shared interests'], ['alex', 'figma', 'works at'], ['alex', 'product-engineer', 'product perspective']
 ];
+const baseGridNodes = [...gridNodes];
+const baseGridEdges = [...gridEdges];
 
-const groupCatalog = [
-  { id: 'harvard-university', name: 'Harvard University', type: 'University', memberCount: 26420, membership: 'Verified Member', verified: true, access: 'request', icon: 'graduation-cap', description: 'A university community connecting students, alumni, faculty, and builders across disciplines.', memberIds: ['maya', 'sam', 'jordan'], relatedGroupIds: ['harvard-financial-analysts', 'harvard-entrepreneurship', 'harvard-student-agencies'], gridNodeIds: ['harvard', 'maya', 'truman'] },
-  { id: 'harvard-financial-analysts', name: 'Harvard Financial Analysts Club', type: 'Club', memberCount: 685, membership: 'Member', verified: true, access: 'request', icon: 'chart-no-axes-combined', description: 'Students learning financial analysis through workshops, company research, and peer-led projects.', memberIds: ['maya', 'alex'], relatedGroupIds: ['harvard-university', 'harvard-entrepreneurship'], gridNodeIds: ['harvard', 'stripe', 'truman'] },
-  { id: 'harvard-entrepreneurship', name: 'Harvard College Entrepreneurship Forum', type: 'Club', memberCount: 1320, membership: 'Member', verified: true, access: 'request', icon: 'lightbulb', description: 'A community for Harvard students exploring startups, early-stage teams, and new ideas.', memberIds: ['jordan', 'maya', 'sam'], relatedGroupIds: ['harvard-university', 'harvard-student-agencies'], gridNodeIds: ['harvard', 'common-thread', 'truman'] },
-  { id: 'harvard-student-agencies', name: 'Harvard Student Agencies', type: 'Organization', memberCount: 1200, membership: 'Verified Member', verified: true, access: 'request', icon: 'building-2', description: 'A student-run organization building practical experience through real operating businesses and services.', memberIds: ['sam', 'maya'], relatedGroupIds: ['harvard-university', 'harvard-entrepreneurship'], gridNodeIds: ['harvard', 'northstar', 'truman'] },
-  { id: 'harvard-robotics', name: 'Harvard Robotics Team', type: 'Team', memberCount: 84, verified: true, access: 'request', icon: 'bot', description: 'Students collaborating on robotics projects, hardware experiments, and software for autonomous systems.', memberIds: ['sam', 'alex'], relatedGroupIds: ['harvard-university', 'cs50-fall-2026'], gridNodeIds: ['harvard', 'java', 'truman'] },
-  { id: 'cs50-fall-2026', name: 'CS50 Fall 2026', type: 'Class', memberCount: 1840, verified: true, access: 'open', icon: 'book-open', description: 'A course community for learners building a strong foundation in computer science and programming.', memberIds: ['sam', 'alex', 'maya'], relatedGroupIds: ['harvard-university', 'harvard-robotics'], gridNodeIds: ['harvard', 'java', 'python'] },
-  { id: 'northstar-alumni', name: 'Northstar Labs Alumni Network', type: 'Company', memberCount: 96, verified: false, access: 'request', icon: 'briefcase-business', description: 'Past and present Northstar Labs teammates staying connected across software and product roles.', memberIds: ['maya', 'jordan'], relatedGroupIds: ['harvard-university', 'boston-product-builders'], gridNodeIds: ['northstar', 'java', 'truman'] },
-  { id: 'boston-product-builders', name: 'Boston Product Builders', type: 'Organization', memberCount: 612, verified: false, access: 'open', icon: 'blocks', description: 'A cross-company community of people building useful products around Boston.', memberIds: ['alex', 'jordan', 'maya'], relatedGroupIds: ['northstar-alumni', 'harvard-entrepreneurship'], gridNodeIds: ['product-engineer', 'alex', 'truman'] },
-  { id: 'mit-fintech-society', name: 'MIT Fintech Society', type: 'Club', memberCount: 348, verified: true, access: 'request', icon: 'landmark', description: 'Students exploring financial technology, responsible software, and the systems behind modern finance.', memberIds: ['sam', 'jordan'], relatedGroupIds: ['harvard-financial-analysts', 'harvard-university'], gridNodeIds: ['mit', 'stripe', 'sam'] },
-  { id: 'harvard-outing-club', name: 'Harvard Outing Club', type: 'Club', memberCount: 940, verified: true, access: 'open', icon: 'mountain', description: 'A student community organizing outdoor trips, skill-sharing, and time outside the classroom.', memberIds: ['maya', 'sam'], relatedGroupIds: ['harvard-university', 'harvard-student-agencies'], gridNodeIds: ['harvard', 'maya', 'truman'] },
-  { id: 'mit-alumni-network', name: 'MIT Alumni Network', type: 'University', memberCount: 8900, verified: true, access: 'request', icon: 'graduation-cap', description: 'A university community connecting MIT students and alumni working across technology and research.', memberIds: ['sam'], relatedGroupIds: ['mit-fintech-society', 'harvard-university'], gridNodeIds: ['mit', 'sam'] }
+// Real Harvard organizations, identified from their public websites and Harvard/Crimson Athletics pages.
+// memberCount is the base count and starts at zero; displayed counts come from actual memberships.
+// "verified" marks the group's Harvard affiliation, never an individual's membership.
+const DEMO_USER_GROUPS = ['harvard-chess-club', 'harvard-football'];
+
+const groupSeeds = [
+  ['harvard-chess-club', 'Harvard Chess Club', 'Club', 'Recreation', 'Harvard College student organization', '', false, 'crown', 'A student club for chess players of all levels, with casual play, lessons, and tournaments.'],
+  ['harvard-football', 'Harvard Football', 'Team', 'Athletics', 'Harvard Crimson varsity team (NCAA Division I, Ivy League)', 'https://gocrimson.com/sports/football', true, 'trophy', 'Harvard’s varsity football program, competing in the Ivy League and the NCAA Football Championship Subdivision.'],
+  ['harvard-mens-ice-hockey', 'Harvard Men’s Ice Hockey', 'Team', 'Athletics', 'Harvard Crimson varsity team (NCAA Division I, ECAC Hockey)', 'https://gocrimson.com/sports/mens-ice-hockey', true, 'trophy', 'Harvard’s varsity men’s ice hockey program, which plays home games at Bright-Landry Hockey Center.'],
+  ['harvard-mens-basketball', 'Harvard Men’s Basketball', 'Team', 'Athletics', 'Harvard Crimson varsity team (NCAA Division I, Ivy League)', 'https://gocrimson.com/sports/mens-basketball', true, 'trophy', 'Harvard’s varsity men’s basketball program, competing in the Ivy League.'],
+  ['harvard-womens-basketball', 'Harvard Women’s Basketball', 'Team', 'Athletics', 'Harvard Crimson varsity team (NCAA Division I, Ivy League)', 'https://gocrimson.com/sports/womens-basketball', true, 'trophy', 'Harvard’s varsity women’s basketball program, competing in the Ivy League.'],
+  ['harvard-womens-soccer', 'Harvard Women’s Soccer', 'Team', 'Athletics', 'Harvard Crimson varsity team (NCAA Division I, Ivy League)', 'https://gocrimson.com/sports/womens-soccer', true, 'trophy', 'Harvard’s varsity women’s soccer program, competing in the Ivy League.'],
+  ['harvard-mens-lacrosse', 'Harvard Men’s Lacrosse', 'Team', 'Athletics', 'Harvard Crimson varsity team (NCAA Division I, Ivy League)', 'https://gocrimson.com/sports/mens-lacrosse', true, 'trophy', 'Harvard’s varsity men’s lacrosse program, competing in the Ivy League.'],
+  ['harvard-fencing', 'Harvard Fencing', 'Team', 'Athletics', 'Harvard Crimson varsity team (NCAA Division I)', 'https://gocrimson.com/sports/fencing', true, 'trophy', 'Harvard’s varsity fencing program, a long-standing Crimson sport.'],
+  ['harvard-financial-analysts', 'Harvard Financial Analysts Club', 'Club', 'Finance', 'Harvard College student organization', 'https://www.harvardfac.org', true, 'chart-no-axes-combined', 'A student organization focused on financial analysis, investing, and preparing members for finance careers.'],
+  ['harvard-undergraduate-capital-partners', 'Harvard Undergraduate Capital Partners', 'Club', 'Finance', 'Harvard College student organization', 'https://www.harvardcap.org', false, 'landmark', 'A student-run organization for undergraduates interested in investing and capital markets.'],
+  ['harvard-undergraduate-consulting-group', 'Harvard Undergraduate Consulting Group', 'Club', 'Consulting', 'Harvard College student organization', 'https://www.harvardundergradconsulting.org', false, 'briefcase-business', 'A student consulting group that works with clients on market research and strategy projects.'],
+  ['harvard-hucbe', 'Harvard Undergraduate Consulting on Business and the Environment', 'Club', 'Consulting', 'Harvard College student organization', 'https://www.hucbe.org', false, 'leaf', 'A student consulting organization applying business skills to environmental and sustainability projects.'],
+  ['harvard-college-ventures', 'Harvard College Ventures', 'Club', 'Entrepreneurship', 'Harvard College student organization', 'https://www.harvardventures.org', true, 'lightbulb', 'A student-run entrepreneurship and venture capital organization that supports student founders.'],
+  ['harvard-innovation-labs', 'Harvard Innovation Labs', 'Organization', 'Entrepreneurship', 'Harvard University program', 'https://innovationlabs.harvard.edu', true, 'rocket', 'Harvard’s university-wide hub for student entrepreneurship, with programs and community for founders.'],
+  ['harvard-student-agencies', 'Harvard Student Agencies', 'Organization', 'Business', 'Student-run non-profit serving Harvard students', 'https://www.hsa.net', false, 'building-2', 'A non-profit that runs student businesses across several industries and provides business experience.'],
+  ['harvard-women-in-business', 'Harvard Undergraduate Women In Business', 'Club', 'Business', 'Harvard College student organization', 'https://www.huwib.com', false, 'users-round', 'A student organization supporting undergraduate women pursuing careers in business.'],
+  ['harvard-computer-society', 'Harvard Computer Society', 'Club', 'Technology', 'Harvard College student organization', 'https://hcs.harvard.edu', true, 'code-2', 'A student computing organization offering projects, services, and a community for people who build software.'],
+  ['hackharvard', 'HackHarvard', 'Club', 'Technology', 'Student-run hackathon hosted at Harvard University', 'https://hackharvard.io', false, 'terminal', 'A free 36-hour undergraduate hackathon hosted at Harvard University.'],
+  ['harvard-tech-review', 'Harvard Tech Review', 'Club', 'Technology', 'Harvard College student publication', 'https://harvardtechreview.com', false, 'cpu', 'A student publication covering technology and its impact.'],
+  ['harvard-political-review', 'Harvard Political Review', 'Club', 'Academics', 'Harvard College student publication', 'https://harvardpolitics.org', false, 'newspaper', 'An undergraduate publication on politics, policy, and public affairs.'],
+  ['harvard-debate-council', 'Harvard Debate Council', 'Club', 'Academics', 'Harvard College student organization', 'https://www.harvarddebate.org', true, 'messages-square', 'An undergraduate debate organization founded in 1892 that competes and hosts tournaments.'],
+  ['harvard-model-united-nations', 'Harvard Model United Nations', 'Club', 'Academics', 'Harvard College student organization', 'https://www.harvardmun.org', false, 'globe', 'A student organization that runs Model UN conferences and trains delegates.'],
+  ['harvard-crimson', 'The Harvard Crimson', 'Organization', 'Academics', 'Harvard College student newspaper', 'https://www.thecrimson.com', true, 'newspaper', 'Harvard’s student-run daily newspaper, covering the University and its community.']
 ];
 
+// Fictional demo profiles used to show how overlapping memberships connect people. Not real students.
+const demoProfiles = [
+  { id: 'demo-priya', name: 'Priya Natarajan', role: 'Finance · Economics concentrator', interests: ['Finance', 'Entrepreneurship'], groups: ['harvard-financial-analysts', 'harvard-undergraduate-capital-partners', 'harvard-women-in-business', 'harvard-college-ventures'] },
+  { id: 'demo-marcus', name: 'Marcus Bell', role: 'Finance · Varsity basketball', interests: ['Finance', 'Athletics'], groups: ['harvard-financial-analysts', 'harvard-undergraduate-capital-partners', 'harvard-mens-basketball', 'harvard-student-agencies'] },
+  { id: 'demo-elena', name: 'Elena Vasquez', role: 'Consulting · Environmental science', interests: ['Consulting', 'Athletics'], groups: ['harvard-undergraduate-consulting-group', 'harvard-hucbe', 'harvard-women-in-business', 'harvard-womens-basketball'] },
+  { id: 'demo-daniel', name: 'Daniel Okoye', role: 'Consulting and finance · Government', interests: ['Consulting', 'Finance'], groups: ['harvard-undergraduate-consulting-group', 'harvard-financial-analysts', 'harvard-student-agencies', 'harvard-debate-council'] },
+  { id: 'demo-hannah', name: 'Hannah Kim', role: 'Technology · Computer science', interests: ['Technology', 'Entrepreneurship'], groups: ['harvard-computer-society', 'hackharvard', 'harvard-tech-review', 'harvard-college-ventures'] },
+  { id: 'demo-rohan', name: 'Rohan Mehta', role: 'Technology and finance · Applied math', interests: ['Technology', 'Finance'], groups: ['harvard-computer-society', 'harvard-financial-analysts', 'hackharvard', 'harvard-undergraduate-capital-partners'] },
+  { id: 'demo-sofia', name: 'Sofia Lindqvist', role: 'Technology and consulting · Statistics', interests: ['Technology', 'Consulting'], groups: ['harvard-computer-society', 'harvard-undergraduate-consulting-group', 'harvard-innovation-labs', 'harvard-womens-soccer'] },
+  { id: 'demo-tyler', name: 'Tyler Brooks', role: 'Consulting · Varsity football', interests: ['Consulting', 'Athletics'], groups: ['harvard-football', 'harvard-undergraduate-consulting-group', 'harvard-student-agencies', 'harvard-hucbe'] },
+  { id: 'demo-aisha', name: 'Aisha Rahman', role: 'Entrepreneurship · Computer science', interests: ['Entrepreneurship', 'Technology'], groups: ['harvard-college-ventures', 'harvard-innovation-labs', 'harvard-women-in-business', 'hackharvard'] },
+  { id: 'demo-jonah', name: 'Jonah Weiss', role: 'Finance and debate · History', interests: ['Finance', 'Academics'], groups: ['harvard-debate-council', 'harvard-model-united-nations', 'harvard-financial-analysts', 'harvard-crimson'] },
+  { id: 'demo-camille', name: 'Camille Dubois', role: 'Technology and policy · Government', interests: ['Technology', 'Academics'], groups: ['harvard-tech-review', 'harvard-political-review', 'harvard-crimson', 'harvard-model-united-nations'] },
+  { id: 'demo-liam', name: 'Liam Gallagher', role: 'Finance · Varsity hockey and football', interests: ['Finance', 'Athletics'], groups: ['harvard-mens-ice-hockey', 'harvard-undergraduate-capital-partners', 'harvard-football', 'harvard-student-agencies'] },
+  { id: 'demo-mei', name: 'Mei Tanaka', role: 'Entrepreneurship and consulting · Fencing', interests: ['Entrepreneurship', 'Consulting'], groups: ['harvard-innovation-labs', 'harvard-college-ventures', 'harvard-undergraduate-consulting-group', 'harvard-fencing'] },
+  { id: 'demo-gabriel', name: 'Gabriel Santos', role: 'Technology · Varsity lacrosse', interests: ['Technology', 'Athletics'], groups: ['harvard-mens-lacrosse', 'harvard-computer-society', 'harvard-innovation-labs', 'harvard-hucbe'] }
+].concat([
+  { id: 'demo-sarah', name: 'Sarah Chen', role: 'Harvard student · Economics · interested in finance', kind: 'student', interests: ['Finance'], groups: ['harvard-chess-club', 'harvard-financial-analysts'], connections: ['demo-alex', 'demo-priya'] },
+  { id: 'demo-michael', name: 'Michael Reed', role: 'Consultant @ Meridian Consulting · Harvard Football alumnus', kind: 'alumnus', title: 'Consultant', company: 'Meridian Consulting', interests: ['Consulting', 'Athletics'], groups: ['harvard-football', 'harvard-undergraduate-consulting-group'], connections: ['demo-alex', 'demo-daniel'] },
+  { id: 'demo-alex', name: 'Alex Morgan', role: 'Investment Banking Analyst @ Goldman Sachs · Harvard alumnus', kind: 'alumnus', title: 'Investment Banking Analyst', company: 'Goldman Sachs', interests: ['Finance'], groups: ['harvard-financial-analysts'], connections: ['demo-sarah', 'demo-michael'] },
+  { id: 'demo-nina', name: 'Nina Patel', role: 'Harvard student · Computer science', kind: 'student', interests: ['Technology'], groups: ['harvard-chess-club', 'harvard-computer-society', 'harvard-women-in-business'], connections: ['demo-hannah'] },
+  { id: 'demo-owen', name: 'Owen Park', role: 'Harvard student · Government', kind: 'student', interests: ['Academics'], groups: ['harvard-chess-club', 'harvard-debate-council'], connections: ['demo-jonah'] },
+  { id: 'demo-victor', name: 'Victor Alvarez', role: 'Harvard student · Varsity football · Economics', kind: 'student', interests: ['Finance', 'Athletics'], groups: ['harvard-football', 'harvard-undergraduate-capital-partners'], connections: ['demo-marcus'] },
+  { id: 'demo-david', name: 'David Okafor', role: 'Software Engineer @ Northstar Labs · Harvard Football alumnus', kind: 'alumnus', title: 'Software Engineer', company: 'Northstar Labs', interests: ['Technology', 'Athletics'], groups: ['harvard-football', 'harvard-computer-society'], connections: ['demo-rohan'] },
+  { id: 'demo-grace', name: 'Grace Liu', role: 'Harvard student · Statistics', kind: 'student', interests: ['Technology'], groups: ['harvard-chess-club', 'harvard-tech-review'], connections: ['demo-camille'] },
+  { id: 'demo-ethan', name: 'Ethan Cole', role: 'Associate @ Lantern Ventures · Harvard alumnus', kind: 'alumnus', title: 'Venture Associate', company: 'Lantern Ventures', interests: ['Entrepreneurship', 'Finance'], groups: ['harvard-college-ventures', 'harvard-innovation-labs'], connections: ['demo-aisha', 'demo-priya'] }
+]).map(profile => ({
+  ...profile,
+  fictional: true,
+  connections: profile.connections || [],
+  avatar: `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="#2a2f2b"/><text x="48" y="58" font-family="sans-serif" font-size="32" fill="#d0d7ad" text-anchor="middle">${profile.name.split(' ').map(part => part[0]).join('')}</text></svg>`)}`
+}));
+
+const groupCatalog = groupSeeds.map(([id, name, type, category, affiliation, url, verified, iconName, description]) => ({
+  id, name, type, category, affiliation, url, verified, access: 'open', icon: iconName, description,
+  memberCount: 0,
+  memberIds: demoProfiles.filter(profile => profile.groups.includes(id)).map(profile => profile.id),
+  relatedGroupIds: [],
+  gridNodeIds: []
+}));
+groupCatalog.forEach(group => {
+  const overlap = new Map();
+  demoProfiles.filter(profile => profile.groups.includes(group.id)).forEach(profile => {
+    profile.groups.filter(id => id !== group.id).forEach(id => overlap.set(id, (overlap.get(id) || 0) + 1));
+  });
+  group.relatedGroupIds = [...overlap].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([id]) => id);
+});
 const groupTypeIcons = {
   University: 'graduation-cap', Team: 'bot', Club: 'users-round', Class: 'book-open',
   Company: 'briefcase-business', Organization: 'building-2'
 };
 
 const defaultProfile = {
-  name: 'Truman Pauley',
-  headline: 'Computer science student',
+  name: 'John Harvard',
+  headline: 'Harvard student',
   location: 'Boston, MA',
   school: 'Harvard University',
   bio: 'Curious builder exploring the intersection of software, people, and big ideas.',
@@ -122,7 +188,7 @@ const defaultMessageThreads = [
     id: 'maya',
     personId: 'maya',
     messages: [
-      { sender: 'them', text: 'Hey Truman — I’d love to compare notes on product engineering and what your Harvard path prepared you for.', time: '2h ago' },
+      { sender: 'them', text: 'Hey John — I’d love to compare notes on product engineering and what your Harvard path prepared you for.', time: '2h ago' },
       { sender: 'me', text: 'Absolutely. I’m curious how your work at Stripe balances shipping fast with real product thinking.', time: '1h ago' },
       { sender: 'them', text: 'A lot of it comes down to solving real user problems, not just writing code for the sake of it.', time: 'just now' }
     ]
@@ -175,6 +241,8 @@ const state = {
   toastTimer: null,
   selectedGridNode: null,
   gridZoom: 1,
+  gridPan: { x: 0, y: 0 },
+  hoverGridNode: null,
   cropScale: 1,
   cropBaseScale: 1,
   cropLeft: 0,
@@ -466,7 +534,9 @@ function loadItems() {
 
 function loadProfile() {
   try {
-    return { ...defaultProfile, ...JSON.parse(localStorage.getItem('orbit-profile') || '{}') };
+    const saved = { ...defaultProfile, ...JSON.parse(localStorage.getItem('orbit-profile') || '{}') };
+    if (saved.name === 'Truman Pauley') saved.name = defaultProfile.name;
+    return saved;
   } catch {
     return { ...defaultProfile };
   }
@@ -482,9 +552,10 @@ function loadResumeData() {
 }
 
 function loadGroupMemberships() {
-  const defaults = Object.fromEntries(groupCatalog.filter(group => group.membership).map(group => [group.id, group.membership]));
+  const defaults = Object.fromEntries(DEMO_USER_GROUPS.map(id => [id, 'Self-Reported Member']));
   try {
-    return { ...defaults, ...JSON.parse(localStorage.getItem('orbit-group-memberships') || '{}') };
+    const stored = localStorage.getItem('orbit-group-memberships-v2');
+    return stored ? JSON.parse(stored) : defaults;
   } catch {
     return defaults;
   }
@@ -523,7 +594,7 @@ function persist() {
   localStorage.setItem('orbit-saved', JSON.stringify([...state.saved]));
   localStorage.setItem('orbit-profile', JSON.stringify(state.profile));
   localStorage.setItem('orbit-resume-data', JSON.stringify(state.resumeData));
-  localStorage.setItem('orbit-group-memberships', JSON.stringify(state.groupMemberships));
+  localStorage.setItem('orbit-group-memberships-v2', JSON.stringify(state.groupMemberships));
   localStorage.setItem('orbit-created-groups', JSON.stringify(state.createdGroups));
   localStorage.setItem('orbit-opportunity-posts', JSON.stringify(state.opportunityPosts));
   localStorage.setItem('orbit-saved-opportunities', JSON.stringify([...state.savedOpportunities]));
@@ -613,21 +684,53 @@ function renderItems() {
   refreshIcons();
 }
 
+// Network insights are derived from the same gridNodes/gridEdges that Surf the Grid searches.
+function computeNetworkInsights() {
+  const joinedGroups = gridNodes.filter(node => node.kind === 'group' && gridEdges.some(([from, to]) => from === 'truman' && to === node.id));
+  const joinedIds = new Set(joinedGroups.map(group => group.id));
+  const profiles = gridNodes.filter(node => node.kind === 'profile');
+  const sharedGroups = profile => gridEdges.filter(([from, to]) => from === profile.id && joinedIds.has(to)).map(([, to]) => gridNodeById(to).name);
+  const inGroups = profiles.filter(profile => sharedGroups(profile).length);
+  const recommendations = profiles.map(profile => {
+    const result = bfsSearch('truman', id => id === profile.id);
+    if (!result) return null;
+    const path = result.paths[0];
+    const hops = pathSummary(path).hops;
+    const via = path.slice(1, -1).map(gridNodeById).filter(node => node.category === 'person').map(node => node.name);
+    const shared = sharedGroups(profile);
+    const demo = demoProfiles.find(item => item.id === profile.id);
+    const context = shared.length
+      ? `Shares ${shared[0]}${shared.length > 1 ? ` +${shared.length - 1} more` : ''} with you`
+      : `${hops} intro hops via ${via.join(' → ')}`;
+    return { id: profile.id, name: profile.name, role: demo.company ? `${demo.title} @ ${demo.company}` : demo.role, context, hops, shared: shared.length, professional: Boolean(demo.company), avatar: demo.avatar };
+  }).filter(Boolean).sort((a, b) => (b.professional - a.professional) || (a.hops - b.hops) || (b.shared - a.shared) || a.name.localeCompare(b.name));
+  const reachable = recommendations.length;
+  return { joinedGroups, inGroups: inGroups.length, reachable, recommendations };
+}
+
 function renderPeople() {
+  const insights = computeNetworkInsights();
   const container = document.querySelector('#people-list');
-  container.innerHTML = people.map(person => {
+  container.innerHTML = insights.recommendations.length ? insights.recommendations.slice(0, 4).map(person => {
     const connected = state.connected.has(person.id);
-    return `<article class="person-card" data-person="${person.id}"><img src="https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=96&q=80" alt="" style="background:#${person.color}" /><div class="person-detail"><strong>${person.name}</strong><span>${person.role}</span><small>${person.context}</small></div><button class="connect-button ${connected ? 'connected' : ''}" aria-label="${connected ? 'Connected to' : 'Connect with'} ${person.name}" title="${connected ? 'Connected' : 'Connect'}">${icon(connected ? 'check' : 'plus')}</button></article>`;
-  }).join('');
-  document.querySelector('#connection-count').textContent = 128 + state.connected.size;
-  document.querySelector('#overview-connection-count').textContent = 128 + state.connected.size;
+    return `<article class="person-card" data-person="${person.id}"><img src="${escapeHTML(person.avatar)}" alt="" /><div class="person-detail"><strong>${escapeHTML(person.name)}</strong><span>${escapeHTML(person.role)}</span><small>${escapeHTML(person.context)} · fictional demo profile</small></div><button class="connect-button ${connected ? 'connected' : ''}" aria-label="${connected ? 'Connected to' : 'Connect with'} ${escapeHTML(person.name)}" title="${connected ? 'Connected' : 'Connect'}">${icon(connected ? 'check' : 'plus')}</button></article>`;
+  }).join('') : '<p class="empty-review">Join a group to see people you could meet.</p>';
+  document.querySelector('#connection-count').textContent = insights.inGroups;
+  document.querySelector('#overview-connection-count').textContent = insights.inGroups;
+  const names = insights.joinedGroups.map(group => group.name);
+  document.querySelector('#overview-profile-groups').textContent = names.length ? `Member of ${names.slice(0, 2).join(', ')}${names.length > 2 ? ` +${names.length - 2}` : ''} (self-reported)` : 'No groups joined yet';
+  document.querySelector('#explore-stats').innerHTML = [
+    [insights.joinedGroups.length, 'groups joined'],
+    [insights.inGroups, 'people in your groups'],
+    [insights.reachable, 'people reachable']
+  ].map(([value, label]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
   refreshIcons();
 }
 
 function renderNetworkExample() {
   const nodeLayer = document.querySelector('#example-grid-nodes');
   const edgeLayer = document.querySelector('#example-edge-layer');
-  nodeLayer.innerHTML = gridNodes.map(node => {
+  nodeLayer.innerHTML = baseGridNodes.map(node => {
     const nodeImage = node.id === 'truman' ? state.profile.photo : '';
     const nodeIcon = nodeImage
       ? `<img src="${escapeHTML(nodeImage)}" alt="" />`
@@ -638,9 +741,9 @@ function renderNetworkExample() {
     const nodeMeta = node.id === 'truman' ? `You · ${state.profile.headline}` : node.meta;
     return `<div class="grid-node node-${node.category} example-grid-node" style="--node-x:${node.x}%;--node-y:${node.y}%"><span class="node-avatar">${nodeIcon}</span><span class="node-copy"><strong>${escapeHTML(nodeName)}</strong><small>${escapeHTML(nodeMeta)}</small></span></div>`;
   }).join('');
-  edgeLayer.innerHTML = gridEdges.map(([from, to, relation]) => {
-    const start = gridNodes.find(node => node.id === from);
-    const end = gridNodes.find(node => node.id === to);
+  edgeLayer.innerHTML = baseGridEdges.map(([from, to, relation]) => {
+    const start = baseGridNodes.find(node => node.id === from);
+    const end = baseGridNodes.find(node => node.id === to);
     return `<line class="grid-edge" x1="${start.x * 10}" y1="${start.y * 6.8}" x2="${end.x * 10}" y2="${end.y * 6.8}"><title>${escapeHTML(relation)}</title></line>`;
   }).join('');
   refreshIcons();
@@ -650,18 +753,72 @@ function allGroups() {
     return [...groupCatalog, ...state.createdGroups];
   }
 
+  const SELF_REPORTED = 'Self-Reported Member';
+  const isActiveMembership = status => Boolean(status) && status !== 'Pending';
+
+  function groupMemberCount(group) {
+    const userCounted = !state.createdGroups.includes(group) && isActiveMembership(state.groupMemberships[group.id]);
+    return (group.memberCount || 0) + (group.memberIds || []).length + (userCounted ? 1 : 0);
+  }
+
+  function groupPerson(id) {
+    return people.find(person => person.id === id) || demoProfiles.find(profile => profile.id === id);
+  }
+
+  function personImageSrc(person) {
+    return person.avatar || `https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=80&q=80`;
+  }
+
+  // Surf the Grid reads gridNodes/gridEdges. Group, demo-profile, and membership nodes/edges are
+  // regenerated here from the same membership data the Groups tab uses.
+  function rebuildGroupGraph() {
+    gridNodes.length = baseGridNodes.length;
+    gridEdges.length = baseGridEdges.length;
+    const groups = allGroups();
+    groups.forEach((group, index) => {
+      const joined = isActiveMembership(state.groupMemberships[group.id]);
+      const members = (group.memberIds || []).map(groupPerson).filter(Boolean);
+      group.gridNodeIds = [...(joined ? ['truman'] : []), ...members.map(member => member.id)].slice(0, 4);
+      gridNodes.push({
+        id: group.id, kind: 'group', name: group.name, category: 'organization', meta: `${group.category || group.type} · ${group.affiliation || 'Pipeline group'}`,
+        icon: group.icon || groupTypeIcons[group.type] || 'users',
+        description: `${group.description} Memberships are self-reported unless confirmed by the organization.`,
+        connection: `${members.length + (joined ? 1 : 0)} self-reported member${members.length + (joined ? 1 : 0) === 1 ? '' : 's'} connect to this group.`
+      });
+      if (joined) gridEdges.push(['truman', group.id, `${state.groupMemberships[group.id] === SELF_REPORTED ? 'self-reported member' : state.groupMemberships[group.id].toLowerCase()} of`]);
+    });
+    const linked = new Set();
+    demoProfiles.forEach((profile, index) => {
+      const names = profile.groups.map(id => groups.find(group => group.id === id)?.name).filter(Boolean);
+      gridNodes.push({
+        id: profile.id, kind: 'profile', name: profile.name, category: 'person', meta: `Fictional demo profile · ${profile.role}`,
+        icon: 'user-round',
+        description: `${profile.name} is a fictional demo profile (not a real person)${profile.company ? `, working as ${profile.title} at ${profile.company}` : ''}, interested in ${profile.interests.join(' and ')}. Self-reported member of ${names.join(', ')}. Relationships are demonstration data, not verified.`,
+        connection: `Connected through shared self-reported memberships in ${names.length} Harvard groups.`
+      });
+      profile.groups.forEach(id => { if (groups.some(group => group.id === id)) gridEdges.push([profile.id, id, 'self-reported member']); });
+    });
+    demoProfiles.forEach(profile => profile.connections.forEach(otherId => {
+      const key = [profile.id, otherId].sort().join('|');
+      if (linked.has(key) || !demoProfiles.some(other => other.id === otherId)) return;
+      linked.add(key);
+      gridEdges.push([profile.id, otherId, 'direct connection']);
+    }));
+    computeGridLayout();
+  }
+
   function groupCardMarkup(group, isDiscovery) {
     const status = state.groupMemberships[group.id];
     const statusClass = status ? status.toLowerCase().replace(/\s+/g, '-') : 'suggested';
     const actionMarkup = isDiscovery
       ? `<button class="group-join-button" type="button" data-group-action="${escapeHTML(group.id)}">${group.access === 'open' ? 'Join' : 'Request to Join'}</button>`
-      : `<span class="group-status status-${statusClass}">${escapeHTML(status)}</span>`;
-    return `<article class="group-card"><div class="group-card-main"><span class="group-logo" aria-hidden="true">${icon(group.icon || groupTypeIcons[group.type] || 'users')}</span><div class="group-card-copy"><span class="group-type">${escapeHTML(group.type)}</span><button class="group-card-title" type="button" data-group-open="${escapeHTML(group.id)}">${escapeHTML(group.name)}</button><span class="group-member-count">${new Intl.NumberFormat('en-US').format(group.memberCount)} members</span></div></div><div class="group-card-footer">${actionMarkup}<button class="group-view-button" type="button" data-group-open="${escapeHTML(group.id)}">View Group ${icon('arrow-up-right')}</button></div></article>`;
+      : `<span class="group-status status-${statusClass}">${escapeHTML(status)}</span>${status === 'Admin' ? '' : `<button class="group-view-button" type="button" data-group-leave="${escapeHTML(group.id)}">Leave</button>`}`;
+    return `<article class="group-card"><div class="group-card-main"><span class="group-logo" aria-hidden="true">${icon(group.icon || groupTypeIcons[group.type] || 'users')}</span><div class="group-card-copy"><span class="group-type">${escapeHTML(group.category ? `${group.type} · ${group.category}` : group.type)}</span><button class="group-card-title" type="button" data-group-open="${escapeHTML(group.id)}">${escapeHTML(group.name)}</button><span class="group-member-count">${new Intl.NumberFormat('en-US').format(groupMemberCount(group))} self-reported members · 0 verified</span></div></div><div class="group-card-footer">${actionMarkup}<button class="group-view-button" type="button" data-group-open="${escapeHTML(group.id)}">View Group ${icon('arrow-up-right')}</button></div></article>`;
   }
 
   function renderGroups() {
     const search = document.querySelector('#groups-search').value.trim().toLowerCase();
-    const matches = group => (!search || `${group.name} ${group.type} ${group.description}`.toLowerCase().includes(search));
+    const matches = group => (!search || `${group.name} ${group.type} ${group.category || ''} ${group.affiliation || ''} ${group.description}`.toLowerCase().includes(search));
     const groups = allGroups();
     const yours = groups.filter(group => state.groupMemberships[group.id] && matches(group));
     const discover = groups.filter(group => !state.groupMemberships[group.id] && matches(group)
@@ -729,7 +886,7 @@ function opportunityNetwork(opportunity) {
   }
   const group = opportunity.groupId && allGroups().find(candidate => candidate.id === opportunity.groupId);
   (group?.memberIds || []).forEach(id => ids.add(id));
-  const connections = people.filter(person => ids.has(person.id));
+  const connections = [...people, ...demoProfiles].filter(person => ids.has(person.id));
   const sharedGroups = allGroups().filter(candidate => state.groupMemberships[candidate.id] && state.groupMemberships[candidate.id] !== 'Pending'
     && (candidate.memberIds || []).some(id => connections.some(person => person.id === id)));
   return { connections, sharedGroups };
@@ -912,7 +1069,7 @@ function renderOpportunityDetail(opportunityId) {
   const skills = opportunity.skills.length
     ? opportunity.skills.map(skill => `<span class="opportunity-tag${mySkills.has(skill.toLowerCase()) ? ' match' : ''}">${escapeHTML(skill)}</span>`).join('')
     : '<span class="opp-muted">No skills listed.</span>';
-  const people_ = network.connections.map(person => `<li><img src="https://images.unsplash.com/${escapeHTML(person.image)}?auto=format&fit=crop&w=64&q=80" alt=""><span><strong>${escapeHTML(person.name)}</strong><small>${escapeHTML(person.role)}</small></span></li>`).join('');
+  const people_ = network.connections.map(person => `<li><img src="${escapeHTML(personImageSrc(person))}" alt=""><span><strong>${escapeHTML(person.name)}</strong><small>${escapeHTML(person.role)}</small></span></li>`).join('');
   const groups = network.sharedGroups.map(group => `<span class="opp-chip">${escapeHTML(group.name)}</span>`).join('');
   document.querySelector('#opportunity-detail-content').innerHTML = `
     <header class="opp-detail-head">${opportunityAvatar(opportunity)}
@@ -963,9 +1120,9 @@ function closeOpportunityDetail() {
   function renderGroupDetail(groupId) {
     const group = allGroups().find(candidate => candidate.id === groupId);
     if (!group) return;
-    const members = (group.memberIds || []).map(id => people.find(person => person.id === id)).filter(Boolean);
+    const members = (group.memberIds || []).map(groupPerson).filter(Boolean);
     const memberMarkup = members.length
-      ? members.map(person => `<div class="group-member"><img src="https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=80&q=80" alt="" /><span><strong>${escapeHTML(person.name)}</strong><small>${escapeHTML(person.role)}</small></span></div>`).join('')
+      ? members.map(person => `<div class="group-member"><img src="${escapeHTML(personImageSrc(person))}" alt="" /><span><strong>${escapeHTML(person.name)}</strong><small>${escapeHTML(person.role)} · ${person.avatar ? 'Fictional demo profile · ' : ''}self-reported</small></span></div>`).join('')
       : '<p class="group-detail-muted">Member previews will appear here as this group grows.</p>';
     const related = (group.relatedGroupIds || []).map(id => allGroups().find(candidate => candidate.id === id)).filter(Boolean);
     const relatedMarkup = related.length
@@ -979,12 +1136,121 @@ function closeOpportunityDetail() {
     document.querySelector('#groups-list-view').hidden = true;
     const detail = document.querySelector('#group-detail-view');
     detail.hidden = false;
-    detail.innerHTML = `<button class="group-back-button" type="button" data-groups-back>${icon('arrow-left')} Back to groups</button><div class="group-detail-heading"><span class="group-logo group-logo-large">${icon(group.icon || groupTypeIcons[group.type] || 'users')}</span><div class="group-detail-title"><span class="group-type">${escapeHTML(group.type)}</span><h2>${escapeHTML(group.name)}</h2><div class="group-detail-badges">${status ? `<span class="group-status status-${status.toLowerCase().replace(/\s+/g, '-')}">${escapeHTML(status)}</span>` : ''}<span class="verification-badge ${group.verified ? 'is-verified' : ''}">${icon(group.verified ? 'badge-check' : 'badge-help')}${group.verified ? 'Verified group' : 'Not yet verified'}</span></div></div></div><p class="group-description">${escapeHTML(group.description)}</p><div class="group-detail-stats"><span><strong>${new Intl.NumberFormat('en-US').format(group.memberCount)}</strong><small>Members</small></span><span><strong>${escapeHTML(group.type)}</strong><small>Group type</small></span><span><strong>${group.verified ? 'Verified' : 'Unverified'}</strong><small>Affiliation status</small></span></div><div class="group-detail-columns"><section class="group-detail-section"><h3>Members</h3><div class="group-member-list">${memberMarkup}</div></section><section class="group-detail-section"><h3>Connections to other groups</h3><div class="related-group-list">${relatedMarkup}</div></section></div><section class="group-detail-section group-grid-section"><div class="group-detail-section-heading"><div><h3>On your Grid</h3><p>This group connects to people and paths in your network.</p></div></div><div class="group-grid-preview"><span class="group-grid-root">${icon(group.icon || groupTypeIcons[group.type] || 'users')} ${escapeHTML(group.name)}</span><div class="group-grid-links">${nodeMarkup}</div></div></section>`;
+    detail.innerHTML = `<button class="group-back-button" type="button" data-groups-back>${icon('arrow-left')} Back to groups</button><div class="group-detail-heading"><span class="group-logo group-logo-large">${icon(group.icon || groupTypeIcons[group.type] || 'users')}</span><div class="group-detail-title"><span class="group-type">${escapeHTML(group.type)}</span><h2>${escapeHTML(group.name)}</h2><div class="group-detail-badges">${status ? `<span class="group-status status-${status.toLowerCase().replace(/\s+/g, '-')}">${escapeHTML(status)}</span>` : ''}<span class="verification-badge ${group.verified ? 'is-verified' : ''}">${icon(group.verified ? 'badge-check' : 'badge-help')}${group.verified ? 'Verified group' : 'Not yet verified'}</span></div></div></div><p class="group-description">${escapeHTML(group.description)}</p>${group.affiliation ? `<p class="group-detail-muted">${escapeHTML(group.affiliation)}${group.url ? ` · <a href="${escapeHTML(group.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(group.url.replace(/^https?:\/\/(www\.)?/, ''))}</a>` : ''}</p>` : ''}<p class="group-detail-muted">Memberships are self-reported. Verified members: 0 (a membership is verified only when the organization confirms it).</p><div class="group-detail-actions">${status === 'Admin' ? '' : status ? `<button class="group-view-button" type="button" data-group-leave="${escapeHTML(group.id)}">Leave group</button>` : `<button class="group-join-button" type="button" data-group-action="${escapeHTML(group.id)}">Join as self-reported member</button>`}</div><div class="group-detail-stats"><span><strong>${new Intl.NumberFormat('en-US').format(groupMemberCount(group))}</strong><small>Self-reported members</small></span><span><strong>${escapeHTML(group.type)}</strong><small>Group type</small></span><span><strong>${group.verified ? 'Verified' : 'Unverified'}</strong><small>Affiliation status</small></span></div><div class="group-detail-columns"><section class="group-detail-section"><h3>Members</h3><div class="group-member-list">${memberMarkup}</div></section><section class="group-detail-section"><h3>Connections to other groups</h3><div class="related-group-list">${relatedMarkup}</div></section></div><section class="group-detail-section group-grid-section"><div class="group-detail-section-heading"><div><h3>On your Grid</h3><p>This group connects to people and paths in your network.</p></div></div><div class="group-grid-preview"><span class="group-grid-root">${icon(group.icon || groupTypeIcons[group.type] || 'users')} ${escapeHTML(group.name)}</span><div class="group-grid-links">${nodeMarkup}</div></div></section>`;
     refreshIcons();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function renderNetworkMap() {
+const gridNodeById = id => gridNodes.find(node => node.id === id);
+const gridNodeLabel = node => (node.id === 'truman' ? state.profile.name : node.name);
+const pathEdgeKey = (a, b) => [a, b].sort().join('|');
+const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const nodeInitials = name => name.split(/\s+/).filter(Boolean).map(part => part[0]).slice(0, 2).join('').toUpperCase();
+
+let pathSearch = null;
+let pathMessage = null;
+const pathAnimation = { raf: 0, phase: 'idle', shown: 0, reveal: 0 };
+
+let gridLayout = {};
+let gridRings = [];
+let gridExtent = { w: 1000, h: 700 };
+
+// Concentric layout around the current user: each ring is one BFS degree, and nodes are ordered
+// by the angle of their parents so related nodes stay close and edges stay short.
+function computeGridLayout() {
+  const adjacency = new Map(gridNodes.map(node => [node.id, []]));
+  gridEdges.forEach(([from, to]) => { adjacency.get(from)?.push(to); adjacency.get(to)?.push(from); });
+  const depths = new Map([['truman', 0]]);
+  const queue = ['truman'];
+  for (let i = 0; i < queue.length; i += 1) {
+    adjacency.get(queue[i]).forEach(next => {
+      if (!depths.has(next)) { depths.set(next, depths.get(queue[i]) + 1); queue.push(next); }
+    });
+  }
+  const outer = Math.max(...depths.values()) + 1;
+  gridNodes.forEach(node => { if (!depths.has(node.id)) depths.set(node.id, outer); });
+  const byDepth = [];
+  gridNodes.forEach(node => { (byDepth[depths.get(node.id)] ||= []).push(node.id); });
+
+  const aspect = 1.4, spacing = 84, gap = 112;
+  const shape = Math.sqrt((aspect * aspect + 1) / 2);
+  const angles = new Map([['truman', 0]]);
+  const points = { truman: { x: 0, y: 0 } };
+  const rings = [];
+  let previous = 0;
+  byDepth.forEach((ids, depth) => {
+    if (!ids || depth === 0) return;
+    const ordered = ids.map(id => {
+      const parents = adjacency.get(id).filter(other => depths.get(other) === depth - 1 && angles.has(other));
+      const sx = parents.reduce((sum, other) => sum + Math.cos(angles.get(other)), 0);
+      const sy = parents.reduce((sum, other) => sum + Math.sin(angles.get(other)), 0);
+      return { id, key: parents.length ? Math.atan2(sy, sx) : 99 };
+    }).sort((a, b) => a.key - b.key || a.id.localeCompare(b.id));
+    const ry = Math.max(previous + gap, (ordered.length * spacing) / (2 * Math.PI * shape));
+    const rx = ry * aspect;
+    const start = -Math.PI / 2 + depth * 0.35;
+    ordered.forEach(({ id }, index) => {
+      const angle = start + (index / ordered.length) * Math.PI * 2;
+      angles.set(id, angle);
+      points[id] = { x: rx * Math.cos(angle), y: ry * Math.sin(angle) };
+    });
+    rings.push({ depth, rx, ry });
+    previous = ry;
+  });
+
+  const halfW = Math.max(...Object.values(points).map(p => Math.abs(p.x))) + 64;
+  const halfH = Math.max(...Object.values(points).map(p => Math.abs(p.y))) + 56;
+  gridExtent = { w: halfW * 2, h: halfH * 2 };
+  gridLayout = Object.fromEntries(Object.entries(points).map(([id, p]) => [id, { x: 50 + (p.x / gridExtent.w) * 100, y: 50 + (p.y / gridExtent.h) * 100 }]));
+  gridRings = rings.map(ring => ({ depth: ring.depth, rx: (ring.rx / gridExtent.w) * 100, ry: (ring.ry / gridExtent.h) * 100 }));
+}
+
+function applyViewport(relabel = true) {
+  const stage = document.querySelector('#map-stage');
+  const plane = document.querySelector('#map-plane');
+  const sw = stage.clientWidth;
+  const sh = stage.clientHeight;
+  if (!sw || !sh) return;
+  const fit = Math.min(1.25, (sw - 24) / gridExtent.w, (sh - 24) / gridExtent.h);
+  const pw = gridExtent.w * fit * state.gridZoom;
+  const ph = gridExtent.h * fit * state.gridZoom;
+  const limitX = pw > sw ? (pw - sw) / 2 + 40 : 0;
+  const limitY = ph > sh ? (ph - sh) / 2 + 40 : 0;
+  state.gridPan.x = Math.max(-limitX, Math.min(limitX, state.gridPan.x));
+  state.gridPan.y = Math.max(-limitY, Math.min(limitY, state.gridPan.y));
+  plane.style.width = `${pw}px`;
+  plane.style.height = `${ph}px`;
+  plane.style.left = `${(sw - pw) / 2 + state.gridPan.x}px`;
+  plane.style.top = `${(sh - ph) / 2 + state.gridPan.y}px`;
+  document.querySelector('#zoom-reset').textContent = `${Math.round(state.gridZoom * 100)}%`;
+  if (relabel) updateLabelVisibility(pw, ph);
+}
+
+// Greedy label placement: highest-priority labels win, and any label that would overlap
+// another label or a node is hidden so visible labels never collide.
+function updateLabelVisibility(pw, ph) {
+  const elements = [...document.querySelectorAll('#grid-nodes .grid-node')].filter(element => !element.hidden);
+  const pathIds = pathSearch ? pathSearch.paths[pathSearch.index] : [];
+  const items = elements.map(element => {
+    const node = gridNodeById(element.dataset.nodeId);
+    const pos = gridLayout[node.id];
+    const radius = node.id === 'truman' ? 26 : 20;
+    const priority = node.id === 'truman' ? 100 : pathIds.includes(node.id) ? 90 : node.kind === 'profile' ? 40 : node.kind === 'group' ? 35 : node.category === 'person' ? 40 : 20;
+    const width = Math.min(104, gridNodeLabel(node).length * 5.6 + 10);
+    const cx = (pos.x / 100) * pw;
+    const cy = (pos.y / 100) * ph;
+    return { element, priority, circle: { l: cx - radius, r: cx + radius, t: cy - radius, b: cy + radius }, label: { l: cx - width / 2, r: cx + width / 2, t: cy + radius + 2, b: cy + radius + 14 } };
+  });
+  const overlaps = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
+  const placed = [];
+  items.sort((a, b) => b.priority - a.priority).forEach(item => {
+    const clear = !placed.some(other => overlaps(item.label, other.label)) && !items.some(other => other !== item && overlaps(item.label, other.circle));
+    item.element.classList.toggle('label-visible', clear);
+    if (clear) placed.push(item);
+  });
+}
+
+function renderNetworkMap() {
   const category = document.querySelector('#map-filter').value;
   const query = document.querySelector('#map-search').value.trim().toLowerCase();
   const nodeLayer = document.querySelector('#grid-nodes');
@@ -995,48 +1261,97 @@ function closeOpportunityDetail() {
   if (state.selectedGridNode && !visibleIds.has(state.selectedGridNode)) selectGridNode(null);
 
   nodeLayer.innerHTML = gridNodes.map(node => {
-    const nodeImage = node.id === 'truman' ? state.profile.photo : '';
-    const nodeIcon = nodeImage
-      ? `<img src="${escapeHTML(nodeImage)}" alt="" />`
-      : node.image
-        ? `<img src="https://images.unsplash.com/${node.image}?auto=format&fit=crop&w=96&q=80" alt="" />`
-      : icon(node.icon);
-    const matchesSearch = matchingIds.has(node.id);
-    const nodeName = node.id === 'truman' ? state.profile.name : node.name;
-    const nodeMeta = node.id === 'truman' ? `You · ${state.profile.headline}` : node.meta;
-    return `<button type="button" class="grid-node node-${node.category} ${matchesSearch ? '' : 'search-dimmed'}" data-node-id="${node.id}" style="--node-x:${node.x}%;--node-y:${node.y}%" aria-label="${escapeHTML(nodeName)}, ${escapeHTML(nodeMeta)}" title="${escapeHTML(nodeName)}"><span class="node-avatar">${nodeIcon}</span><span class="node-copy"><strong>${escapeHTML(nodeName)}</strong><small>${escapeHTML(nodeMeta)}</small></span></button>`;
+    const pos = gridLayout[node.id] || { x: 50, y: 50 };
+    const name = gridNodeLabel(node);
+    const meta = node.id === 'truman' ? `You · ${state.profile.headline}` : node.meta;
+    const photo = node.id === 'truman' ? state.profile.photo : node.image ? `https://images.unsplash.com/${node.image}?auto=format&fit=crop&w=96&q=80` : '';
+    const avatar = photo ? `<img src="${escapeHTML(photo)}" alt="" />` : node.category === 'person' ? `<span class="node-initials">${escapeHTML(nodeInitials(name))}</span>` : icon(node.icon);
+    const kind = node.kind === 'group' ? 'kind-group' : node.kind === 'profile' ? 'kind-profile' : '';
+    return `<button type="button" class="grid-node node-${node.category} ${kind} ${node.id === 'truman' ? 'is-user' : ''} ${matchingIds.has(node.id) ? '' : 'search-dimmed'}" data-node-id="${node.id}" style="--node-x:${pos.x}%;--node-y:${pos.y}%" aria-label="${escapeHTML(name)}, ${escapeHTML(meta)}" title="${escapeHTML(name)}"><span class="node-avatar">${avatar}</span><span class="node-copy"><strong>${escapeHTML(name)}</strong><small>${escapeHTML(meta)}</small></span></button>`;
   }).join('');
   nodeLayer.querySelectorAll('.grid-node').forEach(button => { button.hidden = !visibleIds.has(button.dataset.nodeId); });
 
-  edgeLayer.innerHTML = gridEdges.filter(([from, to]) => visibleIds.has(from) && visibleIds.has(to)).map(([from, to, relation]) => {
-    const start = gridNodes.find(node => node.id === from);
-    const end = gridNodes.find(node => node.id === to);
+  const center = gridLayout.truman || { x: 50, y: 50 };
+  const rings = gridRings.map(ring => `<ellipse class="depth-ring" data-depth="${ring.depth}" cx="${center.x * 10}" cy="${center.y * 6.8}" rx="${ring.rx * 10}" ry="${ring.ry * 6.8}"></ellipse>`).join('');
+  const lines = gridEdges.filter(([from, to]) => visibleIds.has(from) && visibleIds.has(to)).map(([from, to, relation]) => {
+    const start = gridLayout[from];
+    const end = gridLayout[to];
     return `<line class="grid-edge" data-from="${from}" data-to="${to}" x1="${start.x * 10}" y1="${start.y * 6.8}" x2="${end.x * 10}" y2="${end.y * 6.8}"><title>${escapeHTML(relation)}</title></line>`;
   }).join('');
+  edgeLayer.innerHTML = rings + lines;
   document.querySelector('#map-node-count').textContent = `${visibleIds.size} nodes`;
   const emptyState = document.querySelector('#map-empty-state');
   emptyState.hidden = matchingIds.size > 0;
   emptyState.textContent = query ? 'No matches on this grid.' : 'No paths match that filter.';
-  document.querySelector('#map-plane').style.transform = `scale(${state.gridZoom})`;
-  document.querySelector('#zoom-reset').textContent = `${Math.round(state.gridZoom * 100)}%`;
+  applyViewport();
   updateGridHighlights();
   refreshIcons();
 }
 
 function updateGridHighlights() {
   const selectedId = state.selectedGridNode;
-  const relatedIds = new Set(gridEdges.filter(([from, to]) => from === selectedId || to === selectedId).flatMap(([from, to]) => [from, to]));
+  const hoverId = state.hoverGridNode;
+  const focusId = hoverId || selectedId;
+  const focusRelated = new Set(focusId ? gridEdges.filter(([from, to]) => from === focusId || to === focusId).flatMap(([from, to]) => [from, to]) : []);
+  const fullPath = pathSearch ? pathSearch.paths[pathSearch.index] : null;
+  const exploring = Boolean(pathSearch) && pathAnimation.phase === 'explore';
+  const pathIds = fullPath && !exploring ? fullPath.slice(0, pathAnimation.reveal) : null;
+  const pathEdges = new Set();
+  (pathIds || []).slice(1).forEach((id, i) => pathEdges.add(pathEdgeKey(pathIds[i], id)));
+
+  const visited = new Set();
+  const exploredEdges = new Set();
+  let reachedDepth = 0;
+  if (exploring) {
+    visited.add(pathSearch.startId);
+    pathSearch.trace.events.slice(0, pathAnimation.shown).forEach(event => {
+      visited.add(event.to);
+      exploredEdges.add(pathEdgeKey(event.from, event.to));
+      reachedDepth = Math.max(reachedDepth, event.depth);
+    });
+  }
+
+  document.querySelector('#map-plane').classList.toggle('has-path', Boolean(pathIds));
+  document.querySelector('#map-plane').classList.toggle('is-exploring', exploring);
   document.querySelectorAll('#grid-nodes .grid-node').forEach(button => {
-    const selected = button.dataset.nodeId === selectedId;
-    const related = relatedIds.has(button.dataset.nodeId);
+    const id = button.dataset.nodeId;
+    const selected = id === selectedId;
+    const isFocus = id === focusId;
+    const related = focusRelated.has(id) && !isFocus;
+    const onPath = Boolean(pathIds) && pathIds.includes(id);
     button.classList.toggle('is-selected', selected);
-    button.classList.toggle('is-related', related && !selected);
-    button.classList.toggle('is-dimmed', Boolean(selectedId) && !selected && !related);
+    button.classList.toggle('is-hovered', id === hoverId);
+    button.classList.toggle('is-related', related);
+    button.classList.toggle('is-path', onPath);
+    button.classList.toggle('is-path-start', onPath && id === fullPath[0]);
+    button.classList.toggle('is-path-end', onPath && id === fullPath[fullPath.length - 1]);
+    button.classList.toggle('is-search-start', exploring && id === pathSearch.startId);
+    button.classList.toggle('is-visited', exploring && id !== pathSearch.startId && visited.has(id));
+    button.classList.toggle('is-unvisited', exploring && !visited.has(id));
+    const keep = isFocus || related || selected;
+    button.classList.toggle('is-dimmed', exploring ? false : pathIds ? !onPath && !keep : Boolean(focusId) && !keep);
     button.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('#edge-layer .grid-edge').forEach(edge => {
-    edge.classList.toggle('is-active', edge.dataset.from === selectedId || edge.dataset.to === selectedId);
+    const key = pathEdgeKey(edge.dataset.from, edge.dataset.to);
+    edge.classList.toggle('is-active', Boolean(focusId) && !exploring && (edge.dataset.from === focusId || edge.dataset.to === focusId));
+    edge.classList.toggle('is-explored', exploredEdges.has(key));
+    edge.classList.toggle('is-path', pathEdges.has(key));
   });
+  document.querySelectorAll('#edge-layer .depth-ring').forEach(ring => {
+    ring.classList.toggle('is-reached', exploring && Number(ring.dataset.depth) <= reachedDepth);
+  });
+
+  const status = document.querySelector('#map-search-status');
+  const replay = document.querySelector('#map-replay');
+  replay.hidden = !pathSearch;
+  status.hidden = !pathSearch;
+  if (pathSearch) {
+    const summary = pathSummary(fullPath);
+    status.textContent = exploring
+      ? `Breadth-first search · degree ${reachedDepth} · ${visited.size} nodes reached`
+      : pathAnimation.phase === 'done' ? `Path found · ${summary.edges} connections · ${summary.hops} introduction hops` : 'Tracing shortest path…';
+  }
 }
 
 function selectGridNode(nodeId) {
@@ -1123,10 +1438,268 @@ function guideResponse(query) {
   };
 }
 
+// Breadth-first search over gridEdges. Records every discovery (visit order and parent) so the
+// visualization can replay the real traversal, then returns all equally short paths to the first target found.
+function bfsSearch(startId, isTarget, limit = 10) {
+  const adjacency = new Map();
+  gridEdges.forEach(([from, to]) => {
+    if (!adjacency.has(from)) adjacency.set(from, []);
+    if (!adjacency.has(to)) adjacency.set(to, []);
+    adjacency.get(from).push(to);
+    adjacency.get(to).push(from);
+  });
+  const distance = new Map([[startId, 0]]);
+  const parents = new Map();
+  const events = [];
+  const queue = [startId];
+  let targetId = null;
+  let targetDepth = Infinity;
+  let replayLength = 0;
+  for (let i = 0; i < queue.length; i += 1) {
+    const current = queue[i];
+    // Nodes at the target's depth cannot be parents of it, so the search can stop here.
+    if (distance.get(current) >= targetDepth) break;
+    (adjacency.get(current) || []).forEach(next => {
+      if (!distance.has(next)) {
+        distance.set(next, distance.get(current) + 1);
+        parents.set(next, [current]);
+        queue.push(next);
+        events.push({ from: current, to: next, depth: distance.get(next) });
+        if (targetId === null && isTarget(next)) {
+          targetId = next;
+          targetDepth = distance.get(next);
+          replayLength = events.length;
+        }
+      } else if (distance.get(next) === distance.get(current) + 1 && !parents.get(next).includes(current)) {
+        parents.get(next).push(current);
+      }
+    });
+  }
+  if (targetId === null) return null;
+  const paths = [];
+  const walk = (id, tail) => {
+    if (paths.length >= limit) return;
+    if (id === startId) { paths.push([startId, ...tail]); return; }
+    parents.get(id).forEach(parent => walk(parent, [id, ...tail]));
+  };
+  walk(targetId, []);
+  return { startId, targetId, paths, trace: { events: events.slice(0, replayLength) } };
+}
+
+function pathSummary(path) {
+  const people = path.map(gridNodeById).filter(node => node.category === 'person');
+  return { edges: path.length - 1, hops: Math.max(0, people.length - 1) };
+}
+
+function matchProfilesByCompany(query) {
+  const text = query.toLowerCase();
+  return demoProfiles.filter(profile => {
+    if (!profile.company) return false;
+    const company = profile.company.toLowerCase();
+    return text.includes(company) || (company.split(' ')[0].length >= 5 && text.includes(company.split(' ')[0]));
+  });
+}
+
+function describePathStep(from, to) {
+  const edge = gridEdges.find(([a, b]) => (a === from.id && b === to.id) || (a === to.id && b === from.id));
+  const relation = edge ? edge[2] : 'connected';
+  const a = gridNodeLabel(from);
+  const b = gridNodeLabel(to);
+  if (from.kind === 'group' && to.kind === 'group') return `${a} and ${b} are related groups.`;
+  if (to.kind === 'group') {
+    const role = relation.replace(/ of$/, '');
+    return `${a} is ${role === 'admin' ? 'an admin' : `a ${role}`} of ${b}.`;
+  }
+  if (from.kind === 'group') return `${b} is also a self-reported member of ${a}.`;
+  if (relation === 'direct connection') return `${a} has a direct connection to ${b}.`;
+  return `${a} is connected to ${b} (${relation}).`;
+}
+
+function buildIntroduction(path) {
+  const nodes = path.map(gridNodeById);
+  const target = nodes[nodes.length - 1];
+  const profile = demoProfiles.find(candidate => candidate.id === target.id);
+  const connectorIndex = nodes.map(node => node.kind).lastIndexOf('profile', nodes.length - 2);
+  const connector = connectorIndex > 0 ? nodes[connectorIndex] : null;
+  const recipient = connector || target;
+  const shared = connector && nodes[connectorIndex - 1].kind === 'group' ? nodes[connectorIndex - 1] : null;
+  const user = state.profile.name;
+  const title = profile?.title || 'professional';
+  const article = /^[aeiou]/i.test(title) ? 'an' : 'a';
+  const place = profile?.company ? ` at ${profile.company}` : '';
+  const opening = `Hi ${recipient.name.split(' ')[0]}, I’m ${user}, a Harvard student${shared ? ` and fellow member of ${shared.name}` : ''}.`;
+  const ask = connector
+    ? `I’m hoping to learn more about working as ${article} ${title}${place}, and I saw that you know ${target.name}. Would you be open to introducing us? Even a short conversation would mean a lot.`
+    : `I’m hoping to learn more about working as ${article} ${title}${place}. Would you be open to a short conversation?`;
+  return { recipient, text: `${opening} ${ask} Thank you! — ${user.split(' ')[0]}` };
+}
+
+function renderPathResult() {
+  const path = pathSearch.paths[pathSearch.index];
+  const nodes = path.map(gridNodeById);
+  const target = nodes[nodes.length - 1];
+  const profile = demoProfiles.find(candidate => candidate.id === target.id);
+  const intro = buildIntroduction(path);
+  const summary = pathSummary(path);
+  const steps = nodes.slice(1).map((node, i) => `<li>${escapeHTML(describePathStep(nodes[i], node))}</li>`).join('');
+  const chain = nodes.map(node => escapeHTML(gridNodeLabel(node))).join(' → ');
+  const alternatives = pathSearch.paths.length > 1
+    ? `<button type="button" data-path-action="alternative">Show alternative path (${pathSearch.index + 1} of ${pathSearch.paths.length})</button>` : '';
+  pathMessage.querySelector('.path-result').innerHTML = `
+    <div class="path-target"><strong>${escapeHTML(target.name)}</strong><span>${escapeHTML(profile?.title || target.meta)}${profile?.company ? ` · ${escapeHTML(profile.company)}` : ''}</span></div>
+    <div class="path-stats"><span><strong>${summary.hops}</strong> introduction hops</span><span><strong>${summary.edges}</strong> graph edges</span><span><strong>${pathSearch.trace.events.length}</strong> nodes searched</span></div>
+    <div class="path-chain">${chain}</div>
+    <ol class="path-steps">${steps}</ol>
+    <div class="path-actions"><button type="button" data-path-action="profile">View Profile</button><button type="button" data-path-action="replay">Replay search</button>${alternatives}<button type="button" data-path-action="clear">Clear path</button></div>
+    <div class="path-intro"><span class="drawer-section-title">SUGGESTED INTRODUCTION TO ${escapeHTML(intro.recipient.name.toUpperCase())}</span><div class="path-text" id="path-intro-text">${escapeHTML(intro.text)}</div><div class="path-actions"><button type="button" data-path-action="copy">Copy message</button></div></div>
+    <small>Introduction hops count person-to-person steps; graph edges also include group memberships. Fictional demo profiles and relationships, not verified real-world connections.</small>`;
+  const messages = document.querySelector('#guide-messages');
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function stopPathAnimation() {
+  if (pathAnimation.raf) window.cancelAnimationFrame(pathAnimation.raf);
+  pathAnimation.raf = 0;
+}
+
+function settlePathAnimation() {
+  stopPathAnimation();
+  if (pathSearch) {
+    pathAnimation.phase = 'done';
+    pathAnimation.shown = pathSearch.trace.events.length;
+    pathAnimation.reveal = pathSearch.paths[pathSearch.index].length;
+  }
+  updateGridHighlights();
+}
+
+// Replays the recorded BFS discoveries, then traces the final path. Timing is purely visual; the search itself is already complete.
+function playPathAnimation({ explore = true } = {}) {
+  stopPathAnimation();
+  if (!pathSearch) return;
+  if (prefersReducedMotion()) { settlePathAnimation(); return; }
+  const events = pathSearch.trace.events;
+  const path = pathSearch.paths[pathSearch.index];
+  const exploreMs = explore ? Math.min(1900, Math.max(800, events.length * 55)) : 0;
+  const holdMs = explore ? 200 : 0;
+  const traceMs = Math.max(600, (path.length - 1) * 300);
+  let startTime = null;
+  let last = '';
+  pathAnimation.phase = explore ? 'explore' : 'path';
+  pathAnimation.shown = events.length;
+  pathAnimation.reveal = 1;
+  const frame = now => {
+    if (startTime === null) startTime = now;
+    const elapsed = now - startTime;
+    if (elapsed < exploreMs + holdMs) {
+      pathAnimation.phase = 'explore';
+      pathAnimation.shown = Math.min(events.length, Math.ceil((elapsed / exploreMs) * events.length));
+    } else {
+      const progress = Math.min(1, (elapsed - exploreMs - holdMs) / traceMs);
+      pathAnimation.phase = progress >= 1 ? 'done' : 'path';
+      pathAnimation.reveal = Math.min(path.length, 1 + Math.ceil(progress * (path.length - 1)));
+    }
+    const signature = `${pathAnimation.phase}:${pathAnimation.shown}:${pathAnimation.reveal}`;
+    if (signature !== last) { last = signature; updateGridHighlights(); }
+    pathAnimation.raf = pathAnimation.phase === 'done' ? 0 : window.requestAnimationFrame(frame);
+  };
+  pathAnimation.raf = window.requestAnimationFrame(frame);
+}
+
+function clearPathSearch() {
+  stopPathAnimation();
+  pathSearch = null;
+  pathAnimation.phase = 'idle';
+  updateGridHighlights();
+}
+
+function showPathMessage() {
+  if (!pathMessage || !pathMessage.isConnected) {
+    pathMessage = document.createElement('article');
+    pathMessage.className = 'guide-message assistant-message';
+    pathMessage.innerHTML = `<span class="message-avatar">${icon('git-branch')}</span><div class="path-result"></div>`;
+    document.querySelector('#guide-messages').append(pathMessage);
+  }
+  renderPathResult();
+  refreshIcons();
+}
+
+function startPathSearch(result, query) {
+  pathSearch = { query, startId: result.startId, targetId: result.targetId, paths: result.paths, index: 0, trace: result.trace };
+  state.gridZoom = 1;
+  state.gridPan = { x: 0, y: 0 };
+  document.querySelector('#map-filter').value = 'all';
+  document.querySelector('#map-search').value = '';
+  selectGridNode(null);
+  renderNetworkMap();
+  pathMessage = null;
+  showPathMessage();
+  playPathAnimation();
+}
+
+function runCompanySearch(query) {
+  const matches = matchProfilesByCompany(query);
+  if (!matches.length) return false;
+  const matchIds = new Set(matches.map(profile => profile.id));
+  const result = bfsSearch('truman', id => matchIds.has(id));
+  if (!result) {
+    appendGuideMessage('assistant', `I found ${matches.map(profile => profile.name).join(', ')}, but there is no path from your profile yet. Join a group they belong to and search again.`);
+    return true;
+  }
+  startPathSearch(result, query);
+  return true;
+}
+
+function refreshPathSearch() {
+  if (!pathSearch) return;
+  const result = bfsSearch('truman', id => id === pathSearch.targetId);
+  if (!result) {
+    clearPathSearch();
+    showToast('That path no longer exists after your group change.');
+    return;
+  }
+  startPathSearch(result, pathSearch.query);
+}
+
+document.querySelector('#guide-messages').addEventListener('click', event => {
+  const button = event.target.closest('[data-path-action]');
+  if (!button || !pathSearch) return;
+  const action = button.dataset.pathAction;
+  if (action === 'profile') selectGridNode(pathSearch.targetId);
+  if (action === 'clear') clearPathSearch();
+  if (action === 'replay') replayPathSearch();
+  if (action === 'alternative') {
+    pathSearch.index = (pathSearch.index + 1) % pathSearch.paths.length;
+    showPathMessage();
+    updateLabelVisibility(...planeSize());
+    playPathAnimation({ explore: false });
+  }
+  if (action === 'copy') {
+    const text = document.querySelector('#path-intro-text').textContent;
+    const done = () => showToast('Introduction copied.');
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, done); else done();
+  }
+});
+
+function planeSize() {
+  const plane = document.querySelector('#map-plane');
+  return [plane.offsetWidth, plane.offsetHeight];
+}
+
+function replayPathSearch() {
+  if (!pathSearch) return;
+  state.gridZoom = 1;
+  state.gridPan = { x: 0, y: 0 };
+  selectGridNode(null);
+  applyViewport();
+  playPathAnimation();
+}
+
 function sendGuideQuery(query) {
   const message = query.trim();
   if (!message) return;
   appendGuideMessage('user', message);
+  if (runCompanySearch(message)) return;
+  if (pathSearch) clearPathSearch();
   const response = guideResponse(message);
   window.setTimeout(() => {
     appendGuideMessage('assistant', response.text);
@@ -1160,6 +1733,11 @@ function openUpload() {
 function closeUpload() {
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
+}
+
+function updateGreeting() {
+  const hour = new Date().getHours();
+  document.querySelector('#greeting-text').textContent = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 }
 
 function applyProfile() {
@@ -1793,6 +2371,8 @@ async function handleFile(file) {
 
 function setView(view) {
   const target = view || 'home';
+  if (target === 'home') updateGreeting();
+  if (target !== 'surf-grid') settlePathAnimation();
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.toggle('active', item.dataset.view === target);
   });
@@ -1992,7 +2572,11 @@ reviewList.addEventListener('click', event => {
 
 document.querySelector('#people-list').addEventListener('click', event => {
   const button = event.target.closest('.connect-button');
-  if (!button) return;
+  if (!button) {
+    const card = event.target.closest('[data-person]');
+    if (card) { setView('surf-grid'); selectGridNode(card.dataset.person); }
+    return;
+  }
   const id = button.closest('[data-person]').dataset.person;
   if (state.connected.has(id)) {
     state.connected.delete(id);
@@ -2081,6 +2665,15 @@ document.querySelectorAll('.save-opportunity').forEach(button => {
 });
 
 const groupsView = document.querySelector('#groups-view');
+function refreshGroupViews(groupId) {
+  persist();
+  rebuildGroupGraph();
+  renderPeople();
+  renderGroups();
+  if (!document.querySelector('#group-detail-view').hidden) renderGroupDetail(groupId);
+  renderNetworkMap();
+  refreshPathSearch();
+}
 groupsView.addEventListener('click', event => {
   const filter = event.target.closest('[data-group-filter]');
   if (filter) {
@@ -2098,10 +2691,19 @@ groupsView.addEventListener('click', event => {
   if (joinButton) {
     const group = allGroups().find(candidate => candidate.id === joinButton.dataset.groupAction);
     if (!group) return;
-    state.groupMemberships[group.id] = group.access === 'open' ? 'Member' : 'Pending';
-    persist();
-    renderGroups();
-    showToast(group.access === 'open' ? 'You joined the group.' : 'Your request to join was sent.');
+    state.groupMemberships[group.id] = group.access === 'open' ? SELF_REPORTED : 'Pending';
+    refreshGroupViews(group.id);
+    showToast(group.access === 'open' ? 'You joined as a self-reported member.' : 'Your request to join was sent.');
+    return;
+  }
+
+  const leaveButton = event.target.closest('[data-group-leave]');
+  if (leaveButton) {
+    const group = allGroups().find(candidate => candidate.id === leaveButton.dataset.groupLeave);
+    if (!group || state.groupMemberships[group.id] === 'Admin') return;
+    delete state.groupMemberships[group.id];
+    refreshGroupViews(group.id);
+    showToast('You left the group.');
     return;
   }
 
@@ -2157,6 +2759,8 @@ document.querySelector('#group-create-form').addEventListener('submit', event =>
   state.createdGroups.unshift(group);
   state.groupMemberships[group.id] = 'Admin';
   persist();
+  rebuildGroupGraph();
+  renderPeople();
   form.reset();
   closeGroupCreate();
   renderGroups();
@@ -2342,18 +2946,61 @@ document.querySelector('#drawer-guide-button').addEventListener('click', () => {
   const node = gridNodes.find(candidate => candidate.id === state.selectedGridNode);
   if (node) sendGuideQuery(`Tell me more about ${node.name}`);
 });
-document.querySelector('#zoom-in').addEventListener('click', () => {
-  state.gridZoom = Math.min(1.45, Math.round((state.gridZoom + 0.15) * 100) / 100);
-  renderNetworkMap();
-});
-document.querySelector('#zoom-out').addEventListener('click', () => {
-  state.gridZoom = Math.max(0.75, Math.round((state.gridZoom - 0.15) * 100) / 100);
-  renderNetworkMap();
-});
-document.querySelector('#zoom-reset').addEventListener('click', () => {
+function setGridZoom(zoom) {
+  const next = Math.max(0.7, Math.min(3, Math.round(zoom * 100) / 100));
+  const ratio = next / state.gridZoom;
+  state.gridZoom = next;
+  state.gridPan.x *= ratio;
+  state.gridPan.y *= ratio;
+  applyViewport();
+}
+function resetGridView() {
   state.gridZoom = 1;
-  renderNetworkMap();
+  state.gridPan = { x: 0, y: 0 };
+  state.hoverGridNode = null;
+  selectGridNode(null);
+  applyViewport();
+}
+document.querySelector('#zoom-in').addEventListener('click', () => setGridZoom(state.gridZoom * 1.25));
+document.querySelector('#zoom-out').addEventListener('click', () => setGridZoom(state.gridZoom / 1.25));
+document.querySelector('#zoom-reset').addEventListener('click', resetGridView);
+document.querySelector('#map-reset-view').addEventListener('click', resetGridView);
+document.querySelector('#map-replay').addEventListener('click', replayPathSearch);
+
+const mapStage = document.querySelector('#map-stage');
+let panDrag = null;
+mapStage.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || event.target.closest('.grid-node, .node-drawer, .map-actions, button')) return;
+  panDrag = { x: event.clientX, y: event.clientY, panX: state.gridPan.x, panY: state.gridPan.y };
+  mapStage.setPointerCapture(event.pointerId);
+  mapStage.classList.add('is-panning');
 });
+mapStage.addEventListener('pointermove', event => {
+  if (!panDrag) return;
+  state.gridPan.x = panDrag.panX + event.clientX - panDrag.x;
+  state.gridPan.y = panDrag.panY + event.clientY - panDrag.y;
+  applyViewport(false);
+});
+['pointerup', 'pointercancel'].forEach(type => mapStage.addEventListener(type, () => {
+  panDrag = null;
+  mapStage.classList.remove('is-panning');
+}));
+mapStage.addEventListener('wheel', event => {
+  if (!event.ctrlKey && !event.metaKey) return;
+  event.preventDefault();
+  setGridZoom(state.gridZoom * (event.deltaY < 0 ? 1.1 : 1 / 1.1));
+}, { passive: false });
+const gridNodeLayer = document.querySelector('#grid-nodes');
+const setHoverNode = id => {
+  if (state.hoverGridNode === id) return;
+  state.hoverGridNode = id;
+  updateGridHighlights();
+};
+gridNodeLayer.addEventListener('pointerover', event => setHoverNode(event.target.closest('.grid-node')?.dataset.nodeId || null));
+gridNodeLayer.addEventListener('pointerleave', () => setHoverNode(null));
+gridNodeLayer.addEventListener('focusin', event => setHoverNode(event.target.closest('.grid-node')?.dataset.nodeId || null));
+gridNodeLayer.addEventListener('focusout', () => setHoverNode(null));
+new ResizeObserver(() => applyViewport()).observe(mapStage);
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && state.selectedGridNode && !modal.classList.contains('open')) selectGridNode(null);
 });
@@ -2459,8 +3106,97 @@ document.addEventListener('keydown', event => {
 });
 
 renderItems();
+rebuildGroupGraph();
 renderPeople();
+updateGreeting();
 renderGroups();
 applyProfile();
 renderNetworkMap();
 refreshIcons();
+
+document.querySelector('#explore-goldman').addEventListener('click', () => {
+  setView('surf-grid');
+  sendGuideQuery('Find someone at Goldman Sachs');
+});
+
+// Landing screen: a lightweight canvas network that drifts gently and stops once dismissed.
+const landing = {
+  el: document.querySelector('#landing'),
+  canvas: document.querySelector('#landing-canvas'),
+  raf: 0, nodes: [], width: 0, height: 0
+};
+const landingReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+function sizeLandingCanvas() {
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  landing.width = landing.canvas.clientWidth;
+  landing.height = landing.canvas.clientHeight;
+  landing.canvas.width = landing.width * ratio;
+  landing.canvas.height = landing.height * ratio;
+  landing.canvas.getContext('2d').setTransform(ratio, 0, 0, ratio, 0, 0);
+  const count = Math.round(Math.min(70, Math.max(28, landing.width * landing.height / 22000)));
+  landing.nodes = Array.from({ length: count }, (_, i) => ({
+    x: Math.random() * landing.width, y: Math.random() * landing.height,
+    vx: (Math.random() - .5) * .18, vy: (Math.random() - .5) * .18,
+    r: i % 7 === 0 ? 3.2 : 1.8, accent: i % 7 === 0
+  }));
+}
+
+function drawLanding(step) {
+  const ctx = landing.canvas.getContext('2d');
+  const { width, height, nodes } = landing;
+  ctx.clearRect(0, 0, width, height);
+  nodes.forEach(node => {
+    if (step) {
+      node.x += node.vx; node.y += node.vy;
+      if (node.x < 0 || node.x > width) node.vx *= -1;
+      if (node.y < 0 || node.y > height) node.vy *= -1;
+    }
+  });
+  const reach = 150;
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const dist = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
+      if (dist < reach) {
+        ctx.strokeStyle = `rgba(185, 199, 126, ${(1 - dist / reach) * .16})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
+      }
+    }
+  }
+  nodes.forEach(node => {
+    ctx.fillStyle = node.accent ? 'rgba(227, 238, 157, .75)' : 'rgba(154, 158, 154, .45)';
+    ctx.beginPath(); ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2); ctx.fill();
+  });
+}
+
+function landingFrame() {
+  drawLanding(true);
+  landing.raf = requestAnimationFrame(landingFrame);
+}
+
+function startLanding() {
+  sizeLandingCanvas();
+  if (landingReducedMotion.matches) drawLanding(false);
+  else landing.raf = requestAnimationFrame(landingFrame);
+  document.querySelector('#landing-enter').focus({ preventScroll: true });
+}
+
+function enterPipeline() {
+  cancelAnimationFrame(landing.raf);
+  landing.raf = 0;
+  window.removeEventListener('resize', onLandingResize);
+  landing.el.classList.add('is-leaving');
+  setTimeout(() => { landing.el.hidden = true; }, landingReducedMotion.matches ? 0 : 350);
+  setView('profile');
+  window.scrollTo(0, 0);
+}
+
+function onLandingResize() {
+  sizeLandingCanvas();
+  if (!landing.raf) drawLanding(false);
+}
+
+document.querySelector('#landing-enter').addEventListener('click', enterPipeline);
+window.addEventListener('resize', onLandingResize);
+startLanding();

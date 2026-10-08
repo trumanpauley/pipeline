@@ -8,8 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261008-opp-redesign" />
-    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+    <link rel="stylesheet" href="styles.css?v=20261008-overview2" />
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   </head>
@@ -35,8 +35,8 @@
             <button class="text-button" data-view="profile">Finish your profile <i data-lucide="arrow-up-right"></i></button>
           </div>
           <button class="sidebar-user" aria-label="Account settings">
-            <img id="sidebar-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80" alt="Truman Pauley" />
-            <span class="user-meta"><strong id="sidebar-profile-name">Truman Pauley</strong><small id="sidebar-profile-meta">Student · Boston, MA</small></span>
+            <img id="sidebar-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=96&q=80" alt="John Harvard" />
+            <span class="user-meta"><strong id="sidebar-profile-name">John Harvard</strong><small id="sidebar-profile-meta">Student · Boston, MA</small></span>
             <i data-lucide="chevrons-up-down"></i>
           </button>
         </div>
@@ -56,10 +56,23 @@
           <section class="welcome-row" id="welcome-section">
             <div>
               <p class="eyebrow"><span class="live-dot"></span> YOUR CAREER, IN MOTION</p>
-              <h1>Good morning, <span id="welcome-name">Truman</span><span class="wave">.</span></h1>
+              <h1><span id="greeting-text">Good morning</span>, <span id="welcome-name">John</span><span class="wave">.</span></h1>
               <p class="welcome-subtitle">Big things happen through people. Here's your next step.</p>
             </div>
             <button class="button button-dark" data-view="profile"><i data-lucide="contact-round"></i> View my profile</button>
+          </section>
+
+          <section class="section-block explore-section" id="explore-section" aria-labelledby="explore-title">
+            <div class="explore-copy">
+              <p class="eyebrow muted-eyebrow">SURF THE GRID</p>
+              <h2 id="explore-title">Explore Your Network</h2>
+              <p>Search a company or role and watch Pipeline trace the shortest path of introductions through your groups.</p>
+              <div class="explore-actions">
+                <button class="button button-dark" data-view="surf-grid"><i data-lucide="radar"></i> Open Surf the Grid</button>
+                <button class="text-button" id="explore-goldman" type="button">Try: Find someone at Goldman Sachs <i data-lucide="arrow-up-right"></i></button>
+              </div>
+            </div>
+            <dl class="explore-stats" id="explore-stats"></dl>
           </section>
 
           <div class="dashboard-grid">
@@ -71,16 +84,16 @@
                 </div>
                 <div class="profile-card overview-profile-card">
                   <div class="profile-card-head">
-                    <div class="profile-person"><div class="profile-photo-wrap"><img id="overview-profile-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80" alt="Truman Pauley" /></div><div><h3 id="overview-profile-name">Truman Pauley</h3><p><span id="overview-profile-headline">Computer science student</span> <span class="separator">·</span> <span id="overview-profile-location">Boston, MA</span></p></div></div>
+                    <div class="profile-person"><div class="profile-photo-wrap"><img id="overview-profile-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80" alt="John Harvard" /></div><div><h3 id="overview-profile-name">John Harvard</h3><p><span id="overview-profile-headline">Computer science student</span> <span class="separator">·</span> <span id="overview-profile-location">Boston, MA</span></p></div></div>
                   </div>
                   <p class="overview-profile-bio" id="overview-profile-bio">Curious builder exploring the intersection of software, people, and big ideas.</p>
-                  <div class="profile-meta"><span><i data-lucide="graduation-cap"></i> <span id="overview-profile-school">Harvard University</span></span><span><i data-lucide="users-round"></i> <b id="overview-connection-count">128</b> connections</span></div>
+                  <div class="profile-meta"><span><i data-lucide="graduation-cap"></i> <span id="overview-profile-school">Harvard University</span></span><span><i data-lucide="users-round"></i> <b id="overview-connection-count">0</b> <span id="overview-connection-label">people in your groups</span></span><span><i data-lucide="users"></i> <span id="overview-profile-groups">No groups joined yet</span></span></div>
                 </div>
               </section>
 
               <section class="section-block network-section" id="network-section">
                 <div class="section-heading">
-                  <div><p class="eyebrow muted-eyebrow">GOOD PEOPLE, GOOD TIMING</p><h2>People to know <span class="heading-context">· based on your path</span></h2></div>
+                  <div><p class="eyebrow muted-eyebrow">GOOD PEOPLE, GOOD TIMING</p><h2>People to know <span class="heading-context">· from your groups</span></h2></div>
                   <button class="text-button" data-view="network">Explore network <i data-lucide="arrow-up-right"></i></button>
                 </div>
                 <div class="people-list" id="people-list"></div>
@@ -97,7 +110,7 @@
 
             </aside>
           </div>
-          <footer class="page-footer"><span>Made for what comes next.</span><span>© Pipeline 2025</span></footer>
+          <footer class="page-footer"><span>Made for what comes next.</span><span>© Pipeline 2026</span></footer>
         </div>
         <div class="page-content network-page" id="network-view" hidden>
                     <header class="network-page-heading">
@@ -251,11 +264,11 @@
               </div>
               <div class="profile-card">
                 <div class="profile-card-head">
-                  <div class="profile-person"><div class="profile-photo-wrap"><img id="profile-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80" alt="Truman Pauley" /><span class="online-indicator"></span></div><div><h3 id="profile-name">Truman Pauley</h3><p><span id="profile-headline">Computer science student</span> <span class="separator">·</span> <span id="profile-location">Boston, MA</span></p></div></div>
+                  <div class="profile-person"><div class="profile-photo-wrap"><img id="profile-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=128&q=80" alt="John Harvard" /><span class="online-indicator"></span></div><div><h3 id="profile-name">John Harvard</h3><p><span id="profile-headline">Computer science student</span> <span class="separator">·</span> <span id="profile-location">Boston, MA</span></p></div></div>
                   <button class="icon-button edit-profile" id="profile-edit" type="button" aria-label="Edit profile"><i data-lucide="square-pen"></i></button>
                 </div>
                 <div class="profile-bio" id="profile-bio">Curious builder exploring the intersection of software, people, and big ideas.</div>
-                <div class="profile-meta"><span><i data-lucide="graduation-cap"></i> <span id="profile-school">Harvard University</span></span><span><i data-lucide="briefcase-business"></i> Open to internships</span><span><i data-lucide="users-round"></i> <b id="connection-count">128</b> connections</span></div>
+                <div class="profile-meta"><span><i data-lucide="graduation-cap"></i> <span id="profile-school">Harvard University</span></span><span><i data-lucide="briefcase-business"></i> Open to internships</span><span><i data-lucide="users-round"></i> <b id="connection-count">0</b> people in your groups</span></div>
                 <div class="review-divider"></div>
                 <div class="review-heading"><div><span class="review-indicator"></span><strong>Details from your resume</strong><span class="review-subtext">Review and confirm each item</span></div><button class="upload-inline" id="upload-inline"><i data-lucide="file-up"></i> Upload resume</button></div>
                 <div id="review-list" class="review-list"></div>
@@ -284,6 +297,7 @@
                 <article class="guide-message assistant-message"><span class="message-avatar"><i data-lucide="git-branch"></i></span><p>Where do you want to go? Explore a career, find a relevant connection, or discover paths from your background.</p></article>
               </div>
               <div class="guide-suggestions" aria-label="Suggested questions">
+                <button type="button" data-guide-prompt="Find someone at Goldman Sachs">Find someone at Goldman Sachs <i data-lucide="arrow-up-right"></i></button>
                 <button type="button" data-guide-prompt="Show me a path into product engineering">Explore product careers <i data-lucide="arrow-up-right"></i></button>
                 <button type="button" data-guide-prompt="Find a relevant connection at Stripe">Find people at Stripe <i data-lucide="arrow-up-right"></i></button>
                 <button type="button" data-guide-prompt="Show how my background connects to new paths">Map my background <i data-lucide="arrow-up-right"></i></button>
@@ -319,9 +333,11 @@
                 </div>
               </header>
               <div class="map-legend" aria-label="Map node categories">
-                <span><i class="legend-dot people-dot"></i> People</span><span><i class="legend-dot education-dot"></i> Education</span><span><i class="legend-dot work-dot"></i> Work &amp; projects</span><span><i class="legend-dot skill-dot"></i> Skills</span>
+                <span><i class="legend-dot you-dot"></i> You</span><span><i class="legend-dot people-dot"></i> People</span><span><i class="legend-dot group-dot"></i> Groups &amp; organizations</span><span><i class="legend-dot target-dot"></i> Search path</span>
               </div>
               <div class="map-stage" id="map-stage">
+                <div class="map-actions"><button type="button" id="map-reset-view"><i data-lucide="locate-fixed"></i> Reset view</button><button type="button" id="map-replay" hidden><i data-lucide="rotate-ccw"></i> Replay search</button></div>
+                <div class="map-search-status" id="map-search-status" role="status" hidden></div>
                 <div class="map-plane" id="map-plane">
                   <svg class="network-edges" id="network-edges" viewBox="0 0 1000 680" preserveAspectRatio="none" aria-hidden="true"><g id="edge-layer"></g></svg>
                   <div class="grid-nodes" id="grid-nodes"></div>
@@ -433,6 +449,16 @@
       </section>
     </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20261008-opp-redesign"></script>
+        <div class="landing" id="landing" role="dialog" aria-modal="true" aria-labelledby="landing-title">
+      <canvas class="landing-canvas" id="landing-canvas" aria-hidden="true"></canvas>
+      <div class="landing-content">
+        <div class="landing-brand"><span class="brand-mark"><i data-lucide="git-branch"></i></span><span>Pipeline</span></div>
+        <h1 id="landing-title">Your network goes further.</h1>
+        <p>Discover the connections you never knew you had.</p>
+        <button class="button landing-enter" id="landing-enter" type="button">Enter Pipeline <i data-lucide="arrow-right"></i></button>
+        <small>Prototype · demo profiles are fictional</small>
+      </div>
+    </div>
+    <script src="app.js?v=20261008-overview2"></script>
   </body>
 </html>
