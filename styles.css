@@ -946,3 +946,41 @@ kbd { border-color: #303330; background: #1a1c1a; }
 .landing-enter:hover { background: #d0d7ad; }
 .landing-content small { margin-top: 18px; color: #6f746f; font-size: 10px; }
 @media (prefers-reduced-motion: reduce) { .landing { transition: none; } }
+
+/* My Grid: personal network */
+.mygrid-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.mygrid-stat { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.mygrid-stat strong { color: var(--lime); font: 700 22px var(--font-display); }
+.mygrid-stat span { color: var(--ink); font-size: 11px; font-weight: 600; }
+.mygrid-stat small { color: var(--muted); font-size: 9px; }
+.mygrid-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 18px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: #0d100e; font-size: 10px; line-height: 1.6; }
+.mygrid-note svg { flex: none; width: 13px; height: 13px; margin-top: 2px; color: var(--lime); }
+.mygrid-note b { color: var(--ink); }
+.mygrid-section { margin-bottom: 22px; }
+.mygrid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; margin-top: 10px; }
+.mygrid-card { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.mygrid-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.mygrid-body { display: grid; gap: 3px; min-width: 0; }
+.mygrid-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mygrid-title strong { font-size: 12px; }
+.mygrid-fictional { padding: 1px 6px; border: 1px solid #3a3f3a; border-radius: 3px; color: #8f968f; font-size: 8px; letter-spacing: .04em; text-transform: uppercase; }
+.mygrid-role { color: #b3b9b3; font-size: 10px; }
+.mygrid-body small { color: var(--muted); font-size: 9px; line-height: 1.5; }
+.mygrid-badges { display: flex; flex-wrap: wrap; gap: 5px; margin: 3px 0; }
+.rel-badge { padding: 2px 7px; border: 1px solid #343834; border-radius: 10px; color: #8f968f; font-size: 8.5px; }
+.rel-badge.is-knows { border-color: #6f7d57; color: #d0d7ad; background: #1c2217; }
+.rel-badge.is-follows { border-style: dashed; border-color: #5b6558; color: #b7c0b0; }
+.mygrid-actions { display: flex; flex-wrap: wrap; grid-column: 2; gap: 6px; margin-top: 6px; }
+.mygrid-actions button { min-height: 26px; padding: 0 10px; border: 1px solid #343a34; border-radius: 4px; color: #d4d9d0; background: #181b18; font-size: 9px; cursor: pointer; }
+.mygrid-actions button:hover { border-color: #5a614b; background: #24271f; }
+.mygrid-actions button[aria-pressed="true"] { border-color: #6f7d57; color: #d0d7ad; }
+.mygrid-actions .is-link { border-color: transparent; background: none; color: var(--lime); }
+@media (max-width: 900px) { .mygrid-summary { grid-template-columns: 1fr; } .mygrid-list { grid-template-columns: 1fr; } }
+
+/* Typed edges and entity nodes in Surf the Grid */
+#edge-layer .grid-edge.edge-follows { stroke-dasharray: 4 4; }
+#edge-layer .grid-edge.edge-follows.is-path { stroke-dasharray: 7 4; }
+#edge-layer .grid-edge.edge-knows { stroke: #7d8a68; opacity: .4; }
+#map-plane .grid-node.kind-opportunity .node-avatar { border-style: dashed; border-radius: 9px; color: #a9c0cf; }
+#map-plane .grid-node.kind-company .node-avatar { border-radius: 9px; }
+.path-warning { margin: 0; padding: 7px 9px; border: 1px solid #5b4d34; border-radius: 4px; color: #d8c08f; background: #1d1810; font-size: 10px; line-height: 1.5; }

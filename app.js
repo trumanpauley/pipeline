@@ -80,20 +80,37 @@ const gridNodes = [
   { id: 'product-engineer', name: 'Product engineer', category: 'role', meta: 'Career path · Strong fit', x: 68, y: 84, icon: 'route', description: 'Product engineers combine software craft with a feel for user needs. Your React experience, internship, and interest in building make this a natural path to explore.', connection: 'Your React skill links to this path; Alex Rivera can offer a product-side perspective, and Maya Chen can share an engineering perspective.' }
 ];
 
+// Edges are [from, to, relation, TYPE]. FOLLOWS is one-way (from follows to); every other type is traversable both ways.
 const gridEdges = [
-  ['truman', 'harvard', 'studies at'], ['harvard', 'maya', 'alumni'], ['maya', 'stripe', 'works at'],
-  ['truman', 'northstar', 'internship'], ['northstar', 'java', 'used in'], ['truman', 'java', 'skill'],
-  ['truman', 'python', 'skill'], ['python', 'open-source', 'used in'], ['truman', 'open-source', 'built'],
-  ['truman', 'react', 'skill'], ['react', 'product-engineer', 'relevant skill'], ['truman', 'sam', 'shared field'],
-  ['sam', 'mit', 'studies at'], ['sam', 'jordan', 'mutual network'], ['jordan', 'common-thread', 'founded'],
-  ['truman', 'alex', 'shared interests'], ['alex', 'figma', 'works at'], ['alex', 'product-engineer', 'product perspective']
+  ['truman', 'harvard', 'studied at', 'STUDIED_AT'], ['maya', 'harvard', 'studied at', 'STUDIED_AT'], ['maya', 'stripe', 'works at', 'WORKS_AT'],
+  ['truman', 'northstar', 'interned at', 'WORKS_AT'], ['northstar', 'java', 'used in', 'RELATED_TO'], ['truman', 'java', 'has skill', 'HAS_SKILL'],
+  ['truman', 'python', 'has skill', 'HAS_SKILL'], ['python', 'open-source', 'used in', 'RELATED_TO'], ['truman', 'open-source', 'built', 'BUILT'],
+  ['truman', 'react', 'has skill', 'HAS_SKILL'], ['react', 'product-engineer', 'relevant skill', 'RELATED_TO'],
+  ['sam', 'mit', 'studied at', 'STUDIED_AT'], ['sam', 'jordan', 'knows', 'KNOWS'], ['jordan', 'maya', 'knows', 'KNOWS'],
+  ['jordan', 'common-thread', 'works at', 'WORKS_AT'], ['alex', 'figma', 'works at', 'WORKS_AT'], ['alex', 'maya', 'knows', 'KNOWS'],
+  ['alex', 'product-engineer', 'product perspective', 'RELATED_TO']
 ];
+gridNodes.forEach(node => {
+  if (['maya', 'sam', 'jordan', 'alex'].includes(node.id)) { node.meta = `Fictional demo profile · ${node.meta}`; node.fictional = true; }
+  if (['stripe', 'northstar', 'common-thread', 'figma'].includes(node.id)) node.kind = 'company';
+  if (['harvard', 'mit'].includes(node.id)) node.kind = 'university';
+});
 const baseGridNodes = [...gridNodes];
 const baseGridEdges = [...gridEdges];
 
 // Real Harvard organizations, identified from their public websites and Harvard/Crimson Athletics pages.
 // memberCount is the base count and starts at zero; displayed counts come from actual memberships.
 // "verified" marks the group's Harvard affiliation, never an individual's membership.
+const DEMO_ACQUAINTANCES = ['demo-sarah'];
+const DEMO_FOLLOWS = ['demo-alex', 'demo-ethan'];
+function loadIdSet(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return new Set(raw === null ? fallback : JSON.parse(raw));
+  } catch {
+    return new Set(fallback);
+  }
+}
 const DEMO_USER_GROUPS = ['harvard-chess-club', 'harvard-football'];
 
 const groupSeeds = [
@@ -237,6 +254,8 @@ const state = {
   editingSkills: false,
   profile: loadProfile(),
   connected: new Set(JSON.parse(localStorage.getItem('orbit-connected') || '[]')),
+  follows: loadIdSet('pipeline-follows-v1', DEMO_FOLLOWS),
+  acquaintances: loadIdSet('pipeline-acquaintances-v1', DEMO_ACQUAINTANCES),
   saved: new Set(JSON.parse(localStorage.getItem('orbit-saved') || '[]')),
   toastTimer: null,
   selectedGridNode: null,
@@ -590,6 +609,8 @@ function loadOpportunityIds(key) {
 
 function persist() {
   localStorage.setItem('orbit-items', JSON.stringify(state.items));
+  localStorage.setItem('pipeline-follows-v1', JSON.stringify([...state.follows]));
+  localStorage.setItem('pipeline-acquaintances-v1', JSON.stringify([...state.acquaintances]));
   localStorage.setItem('orbit-connected', JSON.stringify([...state.connected]));
   localStorage.setItem('orbit-saved', JSON.stringify([...state.saved]));
   localStorage.setItem('orbit-profile', JSON.stringify(state.profile));
@@ -691,7 +712,7 @@ function computeNetworkInsights() {
   const profiles = gridNodes.filter(node => node.kind === 'profile');
   const sharedGroups = profile => gridEdges.filter(([from, to]) => from === profile.id && joinedIds.has(to)).map(([, to]) => gridNodeById(to).name);
   const inGroups = profiles.filter(profile => sharedGroups(profile).length);
-  const recommendations = profiles.map(profile => {
+  const recommendations = profiles.filter(profile => !state.acquaintances.has(profile.id) && demoProfiles.some(item => item.id === profile.id)).map(profile => {
     const result = bfsSearch('truman', id => id === profile.id);
     if (!result) return null;
     const path = result.paths[0];
@@ -699,7 +720,9 @@ function computeNetworkInsights() {
     const via = path.slice(1, -1).map(gridNodeById).filter(node => node.category === 'person').map(node => node.name);
     const shared = sharedGroups(profile);
     const demo = demoProfiles.find(item => item.id === profile.id);
-    const context = shared.length
+    const context = state.follows.has(profile.id)
+      ? 'You follow them · one-way, not a confirmed connection'
+      : shared.length
       ? `Shares ${shared[0]}${shared.length > 1 ? ` +${shared.length - 1} more` : ''} with you`
       : `${hops} intro hops via ${via.join(' → ')}`;
     return { id: profile.id, name: profile.name, role: demo.company ? `${demo.title} @ ${demo.company}` : demo.role, context, hops, shared: shared.length, professional: Boolean(demo.company), avatar: demo.avatar };
@@ -712,8 +735,8 @@ function renderPeople() {
   const insights = computeNetworkInsights();
   const container = document.querySelector('#people-list');
   container.innerHTML = insights.recommendations.length ? insights.recommendations.slice(0, 4).map(person => {
-    const connected = state.connected.has(person.id);
-    return `<article class="person-card" data-person="${person.id}"><img src="${escapeHTML(person.avatar)}" alt="" /><div class="person-detail"><strong>${escapeHTML(person.name)}</strong><span>${escapeHTML(person.role)}</span><small>${escapeHTML(person.context)} · fictional demo profile</small></div><button class="connect-button ${connected ? 'connected' : ''}" aria-label="${connected ? 'Connected to' : 'Connect with'} ${escapeHTML(person.name)}" title="${connected ? 'Connected' : 'Connect'}">${icon(connected ? 'check' : 'plus')}</button></article>`;
+    const connected = state.follows.has(person.id);
+    return `<article class="person-card" data-person="${person.id}"><img src="${escapeHTML(person.avatar)}" alt="" /><div class="person-detail"><strong>${escapeHTML(person.name)}</strong><span>${escapeHTML(person.role)}</span><small>${escapeHTML(person.context)} · fictional demo profile</small></div><button class="connect-button ${connected ? 'connected' : ''}" aria-label="${connected ? 'Unfollow' : 'Follow'} ${escapeHTML(person.name)}" title="${connected ? 'Following (one-way)' : 'Follow'}">${icon(connected ? 'check' : 'plus')}</button></article>`;
   }).join('') : '<p class="empty-review">Join a group to see people you could meet.</p>';
   document.querySelector('#connection-count').textContent = insights.inGroups;
   document.querySelector('#overview-connection-count').textContent = insights.inGroups;
@@ -724,28 +747,6 @@ function renderPeople() {
     [insights.inGroups, 'people in your groups'],
     [insights.reachable, 'people reachable']
   ].map(([value, label]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
-  refreshIcons();
-}
-
-function renderNetworkExample() {
-  const nodeLayer = document.querySelector('#example-grid-nodes');
-  const edgeLayer = document.querySelector('#example-edge-layer');
-  nodeLayer.innerHTML = baseGridNodes.map(node => {
-    const nodeImage = node.id === 'truman' ? state.profile.photo : '';
-    const nodeIcon = nodeImage
-      ? `<img src="${escapeHTML(nodeImage)}" alt="" />`
-      : node.image
-        ? `<img src="https://images.unsplash.com/${node.image}?auto=format&fit=crop&w=96&q=80" alt="" />`
-        : icon(node.icon);
-    const nodeName = node.id === 'truman' ? state.profile.name : node.name;
-    const nodeMeta = node.id === 'truman' ? `You · ${state.profile.headline}` : node.meta;
-    return `<div class="grid-node node-${node.category} example-grid-node" style="--node-x:${node.x}%;--node-y:${node.y}%"><span class="node-avatar">${nodeIcon}</span><span class="node-copy"><strong>${escapeHTML(nodeName)}</strong><small>${escapeHTML(nodeMeta)}</small></span></div>`;
-  }).join('');
-  edgeLayer.innerHTML = baseGridEdges.map(([from, to, relation]) => {
-    const start = baseGridNodes.find(node => node.id === from);
-    const end = baseGridNodes.find(node => node.id === to);
-    return `<line class="grid-edge" x1="${start.x * 10}" y1="${start.y * 6.8}" x2="${end.x * 10}" y2="${end.y * 6.8}"><title>${escapeHTML(relation)}</title></line>`;
-  }).join('');
   refreshIcons();
 }
 
@@ -769,6 +770,49 @@ function allGroups() {
     return person.avatar || `https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=80&q=80`;
   }
 
+  const slugify = text => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  // My Grid relationships, universities, companies and opportunities all become typed nodes/edges here.
+  function addPersonalNetworkEdges(groups) {
+    const known = id => demoProfiles.some(profile => profile.id === id);
+    state.acquaintances.forEach(id => { if (known(id)) gridEdges.push(['truman', id, 'knows', 'KNOWS']); });
+    state.follows.forEach(id => { if (known(id)) gridEdges.push(['truman', id, 'follows', 'FOLLOWS']); });
+    demoProfiles.forEach(profile => gridEdges.push([profile.id, 'harvard', 'studied at', 'STUDIED_AT']));
+    const companyNode = (name, fictional) => {
+      let node = gridNodes.find(candidate => candidate.kind === 'company' && candidate.name.toLowerCase() === name.toLowerCase());
+      if (!node) {
+        node = {
+          id: `company-${slugify(name)}`, name, kind: 'company', category: 'organization', icon: 'building-2',
+          meta: fictional ? 'Fictional company · demo data' : 'Company · employer or opportunity poster',
+          description: `${name} appears in the Pipeline graph through ${fictional ? 'fictional demo profiles' : 'posted opportunities'}.`,
+          connection: 'Linked to people through WORKS_AT and to opportunities through POSTED_BY.'
+        };
+        gridNodes.push(node);
+      }
+      return node;
+    };
+    demoProfiles.filter(profile => profile.company).forEach(profile => {
+      const node = companyNode(profile.company, profile.company !== 'Goldman Sachs');
+      gridEdges.push([profile.id, node.id, 'works at', 'WORKS_AT']);
+    });
+    opportunityList().forEach(opportunity => {
+      const id = `opp-${opportunity.id}`;
+      const isJob = opportunity.kind === 'job';
+      gridNodes.push({
+        id, kind: 'opportunity', name: opportunity.title, category: 'role', icon: isJob ? 'briefcase-business' : 'handshake',
+        meta: `${isJob ? 'Opportunity' : 'Group project'} · ${opportunity.organization}`,
+        description: opportunity.description,
+        connection: `Posted by ${opportunity.organization}.`,
+        tags: opportunity.skills || []
+      });
+      const poster = (opportunity.nodeId && gridNodes.find(node => node.id === opportunity.nodeId))
+        || groups.find(group => group.id === opportunity.groupId)
+        || groups.find(group => group.name.toLowerCase() === String(opportunity.organization).toLowerCase())
+        || (opportunity.posted ? gridNodes.find(node => node.id === 'truman') : companyNode(opportunity.organization, false));
+      gridEdges.push([id, poster.id, 'posted by', 'POSTED_BY']);
+    });
+  }
+
   // Surf the Grid reads gridNodes/gridEdges. Group, demo-profile, and membership nodes/edges are
   // regenerated here from the same membership data the Groups tab uses.
   function rebuildGroupGraph() {
@@ -785,7 +829,7 @@ function allGroups() {
         description: `${group.description} Memberships are self-reported unless confirmed by the organization.`,
         connection: `${members.length + (joined ? 1 : 0)} self-reported member${members.length + (joined ? 1 : 0) === 1 ? '' : 's'} connect to this group.`
       });
-      if (joined) gridEdges.push(['truman', group.id, `${state.groupMemberships[group.id] === SELF_REPORTED ? 'self-reported member' : state.groupMemberships[group.id].toLowerCase()} of`]);
+      if (joined) gridEdges.push(['truman', group.id, `${state.groupMemberships[group.id] === SELF_REPORTED ? 'self-reported member' : state.groupMemberships[group.id].toLowerCase()} of`, 'MEMBER_OF']);
     });
     const linked = new Set();
     demoProfiles.forEach((profile, index) => {
@@ -796,14 +840,15 @@ function allGroups() {
         description: `${profile.name} is a fictional demo profile (not a real person)${profile.company ? `, working as ${profile.title} at ${profile.company}` : ''}, interested in ${profile.interests.join(' and ')}. Self-reported member of ${names.join(', ')}. Relationships are demonstration data, not verified.`,
         connection: `Connected through shared self-reported memberships in ${names.length} Harvard groups.`
       });
-      profile.groups.forEach(id => { if (groups.some(group => group.id === id)) gridEdges.push([profile.id, id, 'self-reported member']); });
+      profile.groups.forEach(id => { if (groups.some(group => group.id === id)) gridEdges.push([profile.id, id, 'self-reported member', 'MEMBER_OF']); });
     });
     demoProfiles.forEach(profile => profile.connections.forEach(otherId => {
       const key = [profile.id, otherId].sort().join('|');
       if (linked.has(key) || !demoProfiles.some(other => other.id === otherId)) return;
       linked.add(key);
-      gridEdges.push([profile.id, otherId, 'direct connection']);
+      gridEdges.push([profile.id, otherId, 'knows', 'KNOWS']);
     }));
+    addPersonalNetworkEdges(groups);
     computeGridLayout();
   }
 
@@ -1205,12 +1250,40 @@ function computeGridLayout() {
   gridRings = rings.map(ring => ({ depth: ring.depth, rx: (ring.rx / gridExtent.w) * 100, ry: (ring.ry / gridExtent.h) * 100 }));
 }
 
+let pendingPathFocus = false;
+
+// Zooms and pans so the active path fills the stage; nodes keep a fixed pixel size, so zooming spreads them apart.
+function focusOnPath() {
+  const stage = document.querySelector('#map-stage');
+  const sw = stage.clientWidth;
+  const sh = stage.clientHeight;
+  if (!pathSearch || !gridExtent) return;
+  if (!sw || !sh) { pendingPathFocus = true; return; }
+  pendingPathFocus = false;
+  const ids = pathSearch.paths[pathSearch.index];
+  const xs = ids.map(id => gridLayout[id].x / 100);
+  const ys = ids.map(id => gridLayout[id].y / 100);
+  const fit = Math.min(1.25, (sw - 24) / gridExtent.w, (sh - 24) / gridExtent.h);
+  const bw = (Math.max(...xs) - Math.min(...xs)) * gridExtent.w * fit;
+  const bh = (Math.max(...ys) - Math.min(...ys)) * gridExtent.h * fit;
+  const zoom = Math.max(1, Math.min(2.6, (sw - 220) / Math.max(bw, 1), (sh - 200) / Math.max(bh, 1)));
+  const pw = gridExtent.w * fit * zoom;
+  const ph = gridExtent.h * fit * zoom;
+  state.gridZoom = Math.round(zoom * 100) / 100;
+  state.gridPan = {
+    x: pw * (0.5 - (Math.max(...xs) + Math.min(...xs)) / 2),
+    y: ph * (0.5 - (Math.max(...ys) + Math.min(...ys)) / 2)
+  };
+  applyViewport();
+}
+
 function applyViewport(relabel = true) {
   const stage = document.querySelector('#map-stage');
   const plane = document.querySelector('#map-plane');
   const sw = stage.clientWidth;
   const sh = stage.clientHeight;
   if (!sw || !sh) return;
+  if (pendingPathFocus && pathSearch) { focusOnPath(); return; }
   const fit = Math.min(1.25, (sw - 24) / gridExtent.w, (sh - 24) / gridExtent.h);
   const pw = gridExtent.w * fit * state.gridZoom;
   const ph = gridExtent.h * fit * state.gridZoom;
@@ -1266,17 +1339,19 @@ function renderNetworkMap() {
     const meta = node.id === 'truman' ? `You · ${state.profile.headline}` : node.meta;
     const photo = node.id === 'truman' ? state.profile.photo : node.image ? `https://images.unsplash.com/${node.image}?auto=format&fit=crop&w=96&q=80` : '';
     const avatar = photo ? `<img src="${escapeHTML(photo)}" alt="" />` : node.category === 'person' ? `<span class="node-initials">${escapeHTML(nodeInitials(name))}</span>` : icon(node.icon);
-    const kind = node.kind === 'group' ? 'kind-group' : node.kind === 'profile' ? 'kind-profile' : '';
+    const kind = node.kind ? `kind-${node.kind}` : '';
     return `<button type="button" class="grid-node node-${node.category} ${kind} ${node.id === 'truman' ? 'is-user' : ''} ${matchingIds.has(node.id) ? '' : 'search-dimmed'}" data-node-id="${node.id}" style="--node-x:${pos.x}%;--node-y:${pos.y}%" aria-label="${escapeHTML(name)}, ${escapeHTML(meta)}" title="${escapeHTML(name)}"><span class="node-avatar">${avatar}</span><span class="node-copy"><strong>${escapeHTML(name)}</strong><small>${escapeHTML(meta)}</small></span></button>`;
   }).join('');
   nodeLayer.querySelectorAll('.grid-node').forEach(button => { button.hidden = !visibleIds.has(button.dataset.nodeId); });
 
   const center = gridLayout.truman || { x: 50, y: 50 };
   const rings = gridRings.map(ring => `<ellipse class="depth-ring" data-depth="${ring.depth}" cx="${center.x * 10}" cy="${center.y * 6.8}" rx="${ring.rx * 10}" ry="${ring.ry * 6.8}"></ellipse>`).join('');
-  const lines = gridEdges.filter(([from, to]) => visibleIds.has(from) && visibleIds.has(to)).map(([from, to, relation]) => {
+  const pairKey = (a, b) => [a, b].sort().join('|');
+  const solidPairs = new Set(gridEdges.filter(edge => edge[3] !== 'FOLLOWS').map(([from, to]) => pairKey(from, to)));
+  const lines = gridEdges.filter(([from, to, , type]) => visibleIds.has(from) && visibleIds.has(to) && !(type === 'FOLLOWS' && solidPairs.has(pairKey(from, to)))).map(([from, to, relation, type]) => {
     const start = gridLayout[from];
     const end = gridLayout[to];
-    return `<line class="grid-edge" data-from="${from}" data-to="${to}" x1="${start.x * 10}" y1="${start.y * 6.8}" x2="${end.x * 10}" y2="${end.y * 6.8}"><title>${escapeHTML(relation)}</title></line>`;
+    return `<line class="grid-edge edge-${String(type || 'related').toLowerCase()}" data-from="${from}" data-to="${to}" x1="${start.x * 10}" y1="${start.y * 6.8}" x2="${end.x * 10}" y2="${end.y * 6.8}"><title>${escapeHTML(`${relation} (${type || 'RELATED_TO'})`)}</title></line>`;
   }).join('');
   edgeLayer.innerHTML = rings + lines;
   document.querySelector('#map-node-count').textContent = `${visibleIds.size} nodes`;
@@ -1438,16 +1513,33 @@ function guideResponse(query) {
   };
 }
 
-// Breadth-first search over gridEdges. Records every discovery (visit order and parent) so the
+// Breadth-first search over the typed gridEdges. Records every discovery (visit order and parent) so the
 // visualization can replay the real traversal, then returns all equally short paths to the first target found.
-function bfsSearch(startId, isTarget, limit = 10) {
+// Passes run from strictest to loosest and the first that finds a target wins:
+//   confirmed   - people, groups and KNOWS/MEMBER_OF edges; companies, universities and opportunities can only be endpoints
+//   affiliation - may also pass through shared universities, employers and postings (not personal relationships)
+//   follow      - may also use the user's one-way FOLLOWS edges
+const SEARCH_MODES = ['confirmed', 'affiliation', 'follow'];
+const nodeSearchClass = id => {
+  const node = gridNodeById(id);
+  return node?.category === 'person' ? 'person' : node?.kind === 'group' ? 'group' : 'entity';
+};
+
+function bfsPass(startId, isTarget, mode, limit) {
   const adjacency = new Map();
-  gridEdges.forEach(([from, to]) => {
+  const link = (from, to) => {
     if (!adjacency.has(from)) adjacency.set(from, []);
-    if (!adjacency.has(to)) adjacency.set(to, []);
     adjacency.get(from).push(to);
-    adjacency.get(to).push(from);
+  };
+  gridEdges.forEach(([from, to, , type]) => {
+    if (type === 'FOLLOWS') {
+      if (mode === 'follow') link(from, to);
+      return;
+    }
+    link(from, to);
+    link(to, from);
   });
+  const expandable = id => mode !== 'confirmed' || nodeSearchClass(id) !== 'entity';
   const distance = new Map([[startId, 0]]);
   const parents = new Map();
   const events = [];
@@ -1463,7 +1555,7 @@ function bfsSearch(startId, isTarget, limit = 10) {
       if (!distance.has(next)) {
         distance.set(next, distance.get(current) + 1);
         parents.set(next, [current]);
-        queue.push(next);
+        if (expandable(next)) queue.push(next);
         events.push({ from: current, to: next, depth: distance.get(next) });
         if (targetId === null && isTarget(next)) {
           targetId = next;
@@ -1483,7 +1575,15 @@ function bfsSearch(startId, isTarget, limit = 10) {
     parents.get(id).forEach(parent => walk(parent, [id, ...tail]));
   };
   walk(targetId, []);
-  return { startId, targetId, paths, trace: { events: events.slice(0, replayLength) } };
+  return { startId, targetId, paths, mode, trace: { events: events.slice(0, replayLength) } };
+}
+
+function bfsSearch(startId, isTarget, limit = 10) {
+  for (const mode of SEARCH_MODES) {
+    const result = bfsPass(startId, isTarget, mode, limit);
+    if (result) return result;
+  }
+  return null;
 }
 
 function pathSummary(path) {
@@ -1491,46 +1591,120 @@ function pathSummary(path) {
   return { edges: path.length - 1, hops: Math.max(0, people.length - 1) };
 }
 
-function matchProfilesByCompany(query) {
+const SEARCH_STOP_WORDS = new Set(['find', 'someone', 'people', 'person', 'who', 'works', 'work', 'working', 'for', 'the', 'and', 'with', 'from', 'about', 'connect', 'introduce', 'show', 'looking', 'that', 'have', 'into', 'get', 'any', 'anyone', 'somebody', 'path', 'paths']);
+const SEARCH_INTENT = /\b(find|search|who|someone|anyone|people|person|introduc\w*|connect\w*|work\w*|intern\w*|opportunit\w*|jobs?|roles?|looking|banker|consultant|engineer|analyst|investor|founder)\b/;
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const mentionsName = (text, name) => new RegExp(`\\b${escapeRegExp(name.toLowerCase())}\\b`).test(text);
+
+function searchTokens(text) {
+  return text.toLowerCase().split(/[^a-z0-9]+/).filter(token => token.length >= 4 && !SEARCH_STOP_WORDS.has(token));
+}
+
+const stemMatches = (haystack, token) => haystack.includes(token.slice(0, Math.min(token.length, 6)));
+
+// Resolves a free-text query to target node ids using stored node data: people, companies, universities,
+// opportunities, then career keywords. Returns null when nothing matches so the guide can answer normally.
+function resolveSearchTargets(query) {
   const text = query.toLowerCase();
-  return demoProfiles.filter(profile => {
-    if (!profile.company) return false;
-    const company = profile.company.toLowerCase();
-    return text.includes(company) || (company.split(' ')[0].length >= 5 && text.includes(company.split(' ')[0]));
-  });
+  const nodes = gridNodes.filter(node => node.id !== 'truman');
+  const employeesOf = companyId => gridEdges.filter(([from, to, , type]) => type === 'WORKS_AT' && to === companyId && from !== 'truman').map(([from]) => from);
+  const alumniOf = schoolId => gridEdges.filter(([from, to, , type]) => type === 'STUDIED_AT' && to === schoolId && from !== 'truman').map(([from]) => from);
+  const wantsOpportunity = /\b(intern\w*|opportunit\w*|jobs?|roles?|position|hiring|project|collaborator)\b/.test(text);
+
+  const named = nodes.filter(node => node.category === 'person' && mentionsName(text, node.name));
+  if (named.length) return { ids: named.map(node => node.id), kind: 'person' };
+
+  const companies = nodes.filter(node => node.kind === 'company' && (mentionsName(text, node.name)
+    || (node.name.split(' ')[0].length >= 5 && mentionsName(text, node.name.split(' ')[0]))));
+  const opportunities = nodes.filter(node => node.kind === 'opportunity');
+  if (wantsOpportunity) {
+    const tokens = searchTokens(text);
+    const scored = opportunities.map(node => {
+      const hay = `${node.name} ${node.meta} ${(node.tags || []).join(' ')}`.toLowerCase();
+      const posters = gridEdges.filter(([from, , , type]) => type === 'POSTED_BY' && from === node.id).map(([, to]) => gridNodeById(to).name.toLowerCase());
+      const score = tokens.filter(token => stemMatches(hay, token)).length + (companies.some(company => posters.includes(company.name.toLowerCase())) ? 2 : 0);
+      return { id: node.id, score };
+    }).filter(item => item.score > 0);
+    const best = Math.max(0, ...scored.map(item => item.score));
+    if (best) return { ids: scored.filter(item => item.score === best).map(item => item.id), kind: 'opportunity' };
+  }
+  if (companies.length) {
+    const employees = companies.flatMap(company => employeesOf(company.id));
+    return employees.length ? { ids: employees, kind: 'person' } : { ids: companies.map(company => company.id), kind: 'company' };
+  }
+  const schools = nodes.filter(node => node.kind === 'university' && mentionsName(text, node.name) && node.id !== 'harvard');
+  if (schools.length) {
+    const alumni = schools.flatMap(school => alumniOf(school.id));
+    if (alumni.length) return { ids: alumni, kind: 'person' };
+  }
+  if (!SEARCH_INTENT.test(text)) return null;
+  const tokens = searchTokens(text);
+  if (!tokens.length) return null;
+  const scored = demoProfiles.map(profile => {
+    const hay = `${profile.title || ''} ${profile.company || ''} ${profile.role} ${profile.interests.join(' ')}`.toLowerCase();
+    return { id: profile.id, score: tokens.filter(token => stemMatches(hay, token)).length };
+  }).filter(item => item.score > 0);
+  const best = Math.max(0, ...scored.map(item => item.score));
+  return best ? { ids: scored.filter(item => item.score === best).map(item => item.id), kind: 'person' } : null;
 }
 
 function describePathStep(from, to) {
-  const edge = gridEdges.find(([a, b]) => (a === from.id && b === to.id) || (a === to.id && b === from.id));
-  const relation = edge ? edge[2] : 'connected';
+  const between = gridEdges.filter(([a, b]) => (a === from.id && b === to.id) || (a === to.id && b === from.id));
+  const edge = between.find(item => item[3] !== 'FOLLOWS') || between[0];
   const a = gridNodeLabel(from);
   const b = gridNodeLabel(to);
-  if (from.kind === 'group' && to.kind === 'group') return `${a} and ${b} are related groups.`;
-  if (to.kind === 'group') {
-    const role = relation.replace(/ of$/, '');
-    return `${a} is ${role === 'admin' ? 'an admin' : `a ${role}`} of ${b}.`;
+  if (!edge) return `${a} is connected to ${b}.`;
+  const [first, , relation, type] = edge;
+  const reverse = first !== from.id;
+  const subject = gridNodeLabel(gridNodeById(first));
+  const object = gridNodeLabel(gridNodeById(edge[1]));
+  const shared = ['university', 'company', 'opportunity'].includes(from.kind) && reverse ? ' This is a shared affiliation, not a personal relationship.' : '';
+  switch (type) {
+    case 'KNOWS':
+      return from.id === 'truman' || to.id === 'truman'
+        ? `${a === gridNodeLabel(gridNodeById('truman')) ? a : b} added ${a === gridNodeLabel(gridNodeById('truman')) ? b : a} as an acquaintance in My Grid (a personal connection).`
+        : `${a} and ${b} know each other (direct connection).`;
+    case 'FOLLOWS':
+      return `${subject} follows ${object}, a one-way follow. It is not a confirmed personal relationship.`;
+    case 'MEMBER_OF': {
+      if (reverse) return `${b} is also a self-reported member of ${a}.`;
+      const role = relation.replace(/ of$/, '');
+      return `${a} is ${role === 'admin' ? 'an admin' : `a ${role}`} of ${b}.`;
+    }
+    case 'POSTED_BY':
+      return reverse ? `${a} posted the opportunity “${b}”.${shared}` : `“${a}” is an opportunity posted by ${b}.`;
+    case 'STUDIED_AT':
+    case 'WORKS_AT':
+      return `${subject} ${relation} ${object}.${shared}`;
+    default:
+      return `${a} is connected to ${b} (${relation}).`;
   }
-  if (from.kind === 'group') return `${b} is also a self-reported member of ${a}.`;
-  if (relation === 'direct connection') return `${a} has a direct connection to ${b}.`;
-  return `${a} is connected to ${b} (${relation}).`;
 }
 
 function buildIntroduction(path) {
   const nodes = path.map(gridNodeById);
   const target = nodes[nodes.length - 1];
   const profile = demoProfiles.find(candidate => candidate.id === target.id);
-  const connectorIndex = nodes.map(node => node.kind).lastIndexOf('profile', nodes.length - 2);
+  let connectorIndex = -1;
+  nodes.forEach((node, index) => { if (index > 0 && index < nodes.length - 1 && node.category === 'person') connectorIndex = index; });
   const connector = connectorIndex > 0 ? nodes[connectorIndex] : null;
   const recipient = connector || target;
-  const shared = connector && nodes[connectorIndex - 1].kind === 'group' ? nodes[connectorIndex - 1] : null;
+  const before = nodes[(connector ? connectorIndex : nodes.length - 1) - 1];
+  const sharedText = before?.kind === 'group' ? ` and fellow member of ${before.name}`
+    : ['company', 'university'].includes(before?.kind) ? ` with a shared link to ${before.name}` : '';
   const user = state.profile.name;
-  const title = profile?.title || 'professional';
-  const article = /^[aeiou]/i.test(title) ? 'an' : 'a';
-  const place = profile?.company ? ` at ${profile.company}` : '';
-  const opening = `Hi ${recipient.name.split(' ')[0]}, I’m ${user}, a Harvard student${shared ? ` and fellow member of ${shared.name}` : ''}.`;
-  const ask = connector
-    ? `I’m hoping to learn more about working as ${article} ${title}${place}, and I saw that you know ${target.name}. Would you be open to introducing us? Even a short conversation would mean a lot.`
-    : `I’m hoping to learn more about working as ${article} ${title}${place}. Would you be open to a short conversation?`;
+  const opening = `Hi ${recipient.name.split(' ')[0]}, I’m ${user}, a Harvard student${sharedText}.`;
+  let ask;
+  if (target.category !== 'person') {
+    ask = `I’m interested in ${target.name} and saw that you’re connected to it. Could you point me in the right direction or share what it’s like?`;
+  } else {
+    const title = profile?.title || 'professional';
+    const article = /^[aeiou]/i.test(title) ? 'an' : 'a';
+    const place = profile?.company ? ` at ${profile.company}` : '';
+    ask = connector
+      ? `I’m hoping to learn more about working as ${article} ${title}${place}, and I saw that you know ${target.name}. Would you be open to introducing us? Even a short conversation would mean a lot.`
+      : `I’m hoping to learn more about working as ${article} ${title}${place}. Would you be open to a short conversation?`;
+  }
   return { recipient, text: `${opening} ${ask} Thank you! — ${user.split(' ')[0]}` };
 }
 
@@ -1543,16 +1717,20 @@ function renderPathResult() {
   const summary = pathSummary(path);
   const steps = nodes.slice(1).map((node, i) => `<li>${escapeHTML(describePathStep(nodes[i], node))}</li>`).join('');
   const chain = nodes.map(node => escapeHTML(gridNodeLabel(node))).join(' → ');
+  const modeNote = pathSearch.mode === 'affiliation'
+    ? 'No path through personal connections or groups exists yet. This path relies on a shared university, employer or posting, which is not a personal relationship.'
+    : pathSearch.mode === 'follow' ? 'This path includes a one-way follow, which is not a confirmed personal relationship.' : '';
   const alternatives = pathSearch.paths.length > 1
     ? `<button type="button" data-path-action="alternative">Show alternative path (${pathSearch.index + 1} of ${pathSearch.paths.length})</button>` : '';
   pathMessage.querySelector('.path-result').innerHTML = `
-    <div class="path-target"><strong>${escapeHTML(target.name)}</strong><span>${escapeHTML(profile?.title || target.meta)}${profile?.company ? ` · ${escapeHTML(profile.company)}` : ''}</span></div>
+    <div class="path-target"><strong>${escapeHTML(target.name)}</strong><span>${escapeHTML(profile?.title || target.meta)}${profile?.company ? ` · ${escapeHTML(profile.company)}` : ''}${profile ? ' · fictional demo profile' : ''}</span></div>
     <div class="path-stats"><span><strong>${summary.hops}</strong> introduction hops</span><span><strong>${summary.edges}</strong> graph edges</span><span><strong>${pathSearch.trace.events.length}</strong> nodes searched</span></div>
+    ${modeNote ? `<p class="path-warning">${escapeHTML(modeNote)}</p>` : ''}
     <div class="path-chain">${chain}</div>
     <ol class="path-steps">${steps}</ol>
     <div class="path-actions"><button type="button" data-path-action="profile">View Profile</button><button type="button" data-path-action="replay">Replay search</button>${alternatives}<button type="button" data-path-action="clear">Clear path</button></div>
     <div class="path-intro"><span class="drawer-section-title">SUGGESTED INTRODUCTION TO ${escapeHTML(intro.recipient.name.toUpperCase())}</span><div class="path-text" id="path-intro-text">${escapeHTML(intro.text)}</div><div class="path-actions"><button type="button" data-path-action="copy">Copy message</button></div></div>
-    <small>Introduction hops count person-to-person steps; graph edges also include group memberships. Fictional demo profiles and relationships, not verified real-world connections.</small>`;
+    <small>Introduction hops count person-to-person steps; graph edges also include typed links such as MEMBER_OF, WORKS_AT and POSTED_BY. Following is one-way and never counts as a personal connection. Fictional demo profiles and relationships, not verified real-world connections.</small>`;
   const messages = document.querySelector('#guide-messages');
   messages.scrollTop = messages.scrollHeight;
 }
@@ -1624,7 +1802,7 @@ function showPathMessage() {
 }
 
 function startPathSearch(result, query) {
-  pathSearch = { query, startId: result.startId, targetId: result.targetId, paths: result.paths, index: 0, trace: result.trace };
+  pathSearch = { query, startId: result.startId, targetId: result.targetId, paths: result.paths, index: 0, trace: result.trace, mode: result.mode, targetIds: pathSearch?.targetIds || null };
   state.gridZoom = 1;
   state.gridPan = { x: 0, y: 0 };
   document.querySelector('#map-filter').value = 'all';
@@ -1633,31 +1811,37 @@ function startPathSearch(result, query) {
   renderNetworkMap();
   pathMessage = null;
   showPathMessage();
+  focusOnPath();
   playPathAnimation();
 }
 
-function runCompanySearch(query) {
-  const matches = matchProfilesByCompany(query);
-  if (!matches.length) return false;
-  const matchIds = new Set(matches.map(profile => profile.id));
-  const result = bfsSearch('truman', id => matchIds.has(id));
+function runNetworkSearch(query) {
+  const resolved = resolveSearchTargets(query);
+  if (!resolved) return false;
+  const targetIds = new Set(resolved.ids);
+  const result = bfsSearch('truman', id => targetIds.has(id));
   if (!result) {
-    appendGuideMessage('assistant', `I found ${matches.map(profile => profile.name).join(', ')}, but there is no path from your profile yet. Join a group they belong to and search again.`);
+    const names = resolved.ids.map(id => gridNodeById(id).name).slice(0, 4).join(', ');
+    appendGuideMessage('assistant', `I found ${names}, but there is no path from your profile yet. Join a group, add an acquaintance in My Grid, and search again.`);
     return true;
   }
   startPathSearch(result, query);
+  pathSearch.targetIds = [...targetIds];
   return true;
 }
 
 function refreshPathSearch() {
   if (!pathSearch) return;
-  const result = bfsSearch('truman', id => id === pathSearch.targetId);
+  const targetIds = new Set(pathSearch.targetIds || [pathSearch.targetId]);
+  const result = bfsSearch('truman', id => targetIds.has(id));
   if (!result) {
     clearPathSearch();
-    showToast('That path no longer exists after your group change.');
+    showToast('That path no longer exists after your change.');
     return;
   }
+  const keepTargets = pathSearch.targetIds;
   startPathSearch(result, pathSearch.query);
+  pathSearch.targetIds = keepTargets;
 }
 
 document.querySelector('#guide-messages').addEventListener('click', event => {
@@ -1670,6 +1854,7 @@ document.querySelector('#guide-messages').addEventListener('click', event => {
   if (action === 'alternative') {
     pathSearch.index = (pathSearch.index + 1) % pathSearch.paths.length;
     showPathMessage();
+    focusOnPath();
     updateLabelVisibility(...planeSize());
     playPathAnimation({ explore: false });
   }
@@ -1698,7 +1883,7 @@ function sendGuideQuery(query) {
   const message = query.trim();
   if (!message) return;
   appendGuideMessage('user', message);
-  if (runCompanySearch(message)) return;
+  if (runNetworkSearch(message)) return;
   if (pathSearch) clearPathSearch();
   const response = guideResponse(message);
   window.setTimeout(() => {
@@ -1761,7 +1946,6 @@ function applyProfile() {
   document.querySelector('#overview-profile-location').textContent = location;
   document.querySelector('#overview-profile-school').textContent = school;
   document.querySelector('#overview-profile-bio').textContent = bio;
-  renderNetworkExample();
 }
 
 function openProfileEditor() {
@@ -2578,15 +2762,7 @@ document.querySelector('#people-list').addEventListener('click', event => {
     return;
   }
   const id = button.closest('[data-person]').dataset.person;
-  if (state.connected.has(id)) {
-    state.connected.delete(id);
-    showToast('Connection request withdrawn.');
-  } else {
-    state.connected.add(id);
-    showToast('Connection request sent. Your network is growing.');
-  }
-  persist();
-  renderPeople();
+  toggleFollow(id);
 });
 
 document.querySelector('#new-message-trigger').addEventListener('click', () => {
@@ -3134,11 +3310,11 @@ function sizeLandingCanvas() {
   landing.canvas.width = landing.width * ratio;
   landing.canvas.height = landing.height * ratio;
   landing.canvas.getContext('2d').setTransform(ratio, 0, 0, ratio, 0, 0);
-  const count = Math.round(Math.min(70, Math.max(28, landing.width * landing.height / 22000)));
+  const count = Math.round(Math.min(95, Math.max(40, landing.width * landing.height / 16000)));
   landing.nodes = Array.from({ length: count }, (_, i) => ({
     x: Math.random() * landing.width, y: Math.random() * landing.height,
     vx: (Math.random() - .5) * .18, vy: (Math.random() - .5) * .18,
-    r: i % 7 === 0 ? 3.2 : 1.8, accent: i % 7 === 0
+    r: i % 6 === 0 ? 4.5 : 2.8, accent: i % 6 === 0
   }));
 }
 
@@ -3153,20 +3329,29 @@ function drawLanding(step) {
       if (node.y < 0 || node.y > height) node.vy *= -1;
     }
   });
-  const reach = 150;
+  const reach = 190;
+  const t = performance.now() / 1000;
   for (let i = 0; i < nodes.length; i += 1) {
     for (let j = i + 1; j < nodes.length; j += 1) {
       const dist = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
       if (dist < reach) {
-        ctx.strokeStyle = `rgba(185, 199, 126, ${(1 - dist / reach) * .16})`;
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = `rgba(185, 199, 126, ${.14 + (1 - dist / reach) * .5})`;
+        ctx.lineWidth = 1.3;
         ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
+        if ((i * 7 + j) % 5 === 0 && !landingReducedMotion.matches) {
+          const p = (t * .35 + (i * 13 + j) * .17) % 1;
+          ctx.fillStyle = 'rgba(227, 238, 157, .95)';
+          ctx.beginPath(); ctx.arc(nodes[i].x + (nodes[j].x - nodes[i].x) * p, nodes[i].y + (nodes[j].y - nodes[i].y) * p, 2.2, 0, Math.PI * 2); ctx.fill();
+        }
       }
     }
   }
   nodes.forEach(node => {
-    ctx.fillStyle = node.accent ? 'rgba(227, 238, 157, .75)' : 'rgba(154, 158, 154, .45)';
+    ctx.shadowColor = node.accent ? 'rgba(227, 238, 157, .9)' : 'rgba(185, 199, 126, .5)';
+    ctx.shadowBlur = node.accent ? 18 : 8;
+    ctx.fillStyle = node.accent ? 'rgba(236, 245, 170, 1)' : 'rgba(190, 204, 160, .85)';
     ctx.beginPath(); ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
   });
 }
 
@@ -3200,3 +3385,121 @@ function onLandingResize() {
 document.querySelector('#landing-enter').addEventListener('click', enterPipeline);
 window.addEventListener('resize', onLandingResize);
 startLanding();
+
+// ---- My Grid: personal relationships (follows are one-way, acquaintances are personal connections) ----
+const myGrid = { query: '' };
+const demoProfileById = id => demoProfiles.find(profile => profile.id === id);
+
+function knowsNeighbors(id) {
+  const ids = new Set();
+  gridEdges.forEach(([from, to, , type]) => {
+    if (type !== 'KNOWS') return;
+    if (from === id) ids.add(to);
+    if (to === id) ids.add(from);
+  });
+  return ids;
+}
+
+function refreshNetworkViews() {
+  persist();
+  rebuildGroupGraph();
+  renderPeople();
+  renderMyGrid();
+  renderNetworkMap();
+  refreshPathSearch();
+}
+
+function toggleFollow(id) {
+  const profile = demoProfileById(id);
+  if (!profile) return;
+  if (state.follows.has(id)) {
+    state.follows.delete(id);
+    showToast(`You unfollowed ${profile.name}.`);
+  } else {
+    state.follows.add(id);
+    showToast(`You now follow ${profile.name}. This is one-way and does not mean they know you.`);
+  }
+  refreshNetworkViews();
+}
+
+function toggleAcquaintance(id) {
+  const profile = demoProfileById(id);
+  if (!profile) return;
+  if (state.acquaintances.has(id)) {
+    state.acquaintances.delete(id);
+    showToast(`${profile.name} removed from your acquaintances.`);
+  } else {
+    state.acquaintances.add(id);
+    showToast(`${profile.name} added as an acquaintance. Surf the Grid can now route through them.`);
+  }
+  refreshNetworkViews();
+}
+
+function myGridCard(profile) {
+  const following = state.follows.has(profile.id);
+  const knows = state.acquaintances.has(profile.id);
+  const names = ids => [...ids].map(id => demoProfileById(id)?.name).filter(Boolean);
+  const neighbors = knowsNeighbors(profile.id);
+  const mutual = names([...neighbors].filter(id => state.acquaintances.has(id)));
+  const direct = names([...neighbors].filter(id => id !== 'truman'));
+  const detail = profile.company ? `${profile.title} @ ${profile.company}` : profile.role;
+  const badges = [
+    knows ? '<span class="rel-badge is-knows">Acquaintance · personal connection</span>' : '',
+    following ? '<span class="rel-badge is-follows">Following · one-way</span>' : '',
+    !knows && !following ? '<span class="rel-badge">Not in your Grid</span>' : ''
+  ].join('');
+  return `<article class="mygrid-card" data-profile="${profile.id}">
+    <img class="mygrid-avatar" src="${escapeHTML(profile.avatar)}" alt="" />
+    <div class="mygrid-body">
+      <div class="mygrid-title"><strong>${escapeHTML(profile.name)}</strong><span class="mygrid-fictional">Fictional demo</span></div>
+      <span class="mygrid-role">${escapeHTML(detail)}</span>
+      <div class="mygrid-badges">${badges}</div>
+      <small>Mutual connections: ${mutual.length ? escapeHTML(mutual.join(', ')) : 'none yet'}</small>
+      <small>Direct connections: ${direct.length ? escapeHTML(direct.slice(0, 4).join(', ')) + (direct.length > 4 ? ` +${direct.length - 4}` : '') : 'none in the demo network'}</small>
+    </div>
+    <div class="mygrid-actions">
+      <button type="button" data-mygrid-action="follow" aria-pressed="${following}">${following ? 'Unfollow' : 'Follow'}</button>
+      <button type="button" data-mygrid-action="know" aria-pressed="${knows}">${knows ? 'Remove acquaintance' : 'Add acquaintance'}</button>
+      <button type="button" data-mygrid-action="view" class="is-link">View in Grid</button>
+    </div>
+  </article>`;
+}
+
+function renderMyGrid() {
+  const known = demoProfiles.filter(profile => state.acquaintances.has(profile.id));
+  const followed = demoProfiles.filter(profile => state.follows.has(profile.id));
+  const query = myGrid.query.trim().toLowerCase();
+  const others = demoProfiles.filter(profile => !state.acquaintances.has(profile.id) && !state.follows.has(profile.id)
+    && (!query || `${profile.name} ${profile.role} ${profile.title || ''} ${profile.company || ''} ${profile.interests.join(' ')}`.toLowerCase().includes(query)));
+  const secondDegree = new Set();
+  known.forEach(profile => knowsNeighbors(profile.id).forEach(id => { if (id !== 'truman' && !state.acquaintances.has(id)) secondDegree.add(id); }));
+  document.querySelector('#mygrid-summary').innerHTML = [
+    [known.length, 'acquaintances', 'personal connections'],
+    [followed.length, 'following', 'one-way follows'],
+    [secondDegree.size, 'people one step away', 'known by your acquaintances']
+  ].map(([value, label, hint]) => `<div class="mygrid-stat"><strong>${value}</strong><span>${label}</span><small>${hint}</small></div>`).join('');
+  document.querySelector('#mygrid-know-count').textContent = known.length;
+  document.querySelector('#mygrid-follow-count').textContent = followed.length;
+  document.querySelector('#mygrid-acquaintances').innerHTML = known.length ? known.map(myGridCard).join('') : '<p class="groups-empty">No acquaintances yet. Add someone you personally know to create a connection Surf the Grid can use.</p>';
+  document.querySelector('#mygrid-following').innerHTML = followed.length ? followed.map(myGridCard).join('') : '<p class="groups-empty">You are not following anyone yet.</p>';
+  document.querySelector('#mygrid-discover').innerHTML = others.length ? others.map(myGridCard).join('') : '<p class="groups-empty">No other profiles match.</p>';
+  document.querySelector('#mygrid-nav-count').textContent = known.length;
+  refreshIcons();
+}
+
+document.querySelector('#network-view').addEventListener('click', event => {
+  const button = event.target.closest('[data-mygrid-action]');
+  if (!button) return;
+  const id = button.closest('[data-profile]').dataset.profile;
+  const action = button.dataset.mygridAction;
+  if (action === 'follow') toggleFollow(id);
+  if (action === 'know') toggleAcquaintance(id);
+  if (action === 'view') { setView('surf-grid'); selectGridNode(id); }
+});
+
+document.querySelector('#mygrid-search').addEventListener('input', event => {
+  myGrid.query = event.target.value;
+  renderMyGrid();
+});
+
+renderMyGrid();
