@@ -12,6 +12,36 @@ python3 -m http.server 4173
 
 Then visit `http://localhost:4173`.
 
+## Supabase setup
+
+Pipeline uses the browser-safe Supabase publishable/anon key. Never put a Supabase
+service-role key in this repository or in browser code.
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. In the Supabase SQL Editor, run:
+   - [`supabase/migrations/001_initial_schema.sql`](supabase/migrations/001_initial_schema.sql)
+   - [`supabase/migrations/002_onboarding_and_groups.sql`](supabase/migrations/002_onboarding_and_groups.sql)
+3. In Authentication → Providers, enable Email.
+4. In Authentication → URL Configuration, set the Site URL to the hosted Pipeline
+   URL. For local development, add `http://localhost:4173` to Additional Redirect URLs.
+5. Copy `supabase-config.example.js` to `supabase-config.js`.
+6. From Project Settings → API, copy the Project URL and public publishable/anon
+   key into `supabase-config.js`.
+7. Start the static server and open `http://localhost:4173`.
+
+The migration creates the `profile-photos` private Storage bucket and owner-scoped
+policies. Row Level Security is enabled on every application table. The
+`public_profiles` view exposes only fields intended for public discovery; private
+matching data and unapproved resume entries are not available through that view.
+Migration `002_onboarding_and_groups.sql` seeds canonical campus groups and adds onboarding support.
+
+## User experiences
+
+Pipeline Beta 1.1 supports two distinct operating modes:
+
+1. **Real User Accounts**: Registered and authenticated Supabase users begin with a blank profile, 0 groups, 0 follows, 0 acquaintances, and 0 fake connections. First-time users are guided through a multi-step profile onboarding flow. Real profiles and group memberships persist to Supabase with helpful empty states instead of fictional connections.
+2. **Demo Experience**: Available without signing up via "Explore Demo Profile" on the welcome screen. Explores the fictional John Harvard demonstration network with sample connections, groups, and Grid visualization. Clearly labeled with a persistent demo banner and an easy exit option to return to the login screen. Changes made in demo mode are local and isolated from real accounts.
+
 ## Prototype interactions
 
 - Upload a PDF, DOCX, or TXT resume and review structured sections and entries before using the details on your profile.

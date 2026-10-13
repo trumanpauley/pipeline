@@ -12,6 +12,10 @@
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="supabase-client.js"></script>
+    <script src="supabase-service.js"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -39,10 +43,21 @@
             <span class="user-meta"><strong id="sidebar-profile-name">John Harvard</strong><small id="sidebar-profile-meta">Student · Boston, MA</small></span>
             <i data-lucide="chevrons-up-down"></i>
           </button>
+          <button class="demo-exit-btn sidebar-demo-exit" id="sidebar-demo-exit" type="button" hidden><i data-lucide="log-out"></i> Exit Demo Mode</button>
+          <button class="auth-logout" id="logout-button" type="button" hidden>Log out</button>
         </div>
       </aside>
 
       <main class="main-area" id="home-view">
+        <div class="demo-banner" id="demo-banner" hidden>
+          <div class="demo-banner-content">
+            <span class="demo-badge"><i data-lucide="sparkles"></i> Demo Mode</span>
+            <span class="demo-banner-text">Viewing fictional John Harvard demonstration profile. Changes are local and not saved to an account.</span>
+          </div>
+          <button class="demo-exit-btn" id="demo-exit-top" type="button">
+            <i data-lucide="log-out"></i> Exit Demo Mode
+          </button>
+        </div>
         <header class="topbar">
           <div class="breadcrumb"><span>My workspace</span><i data-lucide="chevron-right"></i><strong id="breadcrumb-current">Overview</strong></div>
           <div class="top-actions">
@@ -380,8 +395,10 @@
           <div class="profile-form-fields">
             <label>Full name<input name="name" maxlength="80" required /></label>
             <label>Headline<input name="headline" maxlength="100" placeholder="e.g. Computer science student" /></label>
-            <label>Location<input name="location" maxlength="80" placeholder="City, State" /></label>
             <label>School or organization<input name="school" maxlength="100" /></label>
+            <label>Major or field of study<input name="major" maxlength="80" placeholder="e.g. Computer Science" /></label>
+            <label>Graduation year<input name="graduationYear" type="number" min="1900" max="2200" placeholder="e.g. 2027" /></label>
+            <label>Location<input name="location" maxlength="80" placeholder="City, State" /></label>
             <label class="profile-bio-field">About you<textarea name="bio" maxlength="280" rows="3"></textarea></label>
           </div>
           <section class="photo-editor" aria-labelledby="photo-editor-title">
@@ -458,6 +475,143 @@
         <button class="button landing-enter" id="landing-enter" type="button">Enter Pipeline <i data-lucide="arrow-right"></i></button>
         <small>Prototype · demo profiles are fictional</small>
       </div>
+    </div>
+
+    <div class="auth-backdrop" id="auth-gate" aria-hidden="true">
+      <section class="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <div class="landing-brand"><span class="brand-mark"><i data-lucide="git-branch"></i></span><span>Pipeline</span></div>
+        <p class="eyebrow muted-eyebrow">YOUR NETWORK, MADE NAVIGABLE</p>
+        <h2 id="auth-title">Welcome to Pipeline</h2>
+        <p class="auth-description" id="auth-description">Create an account to keep your profile and approved resume details private and persistent.</p>
+        <div class="auth-tabs" role="tablist">
+          <button class="auth-tab active" id="auth-login-tab" type="button" role="tab" aria-selected="true">Log in</button>
+          <button class="auth-tab" id="auth-signup-tab" type="button" role="tab" aria-selected="false">Create account</button>
+        </div>
+        <form id="auth-form">
+          <label class="auth-signup-field" hidden>Full name<input name="fullName" autocomplete="name" maxlength="80" /></label>
+          <label class="auth-signup-field" hidden>Username<input name="username" autocomplete="username" maxlength="32" pattern="[A-Za-z0-9_]{3,32}" /></label>
+          <label>Email<input name="email" type="email" autocomplete="email" required /></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" minlength="8" required /></label>
+          <button class="button button-dark auth-submit" type="submit">Log in</button>
+        </form>
+        <button class="auth-reset" id="auth-reset" type="button">Forgot your password?</button>
+        <p class="auth-status" id="auth-status" role="status" aria-live="polite"></p>
+        <p class="auth-config-warning" id="auth-config-warning" hidden>Supabase is not configured yet. Add supabase-config.js using the setup instructions in README.md.</p>
+        <div class="auth-divider"><span>or</span></div>
+        <button class="button auth-demo-button" id="auth-demo" type="button">
+          <i data-lucide="sparkles"></i> Explore Demo Profile
+        </button>
+        <p class="auth-demo-note">Browse Pipeline using the fictional John Harvard demonstration network with sample connections and groups.</p>
+        <button class="auth-logout" id="auth-logout" type="button" hidden>Log out</button>
+      </section>
+    </div>
+
+    <!-- First-Time User Onboarding Flow -->
+    <div class="auth-backdrop onboarding-backdrop" id="onboarding-gate" aria-hidden="true">
+      <section class="auth-card onboarding-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+        <div class="landing-brand"><span class="brand-mark"><i data-lucide="git-branch"></i></span><span>Pipeline</span></div>
+        <div class="onboarding-header">
+          <p class="eyebrow muted-eyebrow">WELCOME TO PIPELINE BETA 1.1</p>
+          <h2 id="onboarding-title">Set up your profile</h2>
+          <p class="auth-description">Let's build your professional foundation. Real users start with a clean profile — no inherited demo data.</p>
+        </div>
+
+        <div class="onboarding-steps-indicator" aria-label="Onboarding progress">
+          <span class="step-pill active" id="step-pill-1">1. Foundation</span>
+          <span class="step-pill" id="step-pill-2">2. Interests &amp; Groups</span>
+          <span class="step-pill" id="step-pill-3">3. Resume / Skills</span>
+        </div>
+
+        <form id="onboarding-form">
+          <!-- Step 1: Foundation (Required) -->
+          <div class="onboarding-step active" id="onboarding-step-1">
+            <div class="onboarding-fields">
+              <label>Username
+                <input name="obUsername" id="ob-username" readonly disabled title="Username chosen at signup" />
+              </label>
+              <label>Full name <span class="required-star">*</span>
+                <input name="obFullName" id="ob-fullname" maxlength="80" placeholder="e.g. Maya Chen" required />
+              </label>
+              <label>Headline <span class="required-star">*</span>
+                <input name="obHeadline" id="ob-headline" maxlength="100" placeholder="e.g. Computer science student exploring software &amp; product" required />
+              </label>
+              <label>School or organization <span class="required-star">*</span>
+                <input name="obSchool" id="ob-school" maxlength="100" placeholder="e.g. Harvard University" required />
+              </label>
+              <div class="onboarding-row">
+                <label>Major / Field of study <span class="required-star">*</span>
+                  <input name="obMajor" id="ob-major" maxlength="80" placeholder="e.g. Computer Science" required />
+                </label>
+                <label>Graduation year <span class="required-star">*</span>
+                  <input name="obGradYear" id="ob-gradyear" type="number" min="1900" max="2200" placeholder="e.g. 2027" required />
+                </label>
+              </div>
+              <label>Location (optional)
+                <input name="obLocation" id="ob-location" maxlength="80" placeholder="e.g. Boston, MA" />
+              </label>
+              <label>About you (optional)
+                <textarea name="obBio" id="ob-bio" maxlength="280" rows="2" placeholder="A brief note on what you're interested in building or learning next..."></textarea>
+              </label>
+            </div>
+            <div class="onboarding-actions">
+              <button class="button button-dark onboarding-next-btn" type="button" id="ob-step1-next">Continue <i data-lucide="arrow-right"></i></button>
+            </div>
+          </div>
+
+          <!-- Step 2: Interests & Groups (Optional) -->
+          <div class="onboarding-step" id="onboarding-step-2" hidden>
+            <p class="onboarding-subheading">Choose areas of interest to help find relevant paths and connections:</p>
+            <div class="onboarding-chips" id="ob-interest-chips">
+              <button type="button" class="ob-chip" data-interest="Technology">Technology</button>
+              <button type="button" class="ob-chip" data-interest="Finance">Finance</button>
+              <button type="button" class="ob-chip" data-interest="Consulting">Consulting</button>
+              <button type="button" class="ob-chip" data-interest="Entrepreneurship">Entrepreneurship</button>
+              <button type="button" class="ob-chip" data-interest="Academics">Academics</button>
+              <button type="button" class="ob-chip" data-interest="Athletics">Athletics</button>
+              <button type="button" class="ob-chip" data-interest="Design">Design</button>
+            </div>
+
+            <p class="onboarding-subheading" style="margin-top: 14px;">Join communities to start populating your Grid:</p>
+            <div class="onboarding-group-list" id="ob-group-picker">
+              <!-- Dynamically populated or static catalog options -->
+            </div>
+
+            <div class="onboarding-actions">
+              <button class="button profile-cancel" type="button" id="ob-step2-back">Back</button>
+              <button class="button button-dark onboarding-next-btn" type="button" id="ob-step2-next">Continue <i data-lucide="arrow-right"></i></button>
+            </div>
+          </div>
+
+          <!-- Step 3: Experience & Resume (Optional) -->
+          <div class="onboarding-step" id="onboarding-step-3" hidden>
+            <p class="onboarding-subheading">Add top skills or upload a resume to review later on your profile:</p>
+            <label>Skills (comma-separated)
+              <input name="obSkills" id="ob-skills" placeholder="e.g. Python, React, SQL, Financial Modeling" />
+            </label>
+            
+            <div class="onboarding-resume-box">
+              <div class="onboarding-resume-icon"><i data-lucide="file-up"></i></div>
+              <div class="onboarding-resume-copy">
+                <strong>Upload your resume (optional)</strong>
+                <p>PDF, DOCX, or TXT. Processed privately in your browser.</p>
+              </div>
+              <label class="button photo-select" for="ob-resume-file" tabindex="0" role="button">
+                <i data-lucide="upload"></i> Select file
+              </label>
+              <input id="ob-resume-file" class="visually-hidden-input" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" />
+            </div>
+            <p class="photo-file-status" id="ob-resume-status" aria-live="polite"></p>
+
+            <div class="onboarding-actions">
+              <button class="button profile-cancel" type="button" id="ob-step3-back">Back</button>
+              <button class="button button-dark auth-submit" type="submit" id="ob-submit-btn"><i data-lucide="check"></i> Complete Setup</button>
+            </div>
+          </div>
+        </form>
+
+        <p class="auth-status" id="ob-status" role="status" aria-live="polite"></p>
+        <button class="auth-logout" id="ob-logout" type="button">Log out</button>
+      </section>
     </div>
     <script src="app.js?v=20261008-landing2"></script>
   </body>

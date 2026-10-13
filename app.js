@@ -105,10 +105,12 @@ const DEMO_ACQUAINTANCES = ['demo-sarah'];
 const DEMO_FOLLOWS = ['demo-alex', 'demo-ethan'];
 function loadIdSet(key, fallback) {
   try {
-    const raw = localStorage.getItem(key);
-    return new Set(raw === null ? fallback : JSON.parse(raw));
+    const scopedKey = typeof userStorageKey === 'function' ? userStorageKey(key) : key;
+    const raw = localStorage.getItem(scopedKey);
+    const resolvedFallback = state?.isDemo ? fallback : [];
+    return new Set(raw === null ? resolvedFallback : JSON.parse(raw));
   } catch {
-    return new Set(fallback);
+    return new Set(state?.isDemo ? fallback : []);
   }
 }
 const DEMO_USER_GROUPS = ['harvard-chess-club', 'harvard-football'];
@@ -241,22 +243,37 @@ const defaultMessageThreads = [
 ];
 
 const state = {
-  items: loadItems(),
-  resumeData: loadResumeData(),
-  groupMemberships: loadGroupMemberships(),
-  createdGroups: loadCreatedGroups(),
-  opportunityPosts: loadOpportunityPosts(),
-  savedOpportunities: loadOpportunityIds('orbit-saved-opportunities'),
-  interestedOpportunities: loadOpportunityIds('orbit-interested-opportunities'),
+  isDemo: false,
+  currentUser: null,
+  rawProfile: null,
+  onboardingActive: false,
+  items: [],
+  resumeData: { version: 1, sections: [], lines: [] },
+  groupMemberships: {},
+  createdGroups: [],
+  opportunityPosts: [],
+  savedOpportunities: new Set(),
+  interestedOpportunities: new Set(),
   opportunityFilters: { tab: 'for-you', search: '', location: 'all', type: 'all', industry: 'all', sort: 'relevant', savedOnly: false },
   openOpportunityId: null,
   activeGroupFilter: 'all',
   editingSkills: false,
-  profile: loadProfile(),
-  connected: new Set(JSON.parse(localStorage.getItem('orbit-connected') || '[]')),
-  follows: loadIdSet('pipeline-follows-v1', DEMO_FOLLOWS),
-  acquaintances: loadIdSet('pipeline-acquaintances-v1', DEMO_ACQUAINTANCES),
-  saved: new Set(JSON.parse(localStorage.getItem('orbit-saved') || '[]')),
+  sharedMembers: [],
+  groupMembersCache: {},
+  profile: {
+    name: '',
+    headline: '',
+    location: '',
+    school: '',
+    major: '',
+    graduation_year: null,
+    bio: '',
+    photo: ''
+  },
+  connected: new Set(),
+  follows: new Set(),
+  acquaintances: new Set(),
+  saved: new Set(),
   toastTimer: null,
   selectedGridNode: null,
   gridZoom: 1,
@@ -268,7 +285,7 @@ const state = {
   cropTop: 0,
   cropPointer: null,
   cropObjectUrl: null,
-  messageThreads: loadMessageThreads(),
+  messageThreads: [],
   activeMessageThreadId: null,
   messagePickerOpen: false
 };
@@ -307,17 +324,28 @@ const connectionProfiles = {
 };
 
 function loadMessageThreads() {
-  try {
-    const saved = JSON.parse(localStorage.getItem('orbit-message-threads') || 'null');
-    if (Array.isArray(saved) && saved.length) return saved;
-  } catch {
-    // Fall through to defaults.
+  if (state.isDemo) {
+    try {
+      const key = userStorageKey('orbit-message-threads');
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch {
+      // Fall through to defaults.
+    }
+    return defaultMessageThreads.map(thread => ({ ...thread, messages: thread.messages.map(message => ({ ...message })) }));
   }
-  return defaultMessageThreads.map(thread => ({ ...thread, messages: thread.messages.map(message => ({ ...message })) }));
+  if (state.currentUser) {
+    try {
+      const key = userStorageKey('orbit-message-threads');
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if (Array.isArray(saved)) return saved;
+    } catch {}
+  }
+  return [];
 }
 
 function persistMessageThreads() {
-  localStorage.setItem('orbit-message-threads', JSON.stringify(state.messageThreads));
+  localStorage.setItem(userStorageKey('orbit-message-threads'), JSON.stringify(state.messageThreads));
 }
 
 function syncMessagePickerState() {
@@ -326,6 +354,16 @@ function syncMessagePickerState() {
 }
 
 function getPersonById(personId) {
+  const peer = (state.sharedMembers || []).find(p => `user-${p.id}` === personId || p.id === personId);
+  if (peer) {
+    return {
+      id: `user-${peer.id}`,
+      name: peer.full_name || peer.username || 'Pipeline member',
+      role: [peer.headline, peer.major].filter(Boolean).join(' · ') || peer.school_or_organization || 'Student',
+      avatar: getAvatarSrc(peer.photo_path, peer.full_name || peer.username),
+      context: 'Connected through shared campus groups'
+    };
+  }
   return people.find(person => person.id === personId) || {
     id: personId,
     name: personId === 'sarah' ? 'Sarah Chen' : 'New connection',
@@ -380,7 +418,28 @@ function renderMessageThreads() {
   });
 
   if (!filteredThreads.length) {
-    list.innerHTML = '<div class="empty-message-state compact">No matching conversations.</div>';
+    list.innerHTML = `<div class="empty-message-threads">
+      <p>No conversations yet</p>
+      <small>${state.isDemo ? 'Start a conversation with a teammate or connection.' : 'Connect with peers or mentors on Pipeline to begin messaging.'}</small>
+    </div>`;
+    const picker = document.querySelector('#message-picker-list');
+    if (picker) {
+      if (state.isDemo) {
+        const threadIds = new Set(filteredThreads.map(thread => thread.personId));
+        const contacts = people.filter(person => !threadIds.has(person.id));
+        picker.innerHTML = contacts.map(person => `
+          <button type="button" class="message-picker-person" data-start-person="${person.id}">
+            <img src="https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=96&q=80" alt="${escapeHTML(person.name)}" />
+            <span>
+              <strong>${escapeHTML(person.name)}</strong>
+              <small>${escapeHTML(person.role)}</small>
+            </span>
+          </button>
+        `).join('');
+      } else {
+        picker.innerHTML = '<p class="groups-empty" style="padding:12px;font-size:11px;">You have no connections to message yet.</p>';
+      }
+    }
     return;
   }
 
@@ -402,17 +461,23 @@ function renderMessageThreads() {
   }).join('');
 
   const picker = document.querySelector('#message-picker-list');
-  const threadIds = new Set(filteredThreads.map(thread => thread.personId));
-  const contacts = people.filter(person => !threadIds.has(person.id));
-  picker.innerHTML = contacts.map(person => `
-    <button type="button" class="message-picker-person" data-start-person="${person.id}">
-      <img src="https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=96&q=80" alt="${escapeHTML(person.name)}" />
-      <span>
-        <strong>${escapeHTML(person.name)}</strong>
-        <small>${escapeHTML(person.role)}</small>
-      </span>
-    </button>
-  `).join('');
+  if (picker) {
+    if (state.isDemo) {
+      const threadIds = new Set(filteredThreads.map(thread => thread.personId));
+      const contacts = people.filter(person => !threadIds.has(person.id));
+      picker.innerHTML = contacts.map(person => `
+        <button type="button" class="message-picker-person" data-start-person="${person.id}">
+          <img src="https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=96&q=80" alt="${escapeHTML(person.name)}" />
+          <span>
+            <strong>${escapeHTML(person.name)}</strong>
+            <small>${escapeHTML(person.role)}</small>
+          </span>
+        </button>
+      `).join('');
+    } else {
+      picker.innerHTML = '<p class="groups-empty" style="padding:12px;font-size:11px;">You have no connections to message yet.</p>';
+    }
+  }
 }
 
 function renderConnectionPanel(personId) {
@@ -542,28 +607,73 @@ const modal = document.querySelector('#upload-modal');
 const uploadStatus = document.querySelector('#upload-status');
 const toast = document.querySelector('#toast');
 
+function userStorageKey(key) {
+  if (state.currentUser) {
+    return `user-${state.currentUser.id}-${key}`;
+  }
+  if (state.isDemo) {
+    return `demo-${key}`;
+  }
+  return `guest-${key}`;
+}
+
 function loadItems() {
   try {
-    const saved = JSON.parse(localStorage.getItem('orbit-items') || 'null');
-    return Array.isArray(saved) ? saved : defaultItems.map(item => ({ ...item }));
+    const key = userStorageKey('orbit-items');
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (saved) return Array.isArray(saved) ? saved : [];
+    return state.isDemo ? defaultItems.map(item => ({ ...item })) : [];
   } catch {
-    return defaultItems.map(item => ({ ...item }));
+    return state.isDemo ? defaultItems.map(item => ({ ...item })) : [];
   }
 }
 
 function loadProfile() {
-  try {
-    const saved = { ...defaultProfile, ...JSON.parse(localStorage.getItem('orbit-profile') || '{}') };
-    if (saved.name === 'Truman Pauley') saved.name = defaultProfile.name;
-    return saved;
-  } catch {
-    return { ...defaultProfile };
+  if (state.isDemo) {
+    try {
+      const key = userStorageKey('orbit-profile');
+      const saved = { ...defaultProfile, ...JSON.parse(localStorage.getItem(key) || '{}') };
+      if (saved.name === 'Truman Pauley') saved.name = defaultProfile.name;
+      return saved;
+    } catch {
+      return { ...defaultProfile };
+    }
   }
+  if (state.currentUser) {
+    try {
+      const key = userStorageKey('orbit-profile');
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if (saved && (saved.name || saved.headline || saved.school)) return saved;
+    } catch {}
+    if (state.rawProfile) {
+      return {
+        name: state.rawProfile.full_name || '',
+        headline: state.rawProfile.headline || '',
+        location: state.rawProfile.location || '',
+        school: state.rawProfile.school_or_organization || '',
+        major: state.rawProfile.major || '',
+        graduation_year: state.rawProfile.graduation_year || null,
+        bio: state.rawProfile.bio || '',
+        photo: state.rawProfile.photo_path || ''
+      };
+    }
+  }
+  return {
+    name: '',
+    headline: '',
+    location: '',
+    school: '',
+    major: '',
+    graduation_year: null,
+    bio: '',
+    photo: ''
+  };
 }
 
 function loadResumeData() {
   try {
-    const saved = JSON.parse(localStorage.getItem('orbit-resume-data') || 'null');
+    const key = userStorageKey('orbit-resume-data');
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
     return saved && Array.isArray(saved.sections) ? saved : { version: 1, sections: [], lines: [] };
   } catch {
     return { version: 1, sections: [], lines: [] };
@@ -571,18 +681,31 @@ function loadResumeData() {
 }
 
 function loadGroupMemberships() {
-  const defaults = Object.fromEntries(DEMO_USER_GROUPS.map(id => [id, 'Self-Reported Member']));
-  try {
-    const stored = localStorage.getItem('orbit-group-memberships-v2');
-    return stored ? JSON.parse(stored) : defaults;
-  } catch {
-    return defaults;
+  if (state.isDemo) {
+    const defaults = Object.fromEntries(DEMO_USER_GROUPS.map(id => [id, 'Self-Reported Member']));
+    try {
+      const stored = localStorage.getItem(userStorageKey('orbit-group-memberships-v2'));
+      return stored ? JSON.parse(stored) : defaults;
+    } catch {
+      return defaults;
+    }
   }
+  if (state.currentUser) {
+    try {
+      const key = userStorageKey('orbit-group-memberships-v2');
+      const stored = localStorage.getItem(key);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
 }
 
 function loadCreatedGroups() {
   try {
-    const saved = JSON.parse(localStorage.getItem('orbit-created-groups') || '[]');
+    const key = userStorageKey('orbit-created-groups');
+    const saved = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(saved) ? saved : [];
   } catch {
     return [];
@@ -591,7 +714,8 @@ function loadCreatedGroups() {
 
 function loadOpportunityPosts() {
   try {
-    const saved = JSON.parse(localStorage.getItem('orbit-opportunity-posts') || '[]');
+    const key = userStorageKey('orbit-opportunity-posts');
+    const saved = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(saved) ? saved.filter(post => post && post.id && post.title && post.organization) : [];
   } catch {
     return [];
@@ -600,7 +724,8 @@ function loadOpportunityPosts() {
 
 function loadOpportunityIds(key) {
   try {
-    const saved = JSON.parse(localStorage.getItem(key) || '[]');
+    const scopedKey = userStorageKey(key);
+    const saved = JSON.parse(localStorage.getItem(scopedKey) || '[]');
     return Array.isArray(saved) ? new Set(saved.filter(value => typeof value === 'string')) : new Set();
   } catch {
     return new Set();
@@ -608,18 +733,18 @@ function loadOpportunityIds(key) {
 }
 
 function persist() {
-  localStorage.setItem('orbit-items', JSON.stringify(state.items));
-  localStorage.setItem('pipeline-follows-v1', JSON.stringify([...state.follows]));
-  localStorage.setItem('pipeline-acquaintances-v1', JSON.stringify([...state.acquaintances]));
-  localStorage.setItem('orbit-connected', JSON.stringify([...state.connected]));
-  localStorage.setItem('orbit-saved', JSON.stringify([...state.saved]));
-  localStorage.setItem('orbit-profile', JSON.stringify(state.profile));
-  localStorage.setItem('orbit-resume-data', JSON.stringify(state.resumeData));
-  localStorage.setItem('orbit-group-memberships-v2', JSON.stringify(state.groupMemberships));
-  localStorage.setItem('orbit-created-groups', JSON.stringify(state.createdGroups));
-  localStorage.setItem('orbit-opportunity-posts', JSON.stringify(state.opportunityPosts));
-  localStorage.setItem('orbit-saved-opportunities', JSON.stringify([...state.savedOpportunities]));
-  localStorage.setItem('orbit-interested-opportunities', JSON.stringify([...state.interestedOpportunities]));
+  localStorage.setItem(userStorageKey('orbit-items'), JSON.stringify(state.items));
+  localStorage.setItem(userStorageKey('pipeline-follows-v1'), JSON.stringify([...state.follows]));
+  localStorage.setItem(userStorageKey('pipeline-acquaintances-v1'), JSON.stringify([...state.acquaintances]));
+  localStorage.setItem(userStorageKey('orbit-connected'), JSON.stringify([...state.connected]));
+  localStorage.setItem(userStorageKey('orbit-saved'), JSON.stringify([...state.saved]));
+  localStorage.setItem(userStorageKey('orbit-profile'), JSON.stringify(state.profile));
+  localStorage.setItem(userStorageKey('orbit-resume-data'), JSON.stringify(state.resumeData));
+  localStorage.setItem(userStorageKey('orbit-group-memberships-v2'), JSON.stringify(state.groupMemberships));
+  localStorage.setItem(userStorageKey('orbit-created-groups'), JSON.stringify(state.createdGroups));
+  localStorage.setItem(userStorageKey('orbit-opportunity-posts'), JSON.stringify(state.opportunityPosts));
+  localStorage.setItem(userStorageKey('orbit-saved-opportunities'), JSON.stringify([...state.savedOpportunities]));
+  localStorage.setItem(userStorageKey('orbit-interested-opportunities'), JSON.stringify([...state.interestedOpportunities]));
 }
 
 function icon(name) {
@@ -709,6 +834,29 @@ function renderItems() {
 function computeNetworkInsights() {
   const joinedGroups = gridNodes.filter(node => node.kind === 'group' && gridEdges.some(([from, to]) => from === 'truman' && to === node.id));
   const joinedIds = new Set(joinedGroups.map(group => group.id));
+  if (!state.isDemo) {
+    const recommendations = (state.sharedMembers || []).map(peer => {
+      const peerNodeId = `user-${peer.id}`;
+      const sharedGroups = (peer.groupSlugs || []).map(slug => allGroups().find(g => g.id === slug)?.name).filter(Boolean);
+      const context = sharedGroups.length
+        ? `Shares ${sharedGroups[0]}${sharedGroups.length > 1 ? ` +${sharedGroups.length - 1} more` : ''} with you`
+        : 'Member of your campus community';
+      return {
+        id: peerNodeId,
+        realUserId: peer.id,
+        name: peer.full_name || peer.username || 'Pipeline member',
+        role: [peer.headline, peer.major].filter(Boolean).join(' · ') || peer.school_or_organization || 'Student',
+        context,
+        avatar: getAvatarSrc(peer.photo_path, peer.full_name || peer.username)
+      };
+    });
+    return {
+      joinedGroups,
+      inGroups: state.sharedMembers.length,
+      reachable: state.sharedMembers.length,
+      recommendations
+    };
+  }
   const profiles = gridNodes.filter(node => node.kind === 'profile');
   const sharedGroups = profile => gridEdges.filter(([from, to]) => from === profile.id && joinedIds.has(to)).map(([, to]) => gridNodeById(to).name);
   const inGroups = profiles.filter(profile => sharedGroups(profile).length);
@@ -734,10 +882,20 @@ function computeNetworkInsights() {
 function renderPeople() {
   const insights = computeNetworkInsights();
   const container = document.querySelector('#people-list');
-  container.innerHTML = insights.recommendations.length ? insights.recommendations.slice(0, 4).map(person => {
-    const connected = state.follows.has(person.id);
-    return `<article class="person-card" data-person="${person.id}"><img src="${escapeHTML(person.avatar)}" alt="" /><div class="person-detail"><strong>${escapeHTML(person.name)}</strong><span>${escapeHTML(person.role)}</span><small>${escapeHTML(person.context)} · fictional demo profile</small></div><button class="connect-button ${connected ? 'connected' : ''}" aria-label="${connected ? 'Unfollow' : 'Follow'} ${escapeHTML(person.name)}" title="${connected ? 'Following (one-way)' : 'Follow'}">${icon(connected ? 'check' : 'plus')}</button></article>`;
-  }).join('') : '<p class="empty-review">Join a group to see people you could meet.</p>';
+  if (!insights.recommendations.length) {
+    container.innerHTML = state.isDemo
+      ? '<p class="empty-review">Join a group to see people you could meet.</p>'
+      : `<div class="empty-network-card">
+          <p><strong>Start building your network</strong></p>
+          <p class="empty-copy">Join campus organizations and student clubs to discover classmates, collaborators, and alumni.</p>
+          <button class="button small secondary" type="button" data-view="groups">Find Groups to Join</button>
+        </div>`;
+  } else {
+    container.innerHTML = insights.recommendations.slice(0, 4).map(person => {
+      const connected = state.follows.has(person.id);
+      return `<article class="person-card" data-person="${person.id}"><img src="${escapeHTML(person.avatar)}" alt="" /><div class="person-detail"><strong>${escapeHTML(person.name)}</strong><span>${escapeHTML(person.role)}</span><small>${escapeHTML(person.context)}${state.isDemo ? ' · fictional demo profile' : ''}</small></div><button class="connect-button ${connected ? 'connected' : ''}" aria-label="${connected ? 'Unfollow' : 'Follow'} ${escapeHTML(person.name)}" title="${connected ? 'Following (one-way)' : 'Follow'}">${icon(connected ? 'check' : 'plus')}</button></article>`;
+    }).join('');
+  }
   document.querySelector('#connection-count').textContent = insights.inGroups;
   document.querySelector('#overview-connection-count').textContent = insights.inGroups;
   const names = insights.joinedGroups.map(group => group.name);
@@ -759,7 +917,13 @@ function allGroups() {
 
   function groupMemberCount(group) {
     const userCounted = !state.createdGroups.includes(group) && isActiveMembership(state.groupMemberships[group.id]);
-    return (group.memberCount || 0) + (group.memberIds || []).length + (userCounted ? 1 : 0);
+    const demoCount = state.isDemo ? (group.memberIds || []).length : 0;
+    const realPeersCount = !state.isDemo ? (
+      state.groupMembersCache[group.id]
+        ? state.groupMembersCache[group.id].filter(m => m.userId !== state.currentUser?.id).length
+        : (state.sharedMembers || []).filter(peer => (peer.groupSlugs || []).includes(group.id)).length
+    ) : 0;
+    return (group.memberCount || 0) + demoCount + realPeersCount + (userCounted ? 1 : 0);
   }
 
   function groupPerson(id) {
@@ -767,89 +931,294 @@ function allGroups() {
   }
 
   function personImageSrc(person) {
-    return person.avatar || `https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=80&q=80`;
+    if (person.avatar) return person.avatar;
+    if (!person.image) return getAvatarSrc('', person.name);
+    if (person.image.startsWith('http') || person.image.startsWith('data:')) return person.image;
+    return `https://images.unsplash.com/${person.image}?auto=format&fit=crop&w=80&q=80`;
   }
 
   const slugify = text => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
   // My Grid relationships, universities, companies and opportunities all become typed nodes/edges here.
   function addPersonalNetworkEdges(groups) {
-    const known = id => demoProfiles.some(profile => profile.id === id);
-    state.acquaintances.forEach(id => { if (known(id)) gridEdges.push(['truman', id, 'knows', 'KNOWS']); });
-    state.follows.forEach(id => { if (known(id)) gridEdges.push(['truman', id, 'follows', 'FOLLOWS']); });
-    demoProfiles.forEach(profile => gridEdges.push([profile.id, 'harvard', 'studied at', 'STUDIED_AT']));
-    const companyNode = (name, fictional) => {
-      let node = gridNodes.find(candidate => candidate.kind === 'company' && candidate.name.toLowerCase() === name.toLowerCase());
-      if (!node) {
-        node = {
-          id: `company-${slugify(name)}`, name, kind: 'company', category: 'organization', icon: 'building-2',
-          meta: fictional ? 'Fictional company · demo data' : 'Company · employer or opportunity poster',
-          description: `${name} appears in the Pipeline graph through ${fictional ? 'fictional demo profiles' : 'posted opportunities'}.`,
-          connection: 'Linked to people through WORKS_AT and to opportunities through POSTED_BY.'
-        };
-        gridNodes.push(node);
-      }
-      return node;
-    };
-    demoProfiles.filter(profile => profile.company).forEach(profile => {
-      const node = companyNode(profile.company, profile.company !== 'Goldman Sachs');
-      gridEdges.push([profile.id, node.id, 'works at', 'WORKS_AT']);
-    });
-    opportunityList().forEach(opportunity => {
+    if (state.isDemo) {
+      const known = id => demoProfiles.some(profile => profile.id === id);
+      state.acquaintances.forEach(id => { if (known(id)) gridEdges.push(['truman', id, 'knows', 'KNOWS']); });
+      state.follows.forEach(id => { if (known(id)) gridEdges.push(['truman', id, 'follows', 'FOLLOWS']); });
+      demoProfiles.forEach(profile => gridEdges.push([profile.id, 'harvard', 'studied at', 'STUDIED_AT']));
+      const companyNode = (name, fictional) => {
+        let node = gridNodes.find(candidate => candidate.kind === 'company' && candidate.name.toLowerCase() === name.toLowerCase());
+        if (!node) {
+          node = {
+            id: `company-${slugify(name)}`, name, kind: 'company', category: 'organization', icon: 'building-2',
+            meta: fictional ? 'Fictional company · demo data' : 'Company · employer or opportunity poster',
+            description: `${name} appears in the Pipeline graph through ${fictional ? 'fictional demo profiles' : 'posted opportunities'}.`,
+            connection: 'Linked to people through WORKS_AT and to opportunities through POSTED_BY.'
+          };
+          gridNodes.push(node);
+        }
+        return node;
+      };
+      demoProfiles.filter(profile => profile.company).forEach(profile => {
+        const node = companyNode(profile.company, profile.company !== 'Goldman Sachs');
+        gridEdges.push([profile.id, node.id, 'works at', 'WORKS_AT']);
+      });
+      opportunityList().forEach(opportunity => {
+        const id = `opp-${opportunity.id}`;
+        const isJob = opportunity.kind === 'job';
+        gridNodes.push({
+          id, kind: 'opportunity', name: opportunity.title, category: 'role', icon: isJob ? 'briefcase-business' : 'handshake',
+          meta: `${isJob ? 'Opportunity' : 'Group project'} · ${opportunity.organization}`,
+          description: opportunity.description,
+          connection: `Posted by ${opportunity.organization}.`,
+          tags: opportunity.skills || []
+        });
+        const poster = (opportunity.nodeId && gridNodes.find(node => node.id === opportunity.nodeId))
+          || groups.find(group => group.id === opportunity.groupId)
+          || groups.find(group => group.name.toLowerCase() === String(opportunity.organization).toLowerCase())
+          || (opportunity.posted ? gridNodes.find(node => node.id === 'truman') : companyNode(opportunity.organization, false));
+        if (poster) gridEdges.push([id, poster.id, 'posted by', 'POSTED_BY']);
+      });
+      return;
+    }
+
+    // Real user personal network edges: only user's own created/posted opportunities
+    state.opportunityPosts.forEach(opportunity => {
       const id = `opp-${opportunity.id}`;
-      const isJob = opportunity.kind === 'job';
       gridNodes.push({
-        id, kind: 'opportunity', name: opportunity.title, category: 'role', icon: isJob ? 'briefcase-business' : 'handshake',
-        meta: `${isJob ? 'Opportunity' : 'Group project'} · ${opportunity.organization}`,
+        id, kind: 'opportunity', name: opportunity.title, category: 'role', icon: opportunity.kind === 'job' ? 'briefcase-business' : 'handshake',
+        meta: `${opportunity.category || 'Opportunity'} · ${opportunity.organization}`,
         description: opportunity.description,
-        connection: `Posted by ${opportunity.organization}.`,
+        connection: 'Posted by you.',
         tags: opportunity.skills || []
       });
-      const poster = (opportunity.nodeId && gridNodes.find(node => node.id === opportunity.nodeId))
-        || groups.find(group => group.id === opportunity.groupId)
-        || groups.find(group => group.name.toLowerCase() === String(opportunity.organization).toLowerCase())
-        || (opportunity.posted ? gridNodes.find(node => node.id === 'truman') : companyNode(opportunity.organization, false));
-      gridEdges.push([id, poster.id, 'posted by', 'POSTED_BY']);
+      gridEdges.push([id, 'truman', 'posted by', 'POSTED_BY']);
     });
   }
 
   // Surf the Grid reads gridNodes/gridEdges. Group, demo-profile, and membership nodes/edges are
   // regenerated here from the same membership data the Groups tab uses.
   function rebuildGroupGraph() {
-    gridNodes.length = baseGridNodes.length;
-    gridEdges.length = baseGridEdges.length;
+    gridNodes.length = 0;
+    gridEdges.length = 0;
+
+    if (state.isDemo) {
+      gridNodes.push(...baseGridNodes.map(node => ({ ...node })));
+      gridEdges.push(...baseGridEdges.map(edge => [...edge]));
+      const groups = allGroups();
+      groups.forEach((group, index) => {
+        const joined = isActiveMembership(state.groupMemberships[group.id]);
+        const members = (group.memberIds || []).map(groupPerson).filter(Boolean);
+        group.gridNodeIds = [...(joined ? ['truman'] : []), ...members.map(member => member.id)].slice(0, 4);
+        gridNodes.push({
+          id: group.id, kind: 'group', name: group.name, category: 'organization', meta: `${group.category || group.type} · ${group.affiliation || 'Pipeline group'}`,
+          icon: group.icon || groupTypeIcons[group.type] || 'users',
+          description: `${group.description} Memberships are self-reported unless confirmed by the organization.`,
+          connection: `${members.length + (joined ? 1 : 0)} self-reported member${members.length + (joined ? 1 : 0) === 1 ? '' : 's'} connect to this group.`
+        });
+        if (joined) gridEdges.push(['truman', group.id, `${state.groupMemberships[group.id] === SELF_REPORTED ? 'self-reported member' : state.groupMemberships[group.id].toLowerCase()} of`, 'MEMBER_OF']);
+      });
+      const linked = new Set();
+      demoProfiles.forEach((profile, index) => {
+        const names = profile.groups.map(id => groups.find(group => group.id === id)?.name).filter(Boolean);
+        gridNodes.push({
+          id: profile.id, kind: 'profile', name: profile.name, category: 'person', meta: `Fictional demo profile · ${profile.role}`,
+          icon: 'user-round',
+          description: `${profile.name} is a fictional demo profile (not a real person)${profile.company ? `, working as ${profile.title} at ${profile.company}` : ''}, interested in ${profile.interests.join(' and ')}. Self-reported member of ${names.join(', ')}. Relationships are demonstration data, not verified.`,
+          connection: `Connected through shared self-reported memberships in ${names.length} Harvard groups.`
+        });
+        profile.groups.forEach(id => { if (groups.some(group => group.id === id)) gridEdges.push([profile.id, id, 'self-reported member', 'MEMBER_OF']); });
+      });
+      demoProfiles.forEach(profile => profile.connections.forEach(otherId => {
+        const key = [profile.id, otherId].sort().join('|');
+        if (linked.has(key) || !demoProfiles.some(other => other.id === otherId)) return;
+        linked.add(key);
+        gridEdges.push([profile.id, otherId, 'knows', 'KNOWS']);
+      }));
+      addPersonalNetworkEdges(groups);
+      computeGridLayout();
+      return;
+    }
+
+    // Real user graph (personal network only)
+    const userNode = {
+      id: 'truman',
+      name: state.profile.name || 'You',
+      category: 'person',
+      meta: state.profile.headline ? `You · ${state.profile.headline}` : 'Your Profile',
+      x: 50,
+      y: 49,
+      image: state.profile.photo || '',
+      description: state.profile.bio || 'Your profile is the starting point for your network on the Grid.',
+      connection: 'Your education, skills, and groups connect you across the grid.'
+    };
+    gridNodes.push(userNode);
+
+    if (state.profile.school) {
+      const schoolId = 'school-node';
+      const meta = [state.profile.major, state.profile.graduation_year ? `'${String(state.profile.graduation_year).slice(-2)}` : ''].filter(Boolean).join(' · ') || 'Education';
+      gridNodes.push({
+        id: schoolId,
+        name: state.profile.school,
+        category: 'school',
+        kind: 'university',
+        meta,
+        icon: 'graduation-cap',
+        description: `${state.profile.school} creates shared context with students and alumni.`,
+        connection: 'Your school is the foundation of your collegiate network.'
+      });
+      gridEdges.push(['truman', schoolId, 'studies at', 'STUDIED_AT']);
+    }
+
+    // Skills from user profile
+    const skillItems = (state.items || []).filter(item => item.label === 'Skills' || item.label === 'Skill' || item.entry_type === 'skill');
+    skillItems.slice(0, 8).forEach((item, idx) => {
+      const skillName = item.value || item.content?.skill;
+      if (!skillName) return;
+      const skillId = `skill-${idx}`;
+      gridNodes.push({
+        id: skillId,
+        name: skillName,
+        category: 'skill',
+        meta: 'Skill · Your Profile',
+        icon: 'code-2',
+        description: `${skillName} is a skill listed on your profile.`,
+        connection: 'Skills connect your background to projects and roles.'
+      });
+      gridEdges.push(['truman', skillId, 'has skill', 'HAS_SKILL']);
+    });
+
+    // Joined groups only
     const groups = allGroups();
-    groups.forEach((group, index) => {
+    groups.forEach(group => {
       const joined = isActiveMembership(state.groupMemberships[group.id]);
-      const members = (group.memberIds || []).map(groupPerson).filter(Boolean);
-      group.gridNodeIds = [...(joined ? ['truman'] : []), ...members.map(member => member.id)].slice(0, 4);
-      gridNodes.push({
-        id: group.id, kind: 'group', name: group.name, category: 'organization', meta: `${group.category || group.type} · ${group.affiliation || 'Pipeline group'}`,
-        icon: group.icon || groupTypeIcons[group.type] || 'users',
-        description: `${group.description} Memberships are self-reported unless confirmed by the organization.`,
-        connection: `${members.length + (joined ? 1 : 0)} self-reported member${members.length + (joined ? 1 : 0) === 1 ? '' : 's'} connect to this group.`
-      });
-      if (joined) gridEdges.push(['truman', group.id, `${state.groupMemberships[group.id] === SELF_REPORTED ? 'self-reported member' : state.groupMemberships[group.id].toLowerCase()} of`, 'MEMBER_OF']);
+      if (joined) {
+        const peerNodeIds = (!state.isDemo && state.sharedMembers)
+          ? state.sharedMembers.filter(peer => (peer.groupSlugs || []).includes(group.id)).map(peer => `user-${peer.id}`)
+          : [];
+        group.gridNodeIds = ['truman', ...peerNodeIds].slice(0, 4);
+        gridNodes.push({
+          id: group.id,
+          kind: 'group',
+          name: group.name,
+          category: 'organization',
+          meta: `${group.category || group.type} · ${group.affiliation || 'Pipeline group'}`,
+          icon: group.icon || groupTypeIcons[group.type] || 'users',
+          description: `${group.description} Memberships are self-reported unless confirmed by the organization.`,
+          connection: 'You are a member of this group.'
+        });
+        gridEdges.push(['truman', group.id, `${state.groupMemberships[group.id] === SELF_REPORTED ? 'self-reported member' : state.groupMemberships[group.id].toLowerCase()} of`, 'MEMBER_OF']);
+      }
     });
-    const linked = new Set();
-    demoProfiles.forEach((profile, index) => {
-      const names = profile.groups.map(id => groups.find(group => group.id === id)?.name).filter(Boolean);
-      gridNodes.push({
-        id: profile.id, kind: 'profile', name: profile.name, category: 'person', meta: `Fictional demo profile · ${profile.role}`,
-        icon: 'user-round',
-        description: `${profile.name} is a fictional demo profile (not a real person)${profile.company ? `, working as ${profile.title} at ${profile.company}` : ''}, interested in ${profile.interests.join(' and ')}. Self-reported member of ${names.join(', ')}. Relationships are demonstration data, not verified.`,
-        connection: `Connected through shared self-reported memberships in ${names.length} Harvard groups.`
+
+    // Real peers discovered through shared groups (no direct user-to-user edges, only MEMBER_OF to shared groups)
+    if (!state.isDemo && state.sharedMembers && state.sharedMembers.length > 0) {
+      state.sharedMembers.forEach(peer => {
+        const peerNodeId = `user-${peer.id}`;
+        if (!gridNodes.some(n => n.id === peerNodeId)) {
+          gridNodes.push({
+            id: peerNodeId,
+            kind: 'person',
+            name: peer.name || peer.full_name || `@${peer.username}`,
+            category: 'person',
+            meta: [peer.school, peer.graduation_year ? `'${String(peer.graduation_year).slice(-2)}` : ''].filter(Boolean).join(' ') || peer.major || 'Pipeline Member',
+            icon: 'user-round',
+            image: peer.avatar || getAvatarSrc(peer.avatar_url, peer.name || peer.full_name || peer.username),
+            description: peer.headline || `${peer.name || peer.full_name || 'Member'} is a student at ${peer.school || 'Pipeline'}.`,
+            connection: 'Shares groups with you on Pipeline.'
+          });
+        }
+        (peer.groupSlugs || []).forEach(groupSlug => {
+          if (gridNodes.some(n => n.id === groupSlug)) {
+            gridEdges.push([peerNodeId, groupSlug, 'self-reported member of', 'MEMBER_OF']);
+          }
+        });
       });
-      profile.groups.forEach(id => { if (groups.some(group => group.id === id)) gridEdges.push([profile.id, id, 'self-reported member', 'MEMBER_OF']); });
-    });
-    demoProfiles.forEach(profile => profile.connections.forEach(otherId => {
-      const key = [profile.id, otherId].sort().join('|');
-      if (linked.has(key) || !demoProfiles.some(other => other.id === otherId)) return;
-      linked.add(key);
-      gridEdges.push([profile.id, otherId, 'knows', 'KNOWS']);
-    }));
+    }
+
     addPersonalNetworkEdges(groups);
     computeGridLayout();
+  }
+
+  function buildGroupMembersList(group) {
+    if (state.isDemo) {
+      const members = (group.memberIds || []).map(id => people.find(person => person.id === id) || demoProfiles.find(p => p.id === id)).filter(Boolean);
+      if (!members.length) return '<p class="group-detail-muted">Member previews will appear here as this group grows.</p>';
+      return members.map(person => `
+        <div class="group-member">
+          <img src="${personImageSrc(person)}" alt="" />
+          <span><strong>${escapeHTML(person.name)}</strong><small>${escapeHTML(person.role || person.headline || 'Member')}</small></span>
+        </div>
+      `).join('');
+    }
+
+    const membersList = [];
+    const joined = isActiveMembership(state.groupMemberships[group.id]);
+    if (joined) {
+      membersList.push({
+        id: state.currentUser?.id,
+        name: `${state.profile.name || 'You'} (You)`,
+        role: state.profile.headline || [state.profile.school, state.profile.major].filter(Boolean).join(' · ') || 'Member',
+        avatar: getAvatarSrc(state.profile.photo, state.profile.name)
+      });
+    }
+
+    const cachedPeers = state.groupMembersCache[group.id] || (state.sharedMembers || []).filter(peer => (peer.groupSlugs || []).includes(group.id));
+    cachedPeers.forEach(peer => {
+      const p = peer.profile || peer;
+      const peerId = p.id || peer.userId || peer.id;
+      if (peerId === state.currentUser?.id) return;
+      if (membersList.some(m => m.id === peerId)) return;
+      const name = p.name || p.full_name || (p.username ? `@${p.username}` : 'Pipeline Member');
+      const role = p.role || p.headline || [p.school_or_organization || p.school, p.major].filter(Boolean).join(' · ') || 'Student';
+      const avatar = p.avatar || getAvatarSrc(p.photo_path || p.avatar_url, name);
+      membersList.push({ id: peerId, name, role, avatar });
+    });
+
+    if (!membersList.length) {
+      return '<p class="group-detail-muted">No members yet. Be the first to join this group!</p>';
+    }
+
+    return membersList.map(member => `
+      <div class="group-member">
+        <img src="${escapeHTML(member.avatar)}" alt="" />
+        <span><strong>${escapeHTML(member.name)}</strong><small>${escapeHTML(member.role)}</small></span>
+      </div>
+    `).join('');
+  }
+
+  function renderGroupDetail(groupId) {
+    const group = allGroups().find(candidate => candidate.id === groupId);
+    if (!group) return;
+    const memberMarkup = buildGroupMembersList(group);
+    const related = (group.relatedGroupIds || []).map(id => allGroups().find(candidate => candidate.id === id)).filter(Boolean);
+    const relatedMarkup = related.length
+      ? related.map(item => `<button class="related-group-chip" type="button" data-group-open="${escapeHTML(item.id)}">${icon(groupTypeIcons[item.type] || 'users')} ${escapeHTML(item.name)}</button>`).join('')
+      : '<p class="group-detail-muted">No connected groups yet.</p>';
+    const nodes = (group.gridNodeIds || []).map(id => gridNodes.find(node => node.id === id)).filter(Boolean).slice(0, 4);
+    const nodeMarkup = nodes.length
+      ? nodes.map(node => `<span class="group-grid-node"><i data-lucide="${escapeHTML(node.icon || (node.category === 'person' ? 'user-round' : 'circle-dot'))}"></i>${escapeHTML(node.id === 'truman' ? (state.profile.name || 'You') : node.name)}</span>`).join('')
+      : '<span class="group-detail-muted">This group has not been mapped to the Grid yet.</span>';
+    const status = state.groupMemberships[group.id];
+    document.querySelector('#groups-list-view').hidden = true;
+    const detail = document.querySelector('#group-detail-view');
+    detail.hidden = false;
+    detail.innerHTML = `<button class="group-back-button" type="button" data-groups-back>${icon('arrow-left')} Back to groups</button><div class="group-detail-heading"><span class="group-logo group-logo-large">${icon(group.icon || groupTypeIcons[group.type] || 'users')}</span><div class="group-detail-title"><span class="group-type">${escapeHTML(group.category ? `${group.type} · ${group.category}` : group.type)}</span><h2>${escapeHTML(group.name)}</h2><div class="group-detail-badges">${status ? `<span class="group-status status-${status.toLowerCase().replace(/\s+/g, '-')}">${escapeHTML(status)}</span>` : ''}<span class="verification-badge ${group.verified ? 'is-verified' : ''}">${icon(group.verified ? 'badge-check' : 'badge-help')}${group.verified ? 'Verified group' : 'Not yet verified'}</span></div></div></div><p class="group-description">${escapeHTML(group.description)}</p><div class="group-detail-stats"><span><strong>${new Intl.NumberFormat('en-US').format(groupMemberCount(group))}</strong><small>Members</small></span><span><strong>${escapeHTML(group.type)}</strong><small>Group type</small></span><span><strong>${group.verified ? 'Verified' : 'Unverified'}</strong><small>Affiliation status</small></span></div><div class="group-detail-columns"><section class="group-detail-section"><h3>Members</h3><div class="group-member-list" id="group-member-list-${escapeHTML(group.id)}">${memberMarkup}</div></section><section class="group-detail-section"><h3>Connections to other groups</h3><div class="related-group-list">${relatedMarkup}</div></section></div><section class="group-detail-section group-grid-section"><div class="group-detail-section-heading"><div><h3>On your Grid</h3><p>This group connects to people and paths in your network.</p></div></div><div class="group-grid-preview"><span class="group-grid-root">${icon(group.icon || groupTypeIcons[group.type] || 'users')} ${escapeHTML(group.name)}</span><div class="group-grid-links">${nodeMarkup}</div></div></section>`;
+    refreshIcons();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Fetch live group members for real accounts if not cached
+    if (!state.isDemo && window.pipelineSupabaseService?.isConfigured()) {
+      window.pipelineSupabaseService.getGroupMembers(group.id).then(members => {
+        state.groupMembersCache[group.id] = members;
+        const listEl = document.querySelector(`#group-member-list-${CSS.escape(group.id)}`);
+        if (listEl) {
+          listEl.innerHTML = buildGroupMembersList(group);
+        }
+      }).catch(err => {
+        console.warn('Could not load group members for detail view:', err);
+      });
+    }
   }
 
   function groupCardMarkup(group, isDiscovery) {
@@ -922,6 +1291,12 @@ function userSkillSet() {
 
 // Sample data only: connections are derived from the prototype Grid and group data, not from real accounts.
 function opportunityNetwork(opportunity) {
+  if (!state.isDemo) {
+    const group = opportunity.groupId && allGroups().find(candidate => candidate.id === opportunity.groupId);
+    const joined = group && isActiveMembership(state.groupMemberships[group.id]);
+    const sharedGroups = joined ? [group] : [];
+    return { connections: [], sharedGroups };
+  }
   const ids = new Set();
   if (opportunity.nodeId) {
     gridEdges.forEach(([from, to]) => {
@@ -1005,12 +1380,15 @@ function populateOpportunityFilters() {
 
 function opportunityNetworkMarkup(opportunity, network) {
   const lines = networkSummaryLines(opportunity, network);
-  const faces = network.connections.slice(0, 3).map(person => `<img src="https://images.unsplash.com/${escapeHTML(person.image)}?auto=format&fit=crop&w=48&q=80" alt="" loading="lazy">`).join('');
+  const badgeMarkup = state.isDemo
+    ? `<span class="opp-prototype-badge" title="Sample Grid data for the prototype. Not verified.">Demo network</span>`
+    : '';
+  const faces = state.isDemo ? network.connections.slice(0, 3).map(person => `<img src="https://images.unsplash.com/${escapeHTML(person.image)}?auto=format&fit=crop&w=48&q=80" alt="" loading="lazy">`).join('') : '';
   return `<div class="opp-network">
-    <div class="opp-network-head"><strong>${icon('network')} Your Network</strong><span class="opp-prototype-badge" title="Sample Grid data for the prototype. Not verified.">Prototype · unverified</span></div>
+    <div class="opp-network-head"><strong>${icon('network')} Your Network</strong>${badgeMarkup}</div>
     ${lines.length
       ? `<div class="opp-network-body">${faces ? `<span class="opp-faces">${faces}</span>` : ''}<ul>${lines.map(line => `<li>${escapeHTML(line)}</li>`).join('')}</ul></div>`
-      : '<p class="opp-network-empty">No connections found in your sample Grid yet.</p>'}
+      : `<p class="opp-network-empty">${state.isDemo ? 'No connections found in your demo network.' : 'No connections at this organization yet. Join groups to expand your network.'}</p>`}
   </div>`;
 }
 
@@ -1165,9 +1543,18 @@ function closeOpportunityDetail() {
   function renderGroupDetail(groupId) {
     const group = allGroups().find(candidate => candidate.id === groupId);
     if (!group) return;
-    const members = (group.memberIds || []).map(groupPerson).filter(Boolean);
+    const demoMembers = state.isDemo ? (group.memberIds || []).map(groupPerson).filter(Boolean) : [];
+    const members = [...demoMembers];
+    const status = state.groupMemberships[group.id];
+    if (isActiveMembership(status)) {
+      members.unshift({
+        name: state.profile.name || 'You',
+        role: `${status} (You)`,
+        avatar: getAvatarSrc(state.profile.photo, state.profile.name)
+      });
+    }
     const memberMarkup = members.length
-      ? members.map(person => `<div class="group-member"><img src="${escapeHTML(personImageSrc(person))}" alt="" /><span><strong>${escapeHTML(person.name)}</strong><small>${escapeHTML(person.role)} · ${person.avatar ? 'Fictional demo profile · ' : ''}self-reported</small></span></div>`).join('')
+      ? members.map(person => `<div class="group-member"><img src="${escapeHTML(personImageSrc(person))}" alt="" /><span><strong>${escapeHTML(person.name)}</strong><small>${escapeHTML(person.role)}${state.isDemo && person.avatar ? ' · Fictional demo profile' : ''}</small></span></div>`).join('')
       : '<p class="group-detail-muted">Member previews will appear here as this group grows.</p>';
     const related = (group.relatedGroupIds || []).map(id => allGroups().find(candidate => candidate.id === id)).filter(Boolean);
     const relatedMarkup = related.length
@@ -1177,7 +1564,6 @@ function closeOpportunityDetail() {
     const nodeMarkup = nodes.length
       ? nodes.map(node => `<span class="group-grid-node"><i data-lucide="${escapeHTML(node.icon || (node.category === 'person' ? 'user-round' : 'circle-dot'))}"></i>${escapeHTML(node.id === 'truman' ? state.profile.name : node.name)}</span>`).join('')
       : '<span class="group-detail-muted">This group has not been mapped to the Grid yet.</span>';
-    const status = state.groupMemberships[group.id];
     document.querySelector('#groups-list-view').hidden = true;
     const detail = document.querySelector('#group-detail-view');
     detail.hidden = false;
@@ -1337,7 +1723,10 @@ function renderNetworkMap() {
     const pos = gridLayout[node.id] || { x: 50, y: 50 };
     const name = gridNodeLabel(node);
     const meta = node.id === 'truman' ? `You · ${state.profile.headline}` : node.meta;
-    const photo = node.id === 'truman' ? state.profile.photo : node.image ? `https://images.unsplash.com/${node.image}?auto=format&fit=crop&w=96&q=80` : '';
+    const rawPhoto = node.id === 'truman' ? (state.profile.photo || getAvatarSrc('', state.profile.name)) : node.image;
+    const photo = rawPhoto
+      ? (rawPhoto.startsWith('http') || rawPhoto.startsWith('data:') ? rawPhoto : `https://images.unsplash.com/${rawPhoto}?auto=format&fit=crop&w=96&q=80`)
+      : '';
     const avatar = photo ? `<img src="${escapeHTML(photo)}" alt="" />` : node.category === 'person' ? `<span class="node-initials">${escapeHTML(nodeInitials(name))}</span>` : icon(node.icon);
     const kind = node.kind ? `kind-${node.kind}` : '';
     return `<button type="button" class="grid-node node-${node.category} ${kind} ${node.id === 'truman' ? 'is-user' : ''} ${matchingIds.has(node.id) ? '' : 'search-dimmed'}" data-node-id="${node.id}" style="--node-x:${pos.x}%;--node-y:${pos.y}%" aria-label="${escapeHTML(name)}, ${escapeHTML(meta)}" title="${escapeHTML(name)}"><span class="node-avatar">${avatar}</span><span class="node-copy"><strong>${escapeHTML(name)}</strong><small>${escapeHTML(meta)}</small></span></button>`;
@@ -1444,12 +1833,16 @@ function selectGridNode(nodeId) {
     renderNetworkMap();
   }
 
-  document.querySelector('#drawer-category').textContent = node.category === 'role' ? 'CAREER PATH' : node.category.toUpperCase();
-  document.querySelector('#drawer-symbol').innerHTML = node.id === 'truman'
-    ? `<img src="${escapeHTML(state.profile.photo)}" alt="" />`
+  const nodeImageSrc = node.id === 'truman'
+    ? (state.profile.photo || getAvatarSrc('', state.profile.name))
     : node.image
-      ? `<img src="https://images.unsplash.com/${node.image}?auto=format&fit=crop&w=96&q=80" alt="" />`
-    : icon(node.icon);
+      ? (node.image.startsWith('http') || node.image.startsWith('data:') ? node.image : `https://images.unsplash.com/${node.image}?auto=format&fit=crop&w=96&q=80`)
+      : null;
+
+  document.querySelector('#drawer-category').textContent = node.category === 'role' ? 'CAREER PATH' : node.category.toUpperCase();
+  document.querySelector('#drawer-symbol').innerHTML = nodeImageSrc
+    ? `<img src="${escapeHTML(nodeImageSrc)}" alt="" />`
+    : icon(node.icon || 'user-round');
   document.querySelector('#drawer-title').textContent = node.id === 'truman' ? state.profile.name : node.name;
   document.querySelector('#drawer-subtitle').textContent = node.id === 'truman' ? `You · ${state.profile.headline}` : node.meta;
   document.querySelector('#drawer-description').textContent = node.description;
@@ -1925,37 +2318,80 @@ function updateGreeting() {
   document.querySelector('#greeting-text').textContent = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 }
 
+function getAvatarSrc(photo, name) {
+  if (photo) return photo;
+  if (state.isDemo) return defaultProfile.photo;
+  const initials = (name || 'P')
+    .split(/\s+/)
+    .map(p => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'P';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+    <rect width="128" height="128" fill="#1e293b"/>
+    <text x="50%" y="54%" font-family="system-ui, -apple-system, sans-serif" font-size="46" font-weight="600" fill="#94a3b8" dominant-baseline="middle" text-anchor="middle">${initials}</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 function applyProfile() {
-  const { name, headline, location, school, bio, photo } = state.profile;
-  document.querySelector('#sidebar-profile-name').textContent = name;
+  const { name, headline, location, school, bio, photo, major, graduation_year } = state.profile;
+  const schoolDisplay = [school, major, graduation_year ? `'${String(graduation_year).slice(-2)}` : ''].filter(Boolean).join(' · ') || school || 'School not set';
+  const avatarUrl = getAvatarSrc(photo, name);
+  document.querySelector('#sidebar-profile-name').textContent = name || 'Pipeline member';
   document.querySelector('#sidebar-profile-meta').textContent = `${headline || 'Pipeline member'} · ${location || 'Location not set'}`;
-  document.querySelector('#sidebar-avatar').src = photo;
-  document.querySelector('#top-avatar-img').src = photo;
-  document.querySelector('#profile-avatar').src = photo;
-  document.querySelector('#profile-avatar').alt = name;
-  document.querySelector('#welcome-name').textContent = name.split(/\s+/)[0] || name;
-  document.querySelector('#profile-name').textContent = name;
-  document.querySelector('#profile-headline').textContent = headline;
-  document.querySelector('#profile-location').textContent = location;
-  document.querySelector('#profile-school').textContent = school;
-  document.querySelector('#profile-bio').textContent = bio;
-  document.querySelector('#overview-profile-avatar').src = photo;
-  document.querySelector('#overview-profile-avatar').alt = name;
-  document.querySelector('#overview-profile-name').textContent = name;
-  document.querySelector('#overview-profile-headline').textContent = headline;
-  document.querySelector('#overview-profile-location').textContent = location;
-  document.querySelector('#overview-profile-school').textContent = school;
-  document.querySelector('#overview-profile-bio').textContent = bio;
+  document.querySelector('#sidebar-avatar').src = avatarUrl;
+  document.querySelector('#top-avatar-img').src = avatarUrl;
+  document.querySelector('#profile-avatar').src = avatarUrl;
+  document.querySelector('#profile-avatar').alt = name || 'Profile avatar';
+  document.querySelector('#welcome-name').textContent = (name || 'Friend').split(/\s+/)[0] || name || 'Friend';
+  document.querySelector('#profile-name').textContent = name || 'Your name';
+  document.querySelector('#profile-headline').textContent = headline || 'Headline not set';
+  document.querySelector('#profile-location').textContent = location || 'Location not set';
+  document.querySelector('#profile-school').textContent = schoolDisplay;
+  document.querySelector('#profile-bio').textContent = bio || 'No bio provided yet. Edit your profile to add an introduction.';
+  document.querySelector('#overview-profile-avatar').src = avatarUrl;
+  document.querySelector('#overview-profile-avatar').alt = name || 'Profile avatar';
+  document.querySelector('#overview-profile-name').textContent = name || 'Your name';
+  document.querySelector('#overview-profile-headline').textContent = headline || 'Headline not set';
+  document.querySelector('#overview-profile-location').textContent = location || 'Location not set';
+  document.querySelector('#overview-profile-school').textContent = schoolDisplay;
+  document.querySelector('#overview-profile-bio').textContent = bio || 'No bio provided yet. Edit your profile to add an introduction.';
+
+  const demoBanner = document.querySelector('#demo-banner');
+  if (demoBanner) demoBanner.hidden = !state.isDemo;
+  const sidebarDemoExit = document.querySelector('#sidebar-demo-exit');
+  if (sidebarDemoExit) sidebarDemoExit.hidden = !state.isDemo;
+  const logoutBtn = document.querySelector('#logout-button');
+  if (logoutBtn) logoutBtn.hidden = state.isDemo || !state.currentUser;
+
+  let score = 0;
+  if (name?.trim()) score += 15;
+  if (headline?.trim()) score += 15;
+  if (school?.trim()) score += 15;
+  if (major?.trim()) score += 10;
+  if (graduation_year) score += 10;
+  if (bio?.trim()) score += 15;
+  if (photo?.trim()) score += 10;
+  if (state.items && state.items.length > 0) score += 10;
+  const strength = Math.min(100, score);
+  const progressNumber = document.querySelector('#progress-number');
+  const progressFill = document.querySelector('#progress-fill');
+  if (progressNumber) progressNumber.textContent = `${strength}%`;
+  if (progressFill) progressFill.style.width = `${strength}%`;
 }
 
 function openProfileEditor() {
   const form = document.querySelector('#profile-form');
   for (const field of ['name', 'headline', 'location', 'school', 'bio']) {
-    form.elements[field].value = state.profile[field];
+    form.elements[field].value = state.profile[field] || '';
   }
-  document.querySelector('#photo-file-status').textContent = state.profile.photo === defaultProfile.photo
-    ? 'JPG or PNG, up to 8 MB.'
-    : 'Current photo saved. Choose another image to update it.';
+  if (form.elements.major) form.elements.major.value = state.profile.major || '';
+  if (form.elements.graduationYear) form.elements.graduationYear.value = state.profile.graduation_year || state.profile.graduationYear || '';
+  document.querySelector('#photo-file-status').textContent = state.profile.photo
+    ? 'Current photo saved. Choose another image to update it.'
+    : 'JPG or PNG, up to 8 MB.';
   document.querySelector('#photo-file-status').classList.remove('error');
   document.querySelector('#crop-controls').hidden = true;
   document.querySelector('#profile-modal').classList.add('open');
@@ -2553,8 +2989,21 @@ async function handleFile(file) {
   }
 }
 
+function isActionGatedByOnboarding(actionName) {
+  if (state.currentUser && state.onboardingActive) {
+    showToast('Please complete your profile setup first.');
+    const gate = document.querySelector('#onboarding-gate');
+    if (gate) gate.setAttribute('aria-hidden', 'false');
+    return true;
+  }
+  return false;
+}
+
 function setView(view) {
   const target = view || 'home';
+  if (target === 'surf-grid' && isActionGatedByOnboarding('surf-grid')) {
+    return;
+  }
   if (target === 'home') updateGreeting();
   if (target !== 'surf-grid') settlePathAnimation();
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -2869,6 +3318,19 @@ groupsView.addEventListener('click', event => {
     if (!group) return;
     state.groupMemberships[group.id] = group.access === 'open' ? SELF_REPORTED : 'Pending';
     refreshGroupViews(group.id);
+    if (state.currentUser && !state.isDemo && window.pipelineSupabaseService?.isConfigured()) {
+      window.pipelineSupabaseService.joinGroup(state.currentUser.id, group.id)
+        .then(() => window.pipelineSupabaseService.getSharedGroupMembers(state.currentUser.id))
+        .then(peers => {
+          state.sharedMembers = peers || [];
+          rebuildGroupGraph();
+          renderNetworkMap();
+          refreshGroupViews(group.id);
+        })
+        .catch(err => {
+          console.warn('Could not sync group join to Supabase:', err);
+        });
+    }
     showToast(group.access === 'open' ? 'You joined as a self-reported member.' : 'Your request to join was sent.');
     return;
   }
@@ -2878,7 +3340,21 @@ groupsView.addEventListener('click', event => {
     const group = allGroups().find(candidate => candidate.id === leaveButton.dataset.groupLeave);
     if (!group || state.groupMemberships[group.id] === 'Admin') return;
     delete state.groupMemberships[group.id];
+    delete state.groupMembersCache[group.id];
     refreshGroupViews(group.id);
+    if (state.currentUser && !state.isDemo && window.pipelineSupabaseService?.isConfigured()) {
+      window.pipelineSupabaseService.leaveGroup(state.currentUser.id, group.id)
+        .then(() => window.pipelineSupabaseService.getSharedGroupMembers(state.currentUser.id))
+        .then(peers => {
+          state.sharedMembers = peers || [];
+          rebuildGroupGraph();
+          renderNetworkMap();
+          refreshGroupViews(group.id);
+        })
+        .catch(err => {
+          console.warn('Could not sync group leave to Supabase:', err);
+        });
+    }
     showToast('You left the group.');
     return;
   }
@@ -3198,12 +3674,16 @@ document.querySelector('#profile-form').addEventListener('submit', event => {
     return;
   }
   const previousProfile = state.profile;
+  const gradYear = form.elements.graduationYear ? parseInt(form.elements.graduationYear.value, 10) : null;
+  const major = form.elements.major ? form.elements.major.value.trim() : '';
   state.profile = {
     ...state.profile,
     name,
     headline: form.elements.headline.value.trim(),
     location: form.elements.location.value.trim(),
     school: form.elements.school.value.trim(),
+    major,
+    graduation_year: Number.isNaN(gradYear) ? null : gradYear,
     bio: form.elements.bio.value.trim()
   };
   try {
@@ -3213,6 +3693,24 @@ document.querySelector('#profile-form').addEventListener('submit', event => {
     state.profile = previousProfile;
     showToast('Your profile could not be saved. Free up browser storage and try again.');
     return;
+  }
+  // If authenticated, sync update to Supabase
+  if (state.currentUser && window.pipelineSupabaseService?.isConfigured()) {
+    window.pipelineSupabaseService.updateOwnProfile({
+      id: state.currentUser.id,
+      full_name: state.profile.name,
+      headline: state.profile.headline,
+      location: state.profile.location,
+      school_or_organization: state.profile.school,
+      major: state.profile.major || '',
+      graduation_year: state.profile.graduation_year || null,
+      bio: state.profile.bio
+    }).then(({ error }) => {
+      if (error) {
+        console.warn('Could not sync profile update to Supabase:', error.message);
+        showToast('Profile updated locally, but could not sync to cloud.');
+      }
+    });
   }
   applyProfile();
   if (state.selectedGridNode === 'truman') selectGridNode('truman');
@@ -3294,6 +3792,579 @@ document.querySelector('#explore-goldman').addEventListener('click', () => {
   setView('surf-grid');
   sendGuideQuery('Find someone at Goldman Sachs');
 });
+
+function initializeAuthentication() {
+  const gate = document.querySelector('#auth-gate');
+  const form = document.querySelector('#auth-form');
+  const loginTab = document.querySelector('#auth-login-tab');
+  const signupTab = document.querySelector('#auth-signup-tab');
+  const signupFields = [...document.querySelectorAll('.auth-signup-field')];
+  const submit = form.querySelector('.auth-submit');
+  const status = document.querySelector('#auth-status');
+  const configWarning = document.querySelector('#auth-config-warning');
+  const demoButton = document.querySelector('#auth-demo');
+  const logoutButtons = [document.querySelector('#logout-button'), document.querySelector('#auth-logout')].filter(Boolean);
+  let mode = 'login';
+
+  const setStatus = (message, isError = false) => {
+    status.textContent = message;
+    status.classList.toggle('error', isError);
+  };
+  const setMode = nextMode => {
+    mode = nextMode;
+    const signup = mode === 'signup';
+    loginTab.classList.toggle('active', !signup);
+    signupTab.classList.toggle('active', signup);
+    loginTab.setAttribute('aria-selected', String(!signup));
+    signupTab.setAttribute('aria-selected', String(signup));
+    signupFields.forEach(field => {
+      field.hidden = !signup;
+      field.querySelector('input').required = signup;
+    });
+    form.elements.password.autocomplete = signup ? 'new-password' : 'current-password';
+    submit.textContent = signup ? 'Create account' : 'Log in';
+    document.querySelector('#auth-reset').hidden = signup;
+    setStatus('');
+  };
+  const setLoggedIn = loggedIn => {
+    logoutButtons.forEach(button => { button.hidden = !loggedIn; });
+  };
+  const showGate = () => {
+    gate.setAttribute('aria-hidden', 'false');
+    setLoggedIn(false);
+  };
+  const hideGate = () => {
+    gate.setAttribute('aria-hidden', 'true');
+    setLoggedIn(true);
+  };
+
+  if (!window.pipelineSupabaseService?.isConfigured()) {
+    configWarning.hidden = false;
+    demoButton.hidden = false;
+    showGate();
+  }
+  loginTab.addEventListener('click', () => setMode('login'));
+  signupTab.addEventListener('click', () => setMode('signup'));
+  demoButton.addEventListener('click', enterDemoMode);
+  document.querySelector('#demo-exit-top')?.addEventListener('click', exitDemoMode);
+  document.querySelector('#sidebar-demo-exit')?.addEventListener('click', exitDemoMode);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!window.pipelineSupabaseService?.isConfigured()) {
+      setStatus('Configure Supabase before creating or accessing a real account.', true);
+      return;
+    }
+    submit.disabled = true;
+    setStatus(mode === 'signup' ? 'Creating your account...' : 'Signing you in...');
+    const result = mode === 'signup'
+      ? await window.pipelineSupabaseService.signUp({
+        fullName: form.elements.fullName.value.trim(),
+        username: form.elements.username.value.trim(),
+        email: form.elements.email.value.trim(),
+        password: form.elements.password.value
+      })
+      : await window.pipelineSupabaseService.signIn({
+        email: form.elements.email.value.trim(),
+        password: form.elements.password.value
+      });
+    submit.disabled = false;
+    if (result.error) {
+      setStatus(result.error.message, true);
+    } else if (mode === 'signup') {
+      setStatus(result.data?.session ? 'Account created. You are now signed in.' : 'Account created. Check your email to confirm your account.');
+      if (result.data?.session) {
+        handleUserAuthenticated(result.data.session.user);
+      } else {
+        form.reset();
+      }
+    } else {
+      setStatus('Signed in.');
+      if (result.data?.session?.user) {
+        handleUserAuthenticated(result.data.session.user);
+      } else {
+        hideGate();
+      }
+    }
+  });
+
+  document.querySelector('#auth-reset').addEventListener('click', async () => {
+    const email = form.elements.email.value.trim();
+    if (!email) {
+      setStatus('Enter your email first, then request a reset link.', true);
+      form.elements.email.focus();
+      return;
+    }
+    const result = await window.pipelineSupabaseService.resetPassword(email);
+    if (result.error) setStatus(result.error.message, true);
+    else setStatus('Password reset instructions have been sent to your email.');
+  });
+
+  const performLogout = async (button) => {
+    if (button) button.disabled = true;
+    const result = await window.pipelineSupabaseService.signOut();
+    if (button) button.disabled = false;
+    if (result.error) {
+      showToast(result.error.message);
+      return;
+    }
+    state.currentUser = null;
+    state.rawProfile = null;
+    state.onboardingActive = false;
+    state.isDemo = false;
+    state.sharedMembers = [];
+    state.groupMembersCache = {};
+    const obGate = document.querySelector('#onboarding-gate');
+    if (obGate) obGate.setAttribute('aria-hidden', 'true');
+    loadUserState();
+    showGate();
+    setMode('login');
+    setStatus('You have been logged out.');
+  };
+
+  logoutButtons.forEach(button => button.addEventListener('click', () => performLogout(button)));
+
+  const obLogout = document.querySelector('#ob-logout');
+  if (obLogout) {
+    obLogout.addEventListener('click', () => performLogout(obLogout));
+  }
+
+  window.pipelineSupabaseService?.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT') {
+      state.currentUser = null;
+      state.rawProfile = null;
+      state.onboardingActive = false;
+      state.isDemo = false;
+      state.sharedMembers = [];
+      state.groupMembersCache = {};
+      const obGate = document.querySelector('#onboarding-gate');
+      if (obGate) obGate.setAttribute('aria-hidden', 'true');
+      loadUserState();
+      showGate();
+    }
+    if (event === 'SIGNED_IN' && session) {
+      handleUserAuthenticated(session.user);
+    }
+  });
+  if (window.pipelineSupabaseService?.isConfigured()) {
+    window.pipelineSupabaseService.getSession().then(({ data, error }) => {
+      if (error) {
+        showGate();
+        setStatus(error.message, true);
+      } else if (data?.user) {
+        handleUserAuthenticated(data.user);
+      } else {
+        showGate();
+      }
+    });
+  }
+}
+
+function enterDemoMode() {
+  state.isDemo = true;
+  state.currentUser = null;
+  state.rawProfile = null;
+  state.onboardingActive = false;
+
+  const obGate = document.querySelector('#onboarding-gate');
+  if (obGate) obGate.setAttribute('aria-hidden', 'true');
+  const gate = document.querySelector('#auth-gate');
+  if (gate) gate.setAttribute('aria-hidden', 'true');
+
+  const demoBanner = document.querySelector('#demo-banner');
+  if (demoBanner) demoBanner.hidden = false;
+  const sidebarDemoExit = document.querySelector('#sidebar-demo-exit');
+  if (sidebarDemoExit) sidebarDemoExit.hidden = false;
+  const logoutButtons = [document.querySelector('#logout-button'), document.querySelector('#auth-logout')].filter(Boolean);
+  logoutButtons.forEach(button => { button.hidden = true; });
+
+  loadUserState();
+  showToast('You are exploring the John Harvard demo profile.');
+}
+
+function exitDemoMode() {
+  state.isDemo = false;
+  state.currentUser = null;
+  state.rawProfile = null;
+  state.onboardingActive = false;
+  state.sharedMembers = [];
+  state.groupMembersCache = {};
+
+  const demoBanner = document.querySelector('#demo-banner');
+  if (demoBanner) demoBanner.hidden = true;
+  const sidebarDemoExit = document.querySelector('#sidebar-demo-exit');
+  if (sidebarDemoExit) sidebarDemoExit.hidden = true;
+
+  loadUserState();
+
+  const gate = document.querySelector('#auth-gate');
+  if (gate) gate.setAttribute('aria-hidden', 'false');
+  const logoutButtons = [document.querySelector('#logout-button'), document.querySelector('#auth-logout')].filter(Boolean);
+  logoutButtons.forEach(button => { button.hidden = true; });
+
+  const status = document.querySelector('#auth-status');
+  if (status) {
+    status.textContent = 'Exited demo mode. Log in or create an account to start your own profile.';
+    status.classList.remove('error');
+  }
+}
+
+function loadUserState() {
+  state.items = loadItems();
+  state.resumeData = loadResumeData();
+  state.groupMemberships = loadGroupMemberships();
+  state.createdGroups = loadCreatedGroups();
+  state.opportunityPosts = loadOpportunityPosts();
+  state.savedOpportunities = loadOpportunityIds('orbit-saved-opportunities');
+  state.interestedOpportunities = loadOpportunityIds('orbit-interested-opportunities');
+  state.profile = loadProfile();
+  state.connected = new Set(JSON.parse(localStorage.getItem(userStorageKey('orbit-connected')) || '[]'));
+  state.follows = loadIdSet('pipeline-follows-v1', DEMO_FOLLOWS);
+  state.acquaintances = loadIdSet('pipeline-acquaintances-v1', DEMO_ACQUAINTANCES);
+  state.saved = new Set(JSON.parse(localStorage.getItem(userStorageKey('orbit-saved')) || '[]'));
+  state.messageThreads = loadMessageThreads();
+
+  applyProfile();
+  rebuildGroupGraph();
+  renderPeople();
+  renderGroups();
+  renderMyGrid();
+  renderOpportunities();
+  renderItems();
+  renderNetworkMap();
+  refreshIcons();
+}
+
+async function handleUserAuthenticated(user) {
+  state.isDemo = false;
+  state.currentUser = user;
+
+  const demoBanner = document.querySelector('#demo-banner');
+  if (demoBanner) demoBanner.hidden = true;
+  const sidebarDemoExit = document.querySelector('#sidebar-demo-exit');
+  if (sidebarDemoExit) sidebarDemoExit.hidden = true;
+
+  const gate = document.querySelector('#auth-gate');
+  gate.setAttribute('aria-hidden', 'true');
+  const logoutButtons = [document.querySelector('#logout-button'), document.querySelector('#auth-logout')].filter(Boolean);
+  logoutButtons.forEach(button => { button.hidden = false; });
+
+  const { data: profile, error } = await window.pipelineSupabaseService.getOwnProfile(user.id);
+  if (error) {
+    console.error('Error fetching profile from Supabase:', error);
+  }
+  state.rawProfile = profile || null;
+
+  if (profile) {
+    state.profile = {
+      name: profile.full_name || '',
+      headline: profile.headline || '',
+      location: profile.location || '',
+      school: profile.school_or_organization || '',
+      major: profile.major || '',
+      graduation_year: profile.graduation_year || null,
+      bio: profile.bio || '',
+      photo: profile.photo_path || ''
+    };
+  }
+
+  // Load group memberships from Supabase
+  try {
+    const { data: userGroups } = await window.pipelineSupabaseService.getUserGroupMemberships(user.id);
+    if (userGroups && userGroups.length) {
+      userGroups.forEach(item => {
+        const slug = item.groups?.slug;
+        if (slug) {
+          state.groupMemberships[slug] = item.status === 'admin' ? 'Admin' : SELF_REPORTED;
+        }
+      });
+    }
+  } catch (groupLoadErr) {
+    console.warn('Could not load group memberships from Supabase:', groupLoadErr);
+  }
+
+  // Load shared group members (peers sharing joined groups)
+  try {
+    const peers = await window.pipelineSupabaseService.getSharedGroupMembers(user.id);
+    state.sharedMembers = peers || [];
+  } catch (peersErr) {
+    console.warn('Could not load shared group members:', peersErr);
+    state.sharedMembers = [];
+  }
+
+  // Load profile entries from Supabase
+  try {
+    const { data: entries } = await window.pipelineSupabaseService.getProfileEntries(user.id);
+    if (entries && entries.length) {
+      entries.forEach(entry => {
+        if (entry.entry_type === 'skill' && entry.content?.skill) {
+          const exists = state.items.some(it => it.value === entry.content.skill);
+          if (!exists) {
+            state.items.push({
+              id: `db-entry-${entry.id}`,
+              label: 'Skills',
+              value: entry.content.skill,
+              state: entry.approval_state || 'approved'
+            });
+          }
+        }
+      });
+    }
+  } catch (entriesLoadErr) {
+    console.warn('Could not load profile entries from Supabase:', entriesLoadErr);
+  }
+
+  loadUserState();
+
+  if (!profile || !profile.onboarding_completed_at) {
+    startOnboardingFlow(user, profile);
+  } else {
+    state.onboardingActive = false;
+    const obGate = document.querySelector('#onboarding-gate');
+    if (obGate) obGate.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function startOnboardingFlow(user, profile) {
+  state.onboardingActive = true;
+  const obGate = document.querySelector('#onboarding-gate');
+  if (!obGate) return;
+  obGate.setAttribute('aria-hidden', 'false');
+
+  const form = document.querySelector('#onboarding-form');
+  const username = profile?.username || user.user_metadata?.username || user.email?.split('@')[0] || '';
+  if (form.elements.obUsername) form.elements.obUsername.value = username;
+  if (form.elements.obFullName) form.elements.obFullName.value = profile?.full_name || user.user_metadata?.full_name || '';
+  if (form.elements.obHeadline) form.elements.obHeadline.value = profile?.headline || '';
+  if (form.elements.obSchool) form.elements.obSchool.value = profile?.school_or_organization || '';
+  if (form.elements.obMajor) form.elements.obMajor.value = profile?.major || '';
+  if (form.elements.obGradYear) form.elements.obGradYear.value = profile?.graduation_year || '';
+  if (form.elements.obLocation) form.elements.obLocation.value = profile?.location || '';
+  if (form.elements.obBio) form.elements.obBio.value = profile?.bio || '';
+
+  renderOnboardingGroupPicker();
+  setOnboardingStep(1);
+}
+
+function setOnboardingStep(stepNumber) {
+  [1, 2, 3].forEach(step => {
+    const el = document.querySelector(`#onboarding-step-${step}`);
+    const pill = document.querySelector(`#step-pill-${step}`);
+    if (el) {
+      el.hidden = step !== stepNumber;
+      el.classList.toggle('active', step === stepNumber);
+    }
+    if (pill) {
+      pill.classList.toggle('active', step === stepNumber);
+    }
+  });
+  const obStatus = document.querySelector('#ob-status');
+  if (obStatus) obStatus.textContent = '';
+  refreshIcons();
+}
+
+function renderOnboardingGroupPicker() {
+  const container = document.querySelector('#ob-group-picker');
+  if (!container) return;
+  const popularGroups = groupCatalog.slice(0, 8);
+  container.innerHTML = popularGroups.map(group => {
+    return `<label class="ob-group-item">
+      <input type="checkbox" name="obGroups" value="${escapeHTML(group.id)}" />
+      <span class="ob-group-info">
+        <strong>${escapeHTML(group.name)}</strong>
+        <small>${escapeHTML(group.category || group.type)} · ${escapeHTML(group.description.slice(0, 75))}...</small>
+      </span>
+    </label>`;
+  }).join('');
+}
+
+function setupOnboardingEventListeners() {
+  const form = document.querySelector('#onboarding-form');
+  if (!form) return;
+
+  document.querySelector('#ob-step1-next')?.addEventListener('click', () => {
+    const fullName = form.elements.obFullName.value.trim();
+    const headline = form.elements.obHeadline.value.trim();
+    const school = form.elements.obSchool.value.trim();
+    const major = form.elements.obMajor.value.trim();
+    const gradYear = form.elements.obGradYear.value.trim();
+
+    if (!fullName || !headline || !school || !major || !gradYear) {
+      const obStatus = document.querySelector('#ob-status');
+      if (obStatus) {
+        obStatus.textContent = 'Please fill out all required fields marked with * before continuing.';
+        obStatus.classList.add('error');
+      }
+      return;
+    }
+    setOnboardingStep(2);
+  });
+
+  document.querySelector('#ob-step2-back')?.addEventListener('click', () => setOnboardingStep(1));
+  document.querySelector('#ob-step2-next')?.addEventListener('click', () => setOnboardingStep(3));
+  document.querySelector('#ob-step3-back')?.addEventListener('click', () => setOnboardingStep(2));
+
+  document.querySelector('#ob-interest-chips')?.addEventListener('click', event => {
+    const chip = event.target.closest('.ob-chip');
+    if (!chip) return;
+    chip.classList.toggle('selected');
+  });
+
+  const obResumeFile = document.querySelector('#ob-resume-file');
+  const obResumeStatus = document.querySelector('#ob-resume-status');
+  obResumeFile?.addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    obResumeStatus.textContent = 'Reading resume...';
+    obResumeStatus.classList.remove('error');
+    try {
+      const layout = await extractResumeLayout(file);
+      const parsed = parseResume(layout);
+      state.resumeData = parsed;
+      const skillsSection = parsed.sections.find(s => s.type === 'skills');
+      if (skillsSection && form.elements.obSkills) {
+        const skills = skillsSection.entries.map(e => e.skill).filter(Boolean);
+        if (skills.length) {
+          form.elements.obSkills.value = skills.join(', ');
+        }
+      }
+      obResumeStatus.textContent = `Uploaded "${file.name}". Resume data parsed successfully.`;
+    } catch (err) {
+      obResumeStatus.textContent = err.message || 'Could not parse resume.';
+      obResumeStatus.classList.add('error');
+    }
+  });
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const obStatus = document.querySelector('#ob-status');
+    const submitBtn = document.querySelector('#ob-submit-btn');
+
+    const fullName = form.elements.obFullName.value.trim();
+    const headline = form.elements.obHeadline.value.trim();
+    const school = form.elements.obSchool.value.trim();
+    const major = form.elements.obMajor.value.trim();
+    const gradYear = parseInt(form.elements.obGradYear.value.trim(), 10);
+    const location = form.elements.obLocation.value.trim();
+    const bio = form.elements.obBio.value.trim();
+
+    if (!fullName || !headline || !school || !major || Number.isNaN(gradYear)) {
+      setOnboardingStep(1);
+      if (obStatus) {
+        obStatus.textContent = 'Please complete all required fields on Step 1.';
+        obStatus.classList.add('error');
+      }
+      return;
+    }
+
+    if (submitBtn) submitBtn.disabled = true;
+    if (obStatus) {
+      obStatus.textContent = 'Saving your profile...';
+      obStatus.classList.remove('error');
+    }
+
+    const selectedGroups = Array.from(form.querySelectorAll('input[name="obGroups"]:checked')).map(cb => cb.value);
+    const selectedInterests = Array.from(document.querySelectorAll('#ob-interest-chips .ob-chip.selected')).map(c => c.dataset.interest);
+    const skillsText = form.elements.obSkills?.value.trim() || '';
+    const skillsList = skillsText.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+
+    const profileData = {
+      id: state.currentUser.id,
+      full_name: fullName,
+      headline,
+      location,
+      school_or_organization: school,
+      major,
+      graduation_year: gradYear,
+      bio
+    };
+
+    const entries = skillsList.map(skill => ({
+      entry_type: 'skill',
+      source: 'manual',
+      content: { skill },
+      approval_state: 'approved',
+      visibility: 'public'
+    }));
+
+    if (window.pipelineSupabaseService?.isConfigured()) {
+      const { data: savedProfile, error } = await window.pipelineSupabaseService.completeOnboarding({
+        profile: profileData,
+        entries,
+        groups: selectedGroups
+      });
+
+      if (error) {
+        if (submitBtn) submitBtn.disabled = false;
+        if (obStatus) {
+          obStatus.textContent = `Error completing setup: ${error.message}`;
+          obStatus.classList.add('error');
+        }
+        return;
+      }
+      state.rawProfile = savedProfile;
+    }
+
+    // Apply into local state
+    state.profile = {
+      name: fullName,
+      headline,
+      location,
+      school,
+      major,
+      graduation_year: gradYear,
+      bio,
+      photo: ''
+    };
+
+    selectedGroups.forEach(groupId => {
+      state.groupMemberships[groupId] = SELF_REPORTED;
+    });
+
+    if (skillsList.length) {
+      skillsList.forEach((skill, idx) => {
+        state.items.push({
+          id: `skill-manual-${Date.now()}-${idx}`,
+          label: 'Skills',
+          value: skill,
+          state: 'approved'
+        });
+      });
+    }
+
+    persist();
+    state.onboardingActive = false;
+    const obGate = document.querySelector('#onboarding-gate');
+    if (obGate) obGate.setAttribute('aria-hidden', 'true');
+    if (submitBtn) submitBtn.disabled = false;
+
+    if (window.pipelineSupabaseService?.isConfigured() && selectedGroups.length > 0 && state.currentUser) {
+      window.pipelineSupabaseService.getSharedGroupMembers(state.currentUser.id)
+        .then(peers => {
+          state.sharedMembers = peers || [];
+          rebuildGroupGraph();
+          renderNetworkMap();
+          renderPeople();
+        })
+        .catch(console.warn);
+    }
+
+    applyProfile();
+    rebuildGroupGraph();
+    renderPeople();
+    renderGroups();
+    renderMyGrid();
+    renderItems();
+    renderNetworkMap();
+    refreshIcons();
+    showToast('Welcome to Pipeline! Your profile is ready.');
+    setView('profile');
+  });
+}
+
+setupOnboardingEventListeners();
+
+initializeAuthentication();
 
 // Landing screen: a lightweight canvas network that drifts gently and stops once dismissed.
 const landing = {
@@ -3410,6 +4481,7 @@ function refreshNetworkViews() {
 }
 
 function toggleFollow(id) {
+  if (isActionGatedByOnboarding('follow')) return;
   const profile = demoProfileById(id);
   if (!profile) return;
   if (state.follows.has(id)) {
@@ -3466,13 +4538,17 @@ function myGridCard(profile) {
 }
 
 function renderMyGrid() {
-  const known = demoProfiles.filter(profile => state.acquaintances.has(profile.id));
-  const followed = demoProfiles.filter(profile => state.follows.has(profile.id));
+  const known = state.isDemo ? demoProfiles.filter(profile => state.acquaintances.has(profile.id)) : [];
+  const followed = state.isDemo ? demoProfiles.filter(profile => state.follows.has(profile.id)) : [];
   const query = myGrid.query.trim().toLowerCase();
-  const others = demoProfiles.filter(profile => !state.acquaintances.has(profile.id) && !state.follows.has(profile.id)
-    && (!query || `${profile.name} ${profile.role} ${profile.title || ''} ${profile.company || ''} ${profile.interests.join(' ')}`.toLowerCase().includes(query)));
+  const others = state.isDemo
+    ? demoProfiles.filter(profile => !state.acquaintances.has(profile.id) && !state.follows.has(profile.id)
+      && (!query || `${profile.name} ${profile.role} ${profile.title || ''} ${profile.company || ''} ${profile.interests.join(' ')}`.toLowerCase().includes(query)))
+    : [];
   const secondDegree = new Set();
-  known.forEach(profile => knowsNeighbors(profile.id).forEach(id => { if (id !== 'truman' && !state.acquaintances.has(id)) secondDegree.add(id); }));
+  if (state.isDemo) {
+    known.forEach(profile => knowsNeighbors(profile.id).forEach(id => { if (id !== 'truman' && !state.acquaintances.has(id)) secondDegree.add(id); }));
+  }
   document.querySelector('#mygrid-summary').innerHTML = [
     [known.length, 'acquaintances', 'personal connections'],
     [followed.length, 'following', 'one-way follows'],
@@ -3480,12 +4556,44 @@ function renderMyGrid() {
   ].map(([value, label, hint]) => `<div class="mygrid-stat"><strong>${value}</strong><span>${label}</span><small>${hint}</small></div>`).join('');
   document.querySelector('#mygrid-know-count').textContent = known.length;
   document.querySelector('#mygrid-follow-count').textContent = followed.length;
-  document.querySelector('#mygrid-acquaintances').innerHTML = known.length ? known.map(myGridCard).join('') : '<p class="groups-empty">No acquaintances yet. Add someone you personally know to create a connection Surf the Grid can use.</p>';
-  document.querySelector('#mygrid-following').innerHTML = followed.length ? followed.map(myGridCard).join('') : '<p class="groups-empty">You are not following anyone yet.</p>';
-  document.querySelector('#mygrid-discover').innerHTML = others.length ? others.map(myGridCard).join('') : '<p class="groups-empty">No other profiles match.</p>';
+
+  document.querySelector('#mygrid-acquaintances').innerHTML = known.length
+    ? known.map(myGridCard).join('')
+    : `<div class="mygrid-empty">
+        <i data-lucide="users"></i>
+        <strong>No acquaintances added yet</strong>
+        <p>Add classmates or colleagues you know personally to build your verified connection network.</p>
+      </div>`;
+
+  document.querySelector('#mygrid-following').innerHTML = followed.length
+    ? followed.map(myGridCard).join('')
+    : `<div class="mygrid-empty">
+        <i data-lucide="user-plus"></i>
+        <strong>No followed profiles</strong>
+        <p>Follow peers, researchers, or mentors to stay updated with their public paths and milestones.</p>
+      </div>`;
+
+  document.querySelector('#mygrid-discover').innerHTML = state.isDemo
+    ? (others.length ? others.map(myGridCard).join('') : '<p class="groups-empty">No other profiles match.</p>')
+    : `<div class="mygrid-empty">
+        <i data-lucide="compass"></i>
+        <strong>Explore your community</strong>
+        <p>Join student clubs and campus organizations in the Groups tab to connect with peers who share your interests.</p>
+        <button class="button small secondary" type="button" data-view="groups">Browse Groups</button>
+      </div>`;
+
   document.querySelector('#mygrid-nav-count').textContent = known.length;
   refreshIcons();
 }
+
+document.addEventListener('click', event => {
+  const viewBtn = event.target.closest('[data-view]');
+  if (viewBtn && !viewBtn.classList.contains('nav-item')) {
+    event.preventDefault();
+    const view = viewBtn.dataset.view;
+    if (view) setView(view);
+  }
+});
 
 document.querySelector('#network-view').addEventListener('click', event => {
   const button = event.target.closest('[data-mygrid-action]');
