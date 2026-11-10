@@ -945,8 +945,9 @@ kbd { border-color: #303330; background: #1a1c1a; }
 .landing-enter { margin-top: 10px; min-height: 44px; padding: 0 22px; color: #10130c; background: var(--lime); font-size: 13px; }
 .landing-enter:hover { background: #d0d7ad; }
 .landing-content small { margin-top: 18px; color: #6f746f; font-size: 10px; }
-.auth-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: #080a09e8; }
+.auth-backdrop { position: fixed; inset: 0; z-index: 210; display: grid; place-items: center; padding: 24px; background: #080a09e8; }
 .auth-backdrop[aria-hidden="true"] { display: none; }
+.onboarding-backdrop { z-index: 220; }
 .auth-card { width: min(100%, 430px); padding: 30px; border: 1px solid #303632; border-radius: 12px; color: var(--ink); background: #121513; box-shadow: 0 24px 80px #0009; }
 .auth-card .landing-brand { margin-bottom: 28px; }
 .auth-card h2 { margin: 8px 0; font: 800 28px var(--font-display); }

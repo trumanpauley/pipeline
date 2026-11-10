@@ -3000,10 +3000,10 @@ function isActionGatedByOnboarding(actionName) {
 }
 
 function setView(view) {
-  const target = view || 'home';
-  if (target === 'surf-grid' && isActionGatedByOnboarding('surf-grid')) {
+  if (isActionGatedByOnboarding(view)) {
     return;
   }
+  const target = view || 'home';
   if (target === 'home') updateGreeting();
   if (target !== 'surf-grid') settlePathAnimation();
   document.querySelectorAll('.nav-item').forEach(item => {
@@ -3793,6 +3793,121 @@ document.querySelector('#explore-goldman').addEventListener('click', () => {
   sendGuideQuery('Find someone at Goldman Sachs');
 });
 
+// Landing screen: a lightweight canvas network that drifts gently and stops once dismissed.
+const landing = {
+  el: document.querySelector('#landing'),
+  canvas: document.querySelector('#landing-canvas'),
+  raf: 0, nodes: [], width: 0, height: 0
+};
+const landingReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+function sizeLandingCanvas() {
+  if (!landing.canvas) return;
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  landing.width = landing.canvas.clientWidth;
+  landing.height = landing.canvas.clientHeight;
+  landing.canvas.width = landing.width * ratio;
+  landing.canvas.height = landing.height * ratio;
+  landing.canvas.getContext('2d').setTransform(ratio, 0, 0, ratio, 0, 0);
+  const count = Math.round(Math.min(95, Math.max(40, landing.width * landing.height / 16000)));
+  landing.nodes = Array.from({ length: count }, (_, i) => ({
+    x: Math.random() * landing.width, y: Math.random() * landing.height,
+    vx: (Math.random() - .5) * .18, vy: (Math.random() - .5) * .18,
+    r: i % 6 === 0 ? 4.5 : 2.8, accent: i % 6 === 0
+  }));
+}
+
+function drawLanding(step) {
+  if (!landing.canvas) return;
+  const ctx = landing.canvas.getContext('2d');
+  const { width, height, nodes } = landing;
+  ctx.clearRect(0, 0, width, height);
+  nodes.forEach(node => {
+    if (step) {
+      node.x += node.vx; node.y += node.vy;
+      if (node.x < 0 || node.x > width) node.vx *= -1;
+      if (node.y < 0 || node.y > height) node.vy *= -1;
+    }
+  });
+  const reach = 190;
+  const t = performance.now() / 1000;
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const dist = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
+      if (dist < reach) {
+        ctx.strokeStyle = `rgba(185, 199, 126, ${.14 + (1 - dist / reach) * .5})`;
+        ctx.lineWidth = 1.3;
+        ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
+        if ((i * 7 + j) % 5 === 0 && !landingReducedMotion.matches) {
+          const p = (t * .35 + (i * 13 + j) * .17) % 1;
+          ctx.fillStyle = 'rgba(227, 238, 157, .95)';
+          ctx.beginPath(); ctx.arc(nodes[i].x + (nodes[j].x - nodes[i].x) * p, nodes[i].y + (nodes[j].y - nodes[i].y) * p, 2.2, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+  }
+  nodes.forEach(node => {
+    ctx.shadowColor = node.accent ? 'rgba(227, 238, 157, .9)' : 'rgba(185, 199, 126, .5)';
+    ctx.shadowBlur = node.accent ? 18 : 8;
+    ctx.fillStyle = node.accent ? 'rgba(236, 245, 170, 1)' : 'rgba(190, 204, 160, .85)';
+    ctx.beginPath(); ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+}
+
+function landingFrame() {
+  drawLanding(true);
+  landing.raf = requestAnimationFrame(landingFrame);
+}
+
+function startLanding() {
+  if (state.currentUser || state.isDemo) {
+    if (landing.el) landing.el.hidden = true;
+    return;
+  }
+  sizeLandingCanvas();
+  if (landingReducedMotion.matches) drawLanding(false);
+  else landing.raf = requestAnimationFrame(landingFrame);
+  document.querySelector('#landing-enter')?.focus({ preventScroll: true });
+}
+
+function dismissLanding(immediate = false) {
+  if (!landing.el) return;
+  cancelAnimationFrame(landing.raf);
+  landing.raf = 0;
+  window.removeEventListener('resize', onLandingResize);
+  landing.el.classList.add('is-leaving');
+  if (immediate || landingReducedMotion.matches) {
+    landing.el.hidden = true;
+  } else {
+    setTimeout(() => {
+      if (landing.el) landing.el.hidden = true;
+    }, 350);
+  }
+}
+
+function enterPipeline() {
+  dismissLanding();
+  if (state.currentUser && state.onboardingActive) {
+    const obGate = document.querySelector('#onboarding-gate');
+    if (obGate) obGate.setAttribute('aria-hidden', 'false');
+  } else if (state.currentUser) {
+    setView('profile');
+  } else if (!state.isDemo) {
+    const gate = document.querySelector('#auth-gate');
+    if (gate) gate.setAttribute('aria-hidden', 'false');
+  }
+  window.scrollTo(0, 0);
+}
+
+function onLandingResize() {
+  sizeLandingCanvas();
+  if (!landing.raf) drawLanding(false);
+}
+
+document.querySelector('#landing-enter')?.addEventListener('click', enterPipeline);
+window.addEventListener('resize', onLandingResize);
+
 function initializeAuthentication() {
   const gate = document.querySelector('#auth-gate');
   const form = document.querySelector('#auth-form');
@@ -3872,18 +3987,21 @@ function initializeAuthentication() {
     if (result.error) {
       setStatus(result.error.message, true);
     } else if (mode === 'signup') {
-      setStatus(result.data?.session ? 'Account created. You are now signed in.' : 'Account created. Check your email to confirm your account.');
-      if (result.data?.session) {
-        handleUserAuthenticated(result.data.session.user);
+      const authenticatedUser = result.data?.session?.user || result.data?.user;
+      if (result.data?.session && authenticatedUser) {
+        setStatus('Account created. Setting up your profile...');
+        await handleUserAuthenticated(authenticatedUser);
       } else {
+        setStatus('Account created. Check your email to confirm your account.');
         form.reset();
       }
     } else {
-      setStatus('Signed in.');
-      if (result.data?.session?.user) {
-        handleUserAuthenticated(result.data.session.user);
+      const authenticatedUser = result.data?.session?.user || result.data?.user;
+      if (authenticatedUser) {
+        setStatus('Signed in.');
+        await handleUserAuthenticated(authenticatedUser);
       } else {
-        hideGate();
+        setStatus('Could not sign in. Please verify your credentials.', true);
       }
     }
   });
@@ -3908,6 +4026,8 @@ function initializeAuthentication() {
       showToast(result.error.message);
       return;
     }
+    authProcessingUserId = null;
+    authProcessingPromise = null;
     state.currentUser = null;
     state.rawProfile = null;
     state.onboardingActive = false;
@@ -3931,6 +4051,8 @@ function initializeAuthentication() {
 
   window.pipelineSupabaseService?.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT') {
+      authProcessingUserId = null;
+      authProcessingPromise = null;
       state.currentUser = null;
       state.rawProfile = null;
       state.onboardingActive = false;
@@ -3942,25 +4064,27 @@ function initializeAuthentication() {
       loadUserState();
       showGate();
     }
-    if (event === 'SIGNED_IN' && session) {
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
       handleUserAuthenticated(session.user);
     }
   });
   if (window.pipelineSupabaseService?.isConfigured()) {
     window.pipelineSupabaseService.getSession().then(({ data, error }) => {
       if (error) {
+        dismissLanding(true);
         showGate();
         setStatus(error.message, true);
-      } else if (data?.user) {
-        handleUserAuthenticated(data.user);
-      } else {
-        showGate();
+      } else if (data?.user || data?.session?.user) {
+        handleUserAuthenticated(data.user || data.session.user);
       }
     });
   }
 }
 
 function enterDemoMode() {
+  dismissLanding(true);
+  authProcessingUserId = null;
+  authProcessingPromise = null;
   state.isDemo = true;
   state.currentUser = null;
   state.rawProfile = null;
@@ -3983,6 +4107,8 @@ function enterDemoMode() {
 }
 
 function exitDemoMode() {
+  authProcessingUserId = null;
+  authProcessingPromise = null;
   state.isDemo = false;
   state.currentUser = null;
   state.rawProfile = null;
@@ -4035,24 +4161,56 @@ function loadUserState() {
   refreshIcons();
 }
 
+let authProcessingUserId = null;
+let authProcessingPromise = null;
+
 async function handleUserAuthenticated(user) {
+  if (!user) return;
+  if (authProcessingPromise && authProcessingUserId === user.id) {
+    return authProcessingPromise;
+  }
+  authProcessingUserId = user.id;
+  authProcessingPromise = (async () => {
+    try {
+      await _runUserAuthenticated(user);
+    } finally {
+      authProcessingPromise = null;
+    }
+  })();
+  return authProcessingPromise;
+}
+
+async function _runUserAuthenticated(user) {
   state.isDemo = false;
   state.currentUser = user;
+
+  dismissLanding(true);
 
   const demoBanner = document.querySelector('#demo-banner');
   if (demoBanner) demoBanner.hidden = true;
   const sidebarDemoExit = document.querySelector('#sidebar-demo-exit');
   if (sidebarDemoExit) sidebarDemoExit.hidden = true;
 
-  const gate = document.querySelector('#auth-gate');
-  gate.setAttribute('aria-hidden', 'true');
   const logoutButtons = [document.querySelector('#logout-button'), document.querySelector('#auth-logout')].filter(Boolean);
   logoutButtons.forEach(button => { button.hidden = false; });
 
   const { data: profile, error } = await window.pipelineSupabaseService.getOwnProfile(user.id);
   if (error) {
     console.error('Error fetching profile from Supabase:', error);
+    const status = document.querySelector('#auth-status');
+    if (status) {
+      status.textContent = `Could not load your profile: ${error.message}. Please try again.`;
+      status.classList.add('error');
+    }
+    showToast(`Could not load your profile: ${error.message}`);
+    const gate = document.querySelector('#auth-gate');
+    if (gate) gate.setAttribute('aria-hidden', 'false');
+    return;
   }
+
+  const gate = document.querySelector('#auth-gate');
+  if (gate) gate.setAttribute('aria-hidden', 'true');
+
   state.rawProfile = profile || null;
 
   if (profile) {
@@ -4067,6 +4225,19 @@ async function handleUserAuthenticated(user) {
       photo: profile.photo_path || ''
     };
   }
+
+  const hasCompletedOnboarding = Boolean(profile && profile.onboarding_completed_at);
+
+  if (!hasCompletedOnboarding) {
+    state.onboardingActive = true;
+    loadUserState();
+    startOnboardingFlow(user, profile);
+    return;
+  }
+
+  state.onboardingActive = false;
+  const obGate = document.querySelector('#onboarding-gate');
+  if (obGate) obGate.setAttribute('aria-hidden', 'true');
 
   // Load group memberships from Supabase
   try {
@@ -4115,14 +4286,7 @@ async function handleUserAuthenticated(user) {
   }
 
   loadUserState();
-
-  if (!profile || !profile.onboarding_completed_at) {
-    startOnboardingFlow(user, profile);
-  } else {
-    state.onboardingActive = false;
-    const obGate = document.querySelector('#onboarding-gate');
-    if (obGate) obGate.setAttribute('aria-hidden', 'true');
-  }
+  setView('profile');
 }
 
 function startOnboardingFlow(user, profile) {
@@ -4365,96 +4529,6 @@ function setupOnboardingEventListeners() {
 setupOnboardingEventListeners();
 
 initializeAuthentication();
-
-// Landing screen: a lightweight canvas network that drifts gently and stops once dismissed.
-const landing = {
-  el: document.querySelector('#landing'),
-  canvas: document.querySelector('#landing-canvas'),
-  raf: 0, nodes: [], width: 0, height: 0
-};
-const landingReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-function sizeLandingCanvas() {
-  const ratio = Math.min(window.devicePixelRatio || 1, 2);
-  landing.width = landing.canvas.clientWidth;
-  landing.height = landing.canvas.clientHeight;
-  landing.canvas.width = landing.width * ratio;
-  landing.canvas.height = landing.height * ratio;
-  landing.canvas.getContext('2d').setTransform(ratio, 0, 0, ratio, 0, 0);
-  const count = Math.round(Math.min(95, Math.max(40, landing.width * landing.height / 16000)));
-  landing.nodes = Array.from({ length: count }, (_, i) => ({
-    x: Math.random() * landing.width, y: Math.random() * landing.height,
-    vx: (Math.random() - .5) * .18, vy: (Math.random() - .5) * .18,
-    r: i % 6 === 0 ? 4.5 : 2.8, accent: i % 6 === 0
-  }));
-}
-
-function drawLanding(step) {
-  const ctx = landing.canvas.getContext('2d');
-  const { width, height, nodes } = landing;
-  ctx.clearRect(0, 0, width, height);
-  nodes.forEach(node => {
-    if (step) {
-      node.x += node.vx; node.y += node.vy;
-      if (node.x < 0 || node.x > width) node.vx *= -1;
-      if (node.y < 0 || node.y > height) node.vy *= -1;
-    }
-  });
-  const reach = 190;
-  const t = performance.now() / 1000;
-  for (let i = 0; i < nodes.length; i += 1) {
-    for (let j = i + 1; j < nodes.length; j += 1) {
-      const dist = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
-      if (dist < reach) {
-        ctx.strokeStyle = `rgba(185, 199, 126, ${.14 + (1 - dist / reach) * .5})`;
-        ctx.lineWidth = 1.3;
-        ctx.beginPath(); ctx.moveTo(nodes[i].x, nodes[i].y); ctx.lineTo(nodes[j].x, nodes[j].y); ctx.stroke();
-        if ((i * 7 + j) % 5 === 0 && !landingReducedMotion.matches) {
-          const p = (t * .35 + (i * 13 + j) * .17) % 1;
-          ctx.fillStyle = 'rgba(227, 238, 157, .95)';
-          ctx.beginPath(); ctx.arc(nodes[i].x + (nodes[j].x - nodes[i].x) * p, nodes[i].y + (nodes[j].y - nodes[i].y) * p, 2.2, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-    }
-  }
-  nodes.forEach(node => {
-    ctx.shadowColor = node.accent ? 'rgba(227, 238, 157, .9)' : 'rgba(185, 199, 126, .5)';
-    ctx.shadowBlur = node.accent ? 18 : 8;
-    ctx.fillStyle = node.accent ? 'rgba(236, 245, 170, 1)' : 'rgba(190, 204, 160, .85)';
-    ctx.beginPath(); ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
-  });
-}
-
-function landingFrame() {
-  drawLanding(true);
-  landing.raf = requestAnimationFrame(landingFrame);
-}
-
-function startLanding() {
-  sizeLandingCanvas();
-  if (landingReducedMotion.matches) drawLanding(false);
-  else landing.raf = requestAnimationFrame(landingFrame);
-  document.querySelector('#landing-enter').focus({ preventScroll: true });
-}
-
-function enterPipeline() {
-  cancelAnimationFrame(landing.raf);
-  landing.raf = 0;
-  window.removeEventListener('resize', onLandingResize);
-  landing.el.classList.add('is-leaving');
-  setTimeout(() => { landing.el.hidden = true; }, landingReducedMotion.matches ? 0 : 350);
-  setView('profile');
-  window.scrollTo(0, 0);
-}
-
-function onLandingResize() {
-  sizeLandingCanvas();
-  if (!landing.raf) drawLanding(false);
-}
-
-document.querySelector('#landing-enter').addEventListener('click', enterPipeline);
-window.addEventListener('resize', onLandingResize);
 startLanding();
 
 // ---- My Grid: personal relationships (follows are one-way, acquaintances are personal connections) ----
