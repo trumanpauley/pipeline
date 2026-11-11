@@ -234,7 +234,7 @@ function HostInvitations({ data, onChanged }: { data: OrganizerData; onChanged: 
   const hostIds = new Set(data.guests.filter(g => g.role === 'host').map(g => g.id));
   const names = new Map(data.guests.map(g => [g.id, g.full_name]));
   const mine = data.invitations.filter(i => hostIds.has(i.inviter_guest_id));
-  const open = mine.filter(i => i.status === 'open');
+  const open = mine.filter(i => i.status === 'open').sort((a, b) => a.slot - b.slot);
 
   async function create() {
     setBusy(true);
