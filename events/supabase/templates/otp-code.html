@@ -1,0 +1,9 @@
+<!-- Use for BOTH "Confirm signup" and "Magic Link" in Supabase → Authentication → Emails.
+     Subject suggestion: "Your Pipeline Events code: {{ .Token }}" -->
+<div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; color: #111816;">
+  <p style="margin: 0 0 8px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #1f7a5a; font-weight: 700;">Pipeline Events</p>
+  <h1 style="margin: 0 0 16px; font-size: 22px;">Your code</h1>
+  <p style="margin: 0 0 20px; font-size: 32px; font-weight: 800; letter-spacing: 6px;">{{ .Token }}</p>
+  <p style="margin: 0 0 12px; color: #5f6b66;">Enter this code on the RSVP page to confirm it's you. It expires in 1 hour.</p>
+  <p style="margin: 0; color: #5f6b66; font-size: 13px;">If you didn't request this, you can ignore this email.</p>
+</div>
