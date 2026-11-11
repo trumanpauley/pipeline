@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { isConfigured } from './lib/supabase';
+import { configProblem, isConfigured } from './lib/supabase';
 import { Layout, Spinner } from './components/Layout';
 import { InvitePage } from './pages/InvitePage';
 import { MePage } from './pages/MePage';
@@ -12,15 +12,18 @@ const OrganizerPage = lazy(() => import('./pages/OrganizerPage').then(m => ({ de
 export function App() {
   if (!isConfigured) {
     return (
+      <BrowserRouter>
       <Layout>
         <div className="card stack">
           <h1>Setup needed</h1>
+          <p className="error">{configProblem}</p>
           <p className="muted">
-            Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> (in <code>.env.local</code> or
-            your Vercel project) and rebuild.
+            Fix <code>events/.env.local</code> (locally) or the Vercel environment variables, then restart{' '}
+            <code>npm run dev</code> or redeploy.
           </p>
         </div>
       </Layout>
+      </BrowserRouter>
     );
   }
   return (
