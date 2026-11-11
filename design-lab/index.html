@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline Design Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/lab.css">
+  <style>
+    body { overflow-x: hidden; }
+    .lab { max-width: 1120px; margin: 0 auto; padding: 0 24px 80px; }
+    .hero { padding: 72px 0 40px; display: grid; grid-template-columns: 1.15fr .85fr; gap: 48px; align-items: center; }
+    .hero h1 { font-family: var(--display); font-weight: 400; font-size: clamp(44px, 6vw, 72px); line-height: 1; letter-spacing: -0.02em; }
+    .hero h1 em { color: var(--signal-ink); }
+    .hero p.lede { font-size: 17px; color: var(--ink-2); margin-top: 20px; max-width: 520px; }
+    .flow { display: flex; gap: 6px; margin-top: 26px; flex-wrap: wrap; align-items: center; font-weight: 500; }
+    .flow span.step { padding: 6px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+    .flow i { color: var(--faint); font-style: normal; }
+    .hero-art { aspect-ratio: 1; border-radius: 24px; border: 1px solid var(--line); background: var(--surface); overflow: hidden; position: relative; box-shadow: var(--shadow-2); }
+    .hero-art .grid-host { position: absolute; inset: 0; background: transparent; }
+    .hero-art .grid-host svg { cursor: default; }
+    .hero-art .caption { position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; border-radius: 8px; }
+    .concepts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 18px; }
+    .concept { padding: 22px; display: flex; flex-direction: column; gap: 12px; text-decoration: none; min-height: 300px; }
+    .concept .letter { font-family: var(--display); font-size: 44px; line-height: 1; }
+    .concept h3 { font-size: 19px; }
+    .concept .q { font-size: 13px; color: var(--ink-2); background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+    .concept .go { margin-top: auto; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+    .section-title { display: flex; align-items: baseline; gap: 12px; margin-top: 64px; }
+    .section-title h2 { font-family: var(--display); font-weight: 400; font-size: 34px; }
+    table.cmp { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; font-size: 13.5px; }
+    table.cmp th, table.cmp td { text-align: left; vertical-align: top; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    table.cmp tr:last-child td { border-bottom: 0; }
+    table.cmp th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; background: var(--bg); }
+    table.cmp td:first-child { font-weight: 600; width: 150px; }
+    table.cmp ul { margin: 0; padding-left: 16px; }
+    table.cmp li + li { margin-top: 4px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+    .stat { padding: 16px 18px; }
+    .stat b { font-size: 28px; display: block; font-weight: 600; letter-spacing: -0.02em; }
+    .questions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 18px; }
+    .questions .card { padding: 16px 18px; display: flex; gap: 12px; }
+    .questions .n { font-family: var(--display); font-size: 24px; color: var(--signal-ink); line-height: 1; }
+    footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; padding-top: 40px; }
+      .hero-art { max-width: 460px; }
+      .concepts, .questions { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      table.cmp { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div id="top"></div>
+  <main class="lab">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Pipeline Design Lab · Three interface concepts</div>
+        <h1 style="margin-top:14px">Make invisible networks <em>visible.</em></h1>
+        <p class="lede">Three interactive takes on the same idea, built on one shared fictional network: a Harvard Baseball player who wants to break into private equity, and the alumni who could help.</p>
+        <div class="flow"><span class="step">Discover</span><i>→</i><span class="step">Explore</span><i>→</i><span class="step">Connect</span><i>→</i><span class="step">Strengthen</span></div>
+      </div>
+      <div class="hero-art"><div id="hero-grid" class="grid-host"></div><span class="caption">Jordan’s Grid · 42 fictional people</span></div>
+    </section>
+
+    <div class="section-title"><h2>Concepts</h2><span class="muted">Each has a ~75-second guided demo in the corner.</span></div>
+    <div class="concepts">
+      <a class="card hover concept" href="concept-a.html">
+        <span class="letter">A</span>
+        <h3>Grid First</h3>
+        <p class="muted">The network is the homepage. Pipelines are clusters; click one to zoom in, click a person to see how you reach them.</p>
+        <div class="q"><b>Tests:</b> Should the Grid itself be the homepage?</div>
+        <span class="go">Open concept →</span>
+      </a>
+      <a class="card hover concept" href="concept-b.html">
+        <span class="letter">B</span>
+        <h3>Discovery First</h3>
+        <p class="muted">Explained recommendations up front. The Grid appears only when you open a person, to show the path. Includes the swipe-to-classify deck.</p>
+        <div class="q"><b>Tests:</b> Is Pipeline useful on day one, even with a small network?</div>
+        <span class="go">Open concept →</span>
+      </a>
+      <a class="card hover concept" href="concept-c.html">
+        <span class="letter">C</span>
+        <h3>Pipeline First</h3>
+        <p class="muted">Your communities are home. Enter a Pipeline to see its members, Grid, help requests and karma, then zoom out to cross into others.</p>
+        <div class="q"><b>Tests:</b> Do users think in communities before people?</div>
+        <span class="go">Open concept →</span>
+      </a>
+    </div>
+
+    <div class="section-title"><h2>Shared dataset</h2><span class="muted">Identical across all three concepts, so they can be compared fairly.</span></div>
+    <div class="stats" id="stats"></div>
+
+    <div class="section-title"><h2>Comparison</h2></div>
+    <table class="cmp">
+      <thead><tr><th></th><th>A · Grid First</th><th>B · Discovery First</th><th>C · Pipeline First</th></tr></thead>
+      <tbody>
+        <tr><td>Strengths</td>
+          <td><ul><li>Most distinctive; unmistakably not LinkedIn</li><li>Overlapping Pipelines and bridges are visible at a glance</li><li>Path highlighting makes "how do I reach them" literal</li></ul></td>
+          <td><ul><li>Fastest time to value: a ranked, explained answer immediately</li><li>Works with a tiny network (shared affiliations drive results)</li><li>Swipe deck turns cold data into confirmed relationships</li></ul></td>
+          <td><ul><li>Matches how people already think ("my team", "my club")</li><li>Natural home for karma, membership rules and help requests</li><li>Community-level growth loop for launching Pipeline by Pipeline</li></ul></td></tr>
+        <tr><td>Weaknesses</td>
+          <td><ul><li>Can overwhelm first-time users</li><li>Needs a dense network to feel alive</li><li>Harder to make work on mobile</li></ul></td>
+          <td><ul><li>Can drift toward a generic "people you may know" feed</li><li>The Grid becomes secondary, so the differentiator is less visible</li><li>Quality depends entirely on the scoring</li></ul></td>
+          <td><ul><li>Cross-Pipeline discovery takes an extra step ("zoom out")</li><li>Small Pipelines may feel empty</li><li>Closer to existing group products</li></ul></td></tr>
+        <tr><td>What to test with users</td>
+          <td>Can a first-time user find a path to an alum in under 60 seconds? Do they understand solid vs dashed lines without the legend?</td>
+          <td>Do users trust the "why" behind a recommendation? Do they finish a 10-card swipe session, and does it feel private enough?</td>
+          <td>Do members return to help others (karma) without a direct personal benefit? Do they discover the cross-Pipeline view on their own?</td></tr>
+        <tr><td>Best signal</td>
+          <td>Time to first introduction request</td>
+          <td>Intro request rate per recommendation shown</td>
+          <td>Weekly help responses per Pipeline</td></tr>
+      </tbody>
+    </table>
+
+    <div class="section-title"><h2>Questions for the meeting</h2></div>
+    <div class="questions">
+      <div class="card"><span class="n">1</span><div><b>Should the Grid be the homepage?</b><p class="muted">Compare A against B and C. A is memorable; B and C bring the Grid in when it answers a question.</p></div></div>
+      <div class="card"><span class="n">2</span><div><b>Lead with personalized recommendations?</b><p class="muted">B. Try the "New user" toggle to see recommendations with only two confirmed connections.</p></div></div>
+      <div class="card"><span class="n">3</span><div><b>Navigate primarily through Pipelines?</b><p class="muted">C. Harvard Baseball becomes a place, with its own Grid, activity and karma.</p></div></div>
+      <div class="card"><span class="n">4</span><div><b>How does Surf the Grid stay intuitive?</b><p class="muted">All three use plain-language search with scope chips, explain each match, and only highlight what matters.</p></div></div>
+    </div>
+
+    <footer>
+      <span class="disclaimer">All people, firms and relationships are fictional. Harvard community names are used only to frame the proof of concept. No data leaves your browser.</span>
+      <span class="spacer"></span>
+      <button class="btn sm" id="reset">Reset demo data</button>
+    </footer>
+  </main>
+  <script type="module">
+    import { topbar, h, toast } from './js/ui.js';
+    import { PEOPLE, PIPELINES, graph, ME } from './js/graph.js';
+    import { createGrid } from './js/gridview.js';
+    import { resetDemo } from './js/state.js';
+    import { OPPORTUNITIES } from './js/data.js';
+
+    document.getElementById('top').replaceWith(topbar(null));
+    const g = graph();
+    const stats = [
+      [PEOPLE.length, 'fictional people'],
+      [PIPELINES.length, 'Pipelines (communities)'],
+      [g.edges.length, 'confirmed relationships'],
+      [OPPORTUNITIES.length, 'opportunities'],
+    ];
+    document.getElementById('stats').append(...stats.map(([n, l]) => h('div', { class: 'card stat' }, h('b', {}, n), h('span', { class: 'muted' }, l))));
+    const grid = createGrid(document.getElementById('hero-grid'), { controls: false, interactive: false });
+    grid.highlight({ path: ['jordan', 'whitaker', 'marcus'] });
+    document.getElementById('reset').onclick = () => { resetDemo(); toast('Demo data reset'); };
+  </script>
+</body>
+</html>

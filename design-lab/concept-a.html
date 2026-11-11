@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grid First · Pipeline Design Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/lab.css">
+  <style>
+    body { overflow: hidden; }
+    .stage { position: absolute; top: 56px; left: 0; right: 0; bottom: 0; }
+    #grid { position: absolute; inset: 0; }
+    .surf {
+      position: absolute; top: 16px; left: 16px; width: 372px; max-height: calc(100% - 270px); z-index: 10;
+      display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-2);
+    }
+    .surf-head { padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 10px; }
+    .surf-head h1 { font-size: 15px; display: flex; align-items: center; gap: 8px; }
+    .scopes { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+    .results { overflow-y: auto; border-top: 1px solid var(--line); padding: 6px; }
+    .results:empty { display: none; }
+    .res { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 11px; cursor: pointer; }
+    .res:hover, .res.active { background: var(--bg); }
+    .res .meta { flex: 1; min-width: 0; }
+    .res .meta b { font-weight: 600; }
+    .res .meta p { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .res .why { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .res .why .tag { height: 20px; font-size: 11px; }
+    .deg { font-size: 11px; color: var(--muted); white-space: nowrap; padding-top: 2px; }
+    .group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 10px 10px 4px; }
+    .suggest { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 14px 14px; }
+    .suggest .chip { height: 26px; font-size: 12px; background: var(--bg); border-color: transparent; }
+    .bridge-form { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
+    .bridge-form select { height: 36px; font-size: 13px; }
+    .legend-box { position: absolute; right: 62px; bottom: 14px; z-index: 5; background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+    .pipe-head { display: flex; align-items: center; gap: 12px; padding: 12px 0 14px; }
+    .pipe-swatch { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: #fff; font-weight: 700; }
+    .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 14px; }
+    .stat-row div { background: var(--bg); border-radius: 10px; padding: 10px; }
+    .stat-row b { display: block; font-size: 18px; }
+    .stat-row span { font-size: 11.5px; color: var(--muted); }
+    .people-list .res { padding: 7px 6px; }
+    @media (max-width: 860px) {
+      .surf { left: 10px; right: 10px; width: auto; top: 10px; max-height: 46%; }
+      .surf .suggest { display: none; }
+      .legend-box { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="top"></div>
+  <div class="stage">
+    <div id="grid"></div>
+    <aside class="surf" id="surf"></aside>
+    <div class="legend-box legend" id="legend"></div>
+    <aside class="drawer" id="drawer">
+      <div class="drawer-head"><button class="btn ghost sm" id="drawer-back"></button><span class="spacer"></span><button class="btn ghost icon" id="drawer-close" aria-label="Close"></button></div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </aside>
+  </div>
+  <script type="module" src="js/concept-a.js"></script>
+</body>
+</html>

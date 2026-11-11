@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline First · Pipeline Design Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/lab.css">
+  <style>
+    .page { max-width: 1200px; margin: 0 auto; padding: 32px 24px 140px; }
+    .page.wide { max-width: none; padding: 0; }
+    h1.big { font-family: var(--display); font-weight: 400; font-size: clamp(34px, 4.4vw, 50px); line-height: 1.05; letter-spacing: -0.02em; }
+    .pipes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 24px; }
+    .pcard { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+    .pcard .band { height: 6px; }
+    .pcard .inner { padding: 18px 20px 18px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+    .pcard h3 { font-size: 19px; }
+    .pcard .nums { display: flex; gap: 22px; }
+    .pcard .nums b { display: block; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .pcard .nums span { font-size: 12px; color: var(--muted); }
+    .stack { display: flex; }
+    .stack .avatar { margin-left: -7px; box-shadow: 0 0 0 2px #fff; }
+    .stack .avatar:first-child { margin-left: 0; }
+    .pcard .act { font-size: 13px; color: var(--ink-2); background: var(--bg); border-radius: 10px; padding: 8px 10px; display: flex; gap: 8px; align-items: center; }
+    .overlaps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .ov { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+    .ov:hover { border-color: var(--faint); }
+    .ov .dots { display: flex; }
+    .ov .dots i { width: 12px; height: 12px; border-radius: 50%; margin-left: -4px; box-shadow: 0 0 0 2px #fff; }
+    .ov .dots i:first-child { margin-left: 0; }
+    .more { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+    .more .card { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .sec-title { display: flex; align-items: baseline; gap: 10px; margin-top: 40px; flex-wrap: wrap; }
+    .sec-title h2 { font-size: 17px; }
+
+    /* Pipeline page */
+    .phead { padding: 26px 28px 0; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .phead .crumbs { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+    .phead .crumbs a { text-decoration: none; }
+    .phead .title { display: flex; align-items: center; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+    .phead .badge { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 20px; }
+    .phead h1 { font-family: var(--display); font-weight: 400; font-size: 38px; line-height: 1; }
+    .phead .kpis { display: flex; gap: 26px; margin-left: auto; }
+    .phead .kpis b { display: block; font-size: 22px; font-weight: 600; }
+    .phead .kpis span { font-size: 12px; color: var(--muted); }
+    .tabs { display: flex; gap: 4px; margin-top: 18px; }
+    .tabs a { padding: 10px 14px; text-decoration: none; font-weight: 500; color: var(--muted); border-bottom: 2px solid transparent; }
+    .tabs a.active { color: var(--ink); border-color: var(--ink); }
+    .pbody { position: relative; }
+    .gridwrap { position: relative; height: calc(100vh - 56px - 172px); min-height: 460px; }
+    .gridwrap .canvas { position: absolute; inset: 0; }
+    .gpanel { position: absolute; left: 16px; top: 16px; width: 340px; max-height: calc(100% - 200px); z-index: 10; display: flex; flex-direction: column; }
+    .gpanel .head { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .gpanel .results { overflow-y: auto; border-top: 1px solid var(--line); padding: 6px; }
+    .gpanel .results:empty { display: none; }
+    .res { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 11px; cursor: pointer; }
+    .res:hover { background: var(--bg); }
+    .res .meta { flex: 1; min-width: 0; }
+    .res .meta p { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .res .why { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+    .res .why .tag { height: 20px; font-size: 11px; }
+    .deg { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 10px 10px 4px; }
+    .zoomout { position: absolute; right: 16px; top: 16px; z-index: 10; }
+    .subhint { position: absolute; right: 16px; top: 62px; z-index: 5; max-width: 260px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.9); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+    .list-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 28px 120px; }
+    .mrow { display: grid; grid-template-columns: auto 1fr 170px 90px; gap: 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .mrow:hover { background: var(--bg); }
+    .mrow:last-child { border-bottom: 0; }
+    .karma-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; }
+    .kbig { font-size: 44px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+    .help { padding: 14px 0; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: flex-start; }
+    .help:last-child { border-bottom: 0; }
+    .rules { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; font-size: 13px; margin-top: 12px; }
+    .drawer.fixed { position: fixed; top: 56px; }
+    .mygrid { position: relative; height: calc(100vh - 56px); }
+    .mygrid .canvas { position: absolute; inset: 0; }
+    @media (max-width: 900px) {
+      .pipes, .more, .karma-grid { grid-template-columns: 1fr; }
+      .phead .kpis { margin-left: 0; }
+      .gpanel { left: 10px; right: 10px; width: auto; max-height: 45%; }
+      .subhint { display: none; }
+      .mrow { grid-template-columns: auto 1fr; }
+      .mrow > :nth-child(n+3) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="top"></div>
+  <main class="page" id="app"></main>
+  <aside class="drawer fixed" id="drawer">
+    <div class="drawer-head"><span class="spacer"></span><button class="btn ghost icon" id="drawer-close" aria-label="Close"></button></div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+  <script type="module" src="js/concept-c.js"></script>
+</body>
+</html>
