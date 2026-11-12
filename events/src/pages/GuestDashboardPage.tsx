@@ -2,9 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { signOut, useSession } from '../lib/auth';
-import { firstName, formatEventDate, formatShortDate, inviteUrl } from '../lib/format';
+import { firstName, formatShortDate, inviteUrl } from '../lib/format';
 import type { DashboardInvitation, GuestDashboard } from '../lib/types';
+import { Chain } from '../components/Chain';
+import { EventHeader } from '../components/EventHeader';
+import { ConfirmButton, useToast } from '../components/Feedback';
+import { CheckIcon, MoreIcon, ShareIcon } from '../components/Icons';
 import { ErrorNote, Layout, Spinner } from '../components/Layout';
+import { Sheet } from '../components/Sheet';
 
 export function GuestDashboardPage() {
   const { eventId = '' } = useParams();
@@ -12,7 +17,8 @@ export function GuestDashboardPage() {
   const session = useSession();
   const [data, setData] = useState<GuestDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const welcome = (location.state as { welcome?: string } | null)?.welcome;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(() => {
     api.guestDashboard(eventId).then(setData).catch(e => setError(e.message));
@@ -22,113 +28,107 @@ export function GuestDashboardPage() {
     if (session) load();
   }, [session, load]);
 
+  // One-time notice after arriving from an invitation; cleared so a reload doesn't repeat it.
+  const welcome = (location.state as { welcome?: string } | null)?.welcome;
+  const { show } = toast;
+  useEffect(() => {
+    if (!welcome || !data) return;
+    if (welcome === 'already_guest') show('You’d already RSVP’d');
+    window.history.replaceState({}, '');
+  }, [welcome, data, show]);
+
   if (session === undefined) return <Layout><Spinner /></Layout>;
   if (session === null) return <Navigate to={`/me?next=${encodeURIComponent(location.pathname)}`} replace />;
-  if (error) return <Layout><div className="card stack"><ErrorNote message={error} /><Link to="/me">Back to my events</Link></div></Layout>;
+  if (error) {
+    return (
+      <Layout>
+        <div className="state"><ErrorNote message={error} /><Link className="btn btn--block" to="/me">My events</Link></div>
+      </Layout>
+    );
+  }
   if (!data) return <Layout><Spinner /></Layout>;
 
   const { event, guest } = data;
   const isHost = guest.role === 'host';
+  const going = guest.rsvp_status === 'attending';
+  const accepted = data.invitations.filter(i => i.status === 'accepted').length;
 
   return (
-    <Layout>
-      {welcome === 'accepted' && (
-        <div className="banner banner--ok" role="status">
-          <strong>You're on the list, {firstName(guest.full_name)}!</strong> Now pass it on — you have two invitations to share.
-        </div>
-      )}
-      {welcome === 'already_guest' && (
-        <div className="banner" role="status">You'd already RSVP'd to this event — here are your invitations. The link you opened is still unused.</div>
-      )}
+    <Layout action={<button className="icon-btn" aria-label="Menu" onClick={() => setMenuOpen(true)}><MoreIcon /></button>}>
+      <EventHeader
+        event={event}
+        status={<span className={going ? 'status status--going' : 'status'}>{isHost ? 'Hosting' : going ? 'You’re going' : 'Not going'}</span>}
+      />
 
-      <section className="hero hero--compact">
-        <p className="eyebrow">{guest.rsvp_status === 'attending' ? "You're going" : "You're not going"}</p>
-        <h1 className="hero-title">{event.name}</h1>
-        <ul className="facts">
-          <li><span aria-hidden="true">📅</span>{formatEventDate(event.starts_at, event.ends_at)}</li>
-          {event.location_name && <li><span aria-hidden="true">📍</span>{event.location_name}</li>}
-        </ul>
-        {event.private_details && guest.rsvp_status === 'attending' && (
-          <div className="private-details"><span className="tag">Guests only</span><p>{event.private_details}</p></div>
-        )}
-      </section>
-
-      {isHost ? (
-        <div className="card stack">
-          <h2>You're an organizer</h2>
-          <p className="muted">Create invitation links and follow RSVPs from the organizer dashboard.</p>
-          <Link className="btn btn--primary" to={`/organizer?event=${event.id}`}>Open organizer dashboard</Link>
-        </div>
-      ) : (
-        <section className="stack">
-          <div className="section-head">
-            <h2>Your invitations</h2>
-            <span className="muted small">{data.invitations.filter(i => i.status === 'accepted').length} of 2 accepted</span>
-          </div>
-          <p className="muted small">Each link works once. Send each one to a single person you'd like to bring.</p>
-          {data.invitations.map(inv => (
-            <InvitationSlot key={inv.id} inv={inv} guestName={guest.full_name} eventName={event.name} onChanged={load} />
-          ))}
+      {going && event.private_details && (
+        <section className="section">
+          <span className="label">Details</span>
+          <p className="details">{event.private_details}</p>
         </section>
       )}
 
-      <section className="card stack">
-        <h2>How you got here</h2>
-        <ol className="path">
-          {data.path.map((p, i) => (
-            <li key={i} className={p.is_you ? 'path-node path-node--you' : 'path-node'}>
-              <span className="path-dot" aria-hidden="true" />
-              <span>{p.is_you ? 'You' : p.name}</span>
-              {p.role === 'host' && <span className="tag">Organizer</span>}
-            </li>
-          ))}
-        </ol>
-        {!isHost && (
-          <p className="muted small">
-            {guest.depth === 1 ? 'You were invited directly by the organizer.' : `You're ${guest.depth} invitations away from the organizer.`}
-          </p>
-        )}
-      </section>
+      {!isHost && (
+        <section className="section">
+          <div className="section-head">
+            <span className="label">Invite</span>
+            <span className="faint small">{accepted}/2</span>
+          </div>
+          <div className="passes">
+            {data.invitations.map(inv => (
+              <InvitationPass key={inv.id} inv={inv} guestName={guest.full_name} eventName={event.name}
+                onChanged={load} onToast={toast.show} />
+            ))}
+          </div>
+        </section>
+      )}
 
-      {!isHost && <RsvpCard eventId={event.id} status={guest.rsvp_status} onChanged={load} />}
-      <PrivacyCard data={data} onChanged={load} />
+      {!isHost && (
+        <section className="section">
+          <span className="label">How you got here</span>
+          <Chain nodes={data.path.map(p => ({ name: p.is_you ? guest.full_name : p.name, role: p.role, isYou: p.is_you }))} />
+        </section>
+      )}
 
-      <div className="row row--between small">
-        <Link to="/me">My events</Link>
-        <button className="link" onClick={() => signOut()}>Sign out ({guest.email})</button>
-      </div>
+      <GuestMenu open={menuOpen} onClose={() => setMenuOpen(false)} data={data} onChanged={load} />
+      {toast.node}
     </Layout>
   );
 }
 
-function InvitationSlot({ inv, guestName, eventName, onChanged }: {
-  inv: DashboardInvitation; guestName: string; eventName: string; onChanged: () => void;
+function InvitationPass({ inv, guestName, eventName, onChanged, onToast }: {
+  inv: DashboardInvitation; guestName: string; eventName: string; onChanged: () => void; onToast: (m: string) => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (inv.status === 'accepted') {
     return (
-      <div className="slot slot--accepted">
-        <span className="slot-num">{inv.slot}</span>
-        <div>
-          <strong>{inv.accepted_name}</strong>
-          <div className="muted small">Accepted {formatShortDate(inv.accepted_at)}</div>
+      <div className="pass">
+        <div className="pass-body">
+          <span className="pass-title">{inv.accepted_name}</span>
+          <span className="pass-sub">Joined {formatShortDate(inv.accepted_at)}</span>
         </div>
-        <span className="check-badge" aria-label="Accepted">✓</span>
+        <span className="pass-check" aria-label="Accepted"><CheckIcon /></span>
       </div>
     );
   }
   if (inv.status !== 'open' || !inv.token) {
-    return <div className="slot"><span className="slot-num">{inv.slot}</span><span className="muted">No longer available</span></div>;
+    return <div className="pass"><div className="pass-body"><span className="pass-sub">Unavailable</span></div></div>;
   }
 
   const url = inviteUrl(inv.token);
   const message = `${firstName(guestName)} invited you to ${eventName}. RSVP here (this link works once): ${url}`;
 
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      onToast('Link copied');
+    } catch {
+      window.prompt('Copy this link:', url);
+    }
+  }
+
   async function share() {
-    setError(null);
     if (navigator.share) {
       try {
         await navigator.share({ title: eventName, text: message });
@@ -140,141 +140,139 @@ function InvitationSlot({ inv, guestName, eventName, onChanged }: {
     await copy();
   }
 
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      window.prompt('Copy this link:', url);
-    }
-  }
-
   async function rotate() {
-    if (!confirm('Create a new link for this slot? The old link will stop working.')) return;
-    setBusy(true);
+    setError(null);
     try {
       await api.rotateInvitation(inv.id);
+      setOptionsOpen(false);
       onChanged();
+      onToast('New link created');
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setBusy(false);
     }
   }
 
   return (
-    <div className="slot slot--open">
-      <div className="row">
-        <span className="slot-num">{inv.slot}</span>
-        <div className="grow">
-          <strong>Unused invitation</strong>
-          <div className="link-preview">{url.replace(/^https?:\/\//, '')}</div>
+    <div className="pass pass--open">
+      <div className="pass-body">
+        <span className="pass-title">Invitation {inv.slot}</span>
+        <span className="pass-sub">Single use</span>
+      </div>
+      <button className="icon-btn" aria-label={`More options for invitation ${inv.slot}`} onClick={() => setOptionsOpen(true)}><MoreIcon /></button>
+      <button className="btn btn--primary btn--sm" onClick={share}><ShareIcon />Share</button>
+
+      <Sheet open={optionsOpen} onClose={() => setOptionsOpen(false)} title={`Invitation ${inv.slot}`}>
+        <ul className="menu">
+          <li><button className="menu-item" onClick={() => { copy(); setOptionsOpen(false); }}>Copy link</button></li>
+          <li><a className="menu-item" href={`sms:?&body=${encodeURIComponent(message)}`}>Send as text</a></li>
+        </ul>
+        <div className="menu-group">
+          <ul className="menu">
+            <li><ConfirmButton className="menu-item menu-item--danger" confirmLabel="Tap again — the old link will stop working" onConfirm={rotate}>Reset link</ConfirmButton></li>
+          </ul>
         </div>
-      </div>
-      <div className="row slot-actions">
-        <button className="btn btn--primary grow" onClick={share}>Share</button>
-        <a className="btn" href={`sms:?&body=${encodeURIComponent(message)}`}>Text</a>
-        <button className="btn" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
-      </div>
-      <button className="link small" onClick={rotate} disabled={busy}>Sent to the wrong person? Reset this link</button>
-      <ErrorNote message={error} />
+        <ErrorNote message={error} />
+      </Sheet>
     </div>
   );
 }
 
-function RsvpCard({ eventId, status, onChanged }: { eventId: string; status: string; onChanged: () => void }) {
+function GuestMenu({ open, onClose, data, onChanged }: {
+  open: boolean; onClose: () => void; data: GuestDashboard; onChanged: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const next = status === 'attending' ? 'declined' : 'attending';
-
-  async function change() {
-    if (next === 'declined' && !confirm('Release your spot? You can change back later if there is still room.')) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.setRsvpStatus(eventId, next);
-      onChanged();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="card stack">
-      <h2>Your RSVP</h2>
-      <p className="muted">{status === 'attending' ? "You're going." : "You've said you can't make it."} Your invitations stay active either way.</p>
-      <ErrorNote message={error} />
-      <button className="btn" onClick={change} disabled={busy}>
-        {status === 'attending' ? "I can't make it anymore" : 'I can come after all'}
-      </button>
-    </section>
-  );
-}
-
-function PrivacyCard({ data, onChanged }: { data: GuestDashboard; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<'menu' | 'remove'>('menu');
   const [note, setNote] = useState('');
-  const [showRemoval, setShowRemoval] = useState(false);
+  const { event, guest } = data;
+  const isHost = guest.role === 'host';
+  const going = guest.rsvp_status === 'attending';
 
-  async function toggleConsent(granted: boolean) {
+  async function run(action: () => Promise<unknown>): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
-      await api.setMarketingConsent(data.event.id, granted);
+      await action();
       onChanged();
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  async function requestRemoval() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.requestRemoval(data.event.id, note);
-      setShowRemoval(false);
-      onChanged();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  const close = () => { setView('menu'); onClose(); };
+
+  if (view === 'remove') {
+    return (
+      <Sheet open={open} onClose={close} title="Remove my information">
+        <div className="form">
+          <p className="muted">Your name and email are removed. An anonymous record of your RSVP stays with the event.</p>
+          <textarea rows={2} maxLength={1000} aria-label="Note" placeholder="Note (optional)" value={note} onChange={e => setNote(e.target.value)} />
+          <ErrorNote message={error} />
+          <button className="btn btn--block btn--danger" disabled={busy}
+            onClick={() => run(() => api.requestRemoval(event.id, note)).then(ok => ok && setView('menu'))}>Send request</button>
+          <button className="text-btn center" onClick={() => setView('menu')}>Cancel</button>
+        </div>
+      </Sheet>
+    );
   }
 
   return (
-    <section className="card stack">
-      <h2>Privacy</h2>
-      <label className="check">
-        <input type="checkbox" checked={data.marketing_consent} disabled={busy}
-          onChange={e => toggleConsent(e.target.checked)} />
-        <span>{data.marketing_consent_text}</span>
-      </label>
-      <p className="muted small">Other guests can see your name, never your email.</p>
-      {data.guest.role === 'guest' && (data.removal_requested ? (
-        <p className="banner">Your removal request is with the organizer.</p>
-      ) : showRemoval ? (
-        <div className="stack">
-          <p className="small">
-            We'll remove your name and email. A record that an anonymous guest RSVP'd stays, so the guest
-            count and invitation history remain accurate. You won't be able to sign back in to this event.
-          </p>
-          <textarea rows={2} maxLength={1000} placeholder="Anything we should know? (optional)" value={note}
-            onChange={e => setNote(e.target.value)} />
-          <div className="row">
-            <button className="btn btn--danger" onClick={requestRemoval} disabled={busy}>Request removal</button>
-            <button className="btn" onClick={() => setShowRemoval(false)}>Cancel</button>
-          </div>
+    <Sheet open={open} onClose={close}>
+      {isHost && (
+        <div className="menu-group">
+          <ul className="menu">
+            <li><Link className="menu-item menu-item--green" to={`/organizer?event=${event.id}`}>Organizer dashboard</Link></li>
+          </ul>
         </div>
-      ) : (
-        <button className="link small" onClick={() => setShowRemoval(true)}>Remove my information</button>
-      ))}
+      )}
+
+      {!isHost && (
+        <div className="menu-group">
+          <ul className="menu">
+            <li>
+              {going ? (
+                <ConfirmButton className="menu-item" confirmLabel="Tap again to release your spot" disabled={busy}
+                  onConfirm={() => run(() => api.setRsvpStatus(event.id, 'declined'))}>
+                  Can’t make it
+                </ConfirmButton>
+              ) : (
+                <button className="menu-item menu-item--green" disabled={busy} onClick={() => run(() => api.setRsvpStatus(event.id, 'attending'))}>
+                  I can come after all
+                </button>
+              )}
+            </li>
+            <li>
+              <button className="menu-item" role="switch" aria-checked={data.marketing_consent} disabled={busy}
+                onClick={() => run(() => api.setMarketingConsent(event.id, !data.marketing_consent))}>
+                <span>Pipeline updates</span>
+                <span className={data.marketing_consent ? 'switch switch--on' : 'switch'} aria-hidden="true" />
+              </button>
+            </li>
+          </ul>
+          <p className="menu-caption">{data.marketing_consent_text}</p>
+        </div>
+      )}
+
+      <div className="menu-group">
+        <ul className="menu">
+          <li><Link className="menu-item" to="/me" onClick={close}>My events</Link></li>
+          {!isHost && (
+            <li>
+              {data.removal_requested ? (
+                <button className="menu-item" disabled>Removal requested</button>
+              ) : (
+                <button className="menu-item menu-item--danger" onClick={() => setView('remove')}>Remove my information</button>
+              )}
+            </li>
+          )}
+          <li><button className="menu-item" onClick={() => signOut()}><span>Sign out</span><span className="faint small">{guest.email}</span></button></li>
+        </ul>
+      </div>
       <ErrorNote message={error} />
-    </section>
+    </Sheet>
   );
 }

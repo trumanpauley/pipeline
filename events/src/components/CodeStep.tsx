@@ -47,37 +47,28 @@ export function CodeStep({ email, onVerified, onChangeEmail, submitLabel = 'Cont
   }
 
   return (
-    <form className="stack" onSubmit={submit}>
-      <div>
-        <h2>Check your email</h2>
-        <p className="muted">
-          We sent a code to <strong>{email}</strong>. It confirms this is you, so you can come back to
-          your RSVP and invitations from any device.
-        </p>
-      </div>
-      <label className="field">
-        <span>Code</span>
-        <input
-          className="code-input"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9 ]{6,12}"
-          maxLength={12}
-          placeholder="123456"
-          value={code}
-          onChange={e => setCode(e.target.value)}
-          autoFocus
-          required
-        />
-      </label>
+    <form className="form" onSubmit={submit}>
+      <p className="muted">Code sent to <span style={{ color: 'var(--ink)' }}>{email}</span></p>
+      <input
+        className="code-input"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        aria-label="Code"
+        maxLength={12}
+        placeholder="••••••"
+        value={code}
+        onChange={e => setCode(e.target.value)}
+        autoFocus
+        required
+      />
       <ErrorNote message={error} />
-      <button className="btn btn--primary" disabled={busy || code.replace(/\D/g, '').length < 6}>
+      <button className="btn btn--primary btn--block" disabled={busy || code.replace(/\D/g, '').length < 6}>
         {busy ? 'Checking…' : submitLabel}
       </button>
-      <div className="row row--between small">
-        <button type="button" className="link" onClick={onChangeEmail}>Use a different email</button>
-        <button type="button" className="link" onClick={resend} disabled={cooldown > 0}>
-          {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+      <div className="row row--between">
+        <button type="button" className="text-btn" onClick={onChangeEmail}>Change email</button>
+        <button type="button" className="text-btn" onClick={resend} disabled={cooldown > 0}>
+          {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend'}
         </button>
       </div>
     </form>

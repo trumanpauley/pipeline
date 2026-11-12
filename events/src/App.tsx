@@ -14,13 +14,14 @@ export function App() {
     return (
       <BrowserRouter>
       <Layout>
-        <div className="card stack">
-          <h1>Setup needed</h1>
-          <p className="error">{configProblem}</p>
-          <p className="muted">
-            Fix <code>events/.env.local</code> (locally) or the Vercel environment variables, then restart{' '}
-            <code>npm run dev</code> or redeploy.
-          </p>
+        <div className="state">
+          <div className="state-body">
+            <h1 className="title title--sm">Setup needed</h1>
+            <p className="error">{configProblem}</p>
+            <p className="faint small">
+              Fix <code>events/.env.local</code> or the Vercel environment variables, then restart <code>npm run dev</code> or redeploy.
+            </p>
+          </div>
         </div>
       </Layout>
       </BrowserRouter>

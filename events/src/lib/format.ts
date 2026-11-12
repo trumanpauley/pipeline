@@ -22,3 +22,12 @@ export function inviteUrl(token: string): string {
 }
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Date and time as separate lines for the event header. */
+export function eventWhen(startsAt: string | null, endsAt?: string | null): { date: string; time: string | null } {
+  if (!startsAt) return { date: 'Date to be announced', time: null };
+  const start = new Date(startsAt);
+  const date = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const t = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return { date, time: endsAt ? `${t(start)} – ${t(new Date(endsAt))}` : t(start) };
+}

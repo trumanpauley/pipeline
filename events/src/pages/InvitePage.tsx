@@ -2,11 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { sendCode, signOut } from '../lib/auth';
-import { EMAIL_RE, firstName, formatEventDate } from '../lib/format';
+import { EMAIL_RE } from '../lib/format';
 import { supabase } from '../lib/supabase';
 import type { InvitationLookup } from '../lib/types';
+import { Chain } from '../components/Chain';
 import { CodeStep } from '../components/CodeStep';
+import { EventHeader } from '../components/EventHeader';
 import { ErrorNote, Layout, Spinner } from '../components/Layout';
+import { Sheet } from '../components/Sheet';
 
 type Step = 'details' | 'code' | 'accepting';
 
@@ -48,6 +51,8 @@ export function InvitePage() {
   const [draft, setDraft] = useState<Draft>(() => loadDraft(token));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Reopen the sheet after a reload mid-verification.
+  const [sheetOpen, setSheetOpen] = useState(() => draft.step === 'code');
 
   useEffect(() => {
     api.getInvitation(token).then(setInvite).catch(e => setLoadError(e.message));
@@ -100,7 +105,7 @@ export function InvitePage() {
   }
 
   if (loadError) {
-    return <Layout><div className="card"><ErrorNote message={loadError} /></div></Layout>;
+    return <Layout><div className="state"><ErrorNote message={loadError} /></div></Layout>;
   }
   if (!invite) return <Layout><Spinner /></Layout>;
 
@@ -109,48 +114,39 @@ export function InvitePage() {
   }
 
   const { event, inviter_name = 'A friend', consent_texts } = invite;
+  const accepting = draft.step === 'accepting';
 
   return (
-    <Layout>
-      <section className="hero">
-        <p className="eyebrow">You're invited</p>
-        <h1 className="hero-title">
-          {firstName(inviter_name)} invited you to <span className="accent">{event.name}</span>
-        </h1>
-        <ul className="facts">
-          <li><span aria-hidden="true">📅</span>{formatEventDate(event.starts_at, event.ends_at)}</li>
-          {event.location_name && <li><span aria-hidden="true">📍</span>{event.location_name}</li>}
-          <li><span aria-hidden="true">✉️</span>From {inviter_name}</li>
-        </ul>
-        {event.description && <p className="hero-desc">{event.description}</p>}
+    <Layout cta>
+      <EventHeader event={event} />
+
+      <section className="section" aria-label="Invited by">
+        <span className="label">Invited by</span>
+        <Chain nodes={[{ name: inviter_name, role: 'guest' }, { name: draft.fullName, role: 'guest', isYou: true, pending: true }]} />
       </section>
 
-      <div className="card">
+      <div className="cta-bar">
+        <div>
+          <button className="btn btn--primary btn--block" onClick={() => setSheetOpen(true)}>RSVP</button>
+        </div>
+      </div>
+
+      <Sheet open={sheetOpen} onClose={() => !busy && !accepting && setSheetOpen(false)}
+        title={draft.step === 'code' ? 'Confirm it’s you' : 'RSVP'}>
         {draft.step === 'details' && (
-          <form className="stack" onSubmit={submitDetails} noValidate>
-            <h2>RSVP</h2>
-            <label className="field">
-              <span>Full name</span>
-              <input autoComplete="name" value={draft.fullName} maxLength={100}
-                onChange={e => update({ fullName: e.target.value })} placeholder="First and last name" required />
-            </label>
-            <label className="field">
-              <span>Email</span>
-              <input type="email" inputMode="email" autoComplete="email" value={draft.email}
-                onChange={e => update({ email: e.target.value })} placeholder="you@example.com" required />
-            </label>
+          <form className="form" onSubmit={submitDetails} noValidate>
+            <input autoComplete="name" aria-label="Full name" value={draft.fullName} maxLength={100}
+              onChange={e => update({ fullName: e.target.value })} placeholder="Full name" required autoFocus />
+            <input type="email" inputMode="email" autoComplete="email" aria-label="Email" value={draft.email}
+              onChange={e => update({ email: e.target.value })} placeholder="Email" required />
             <label className="check">
               <input type="checkbox" checked={draft.marketing} onChange={e => update({ marketing: e.target.checked })} />
-              <span>
-                {consent_texts?.pipeline_marketing.body}
-                <em className="optional"> Optional.</em>
-              </span>
+              <span>{consent_texts?.pipeline_marketing.body}</span>
             </label>
             <ErrorNote message={error} />
-            <button className="btn btn--primary btn--lg" disabled={busy}>
-              {busy ? 'Sending code…' : "I'm in — RSVP"}
-            </button>
+            <button className="btn btn--primary btn--block" disabled={busy}>{busy ? 'Sending code…' : 'Continue'}</button>
             <p className="fineprint">{consent_texts?.event_rsvp.body}</p>
+            <Link className="text-btn center" to="/me">Already RSVP’d? Sign in</Link>
           </form>
         )}
 
@@ -166,39 +162,28 @@ export function InvitePage() {
           </>
         )}
 
-        {draft.step === 'accepting' && <Spinner label="Saving your RSVP…" />}
-      </div>
-
-      <p className="center small muted">
-        Already RSVP'd? <Link to="/me">Find your invitations</Link>
-      </p>
+        {accepting && <Spinner label="Saving your RSVP" />}
+      </Sheet>
     </Layout>
   );
 }
 
 function InviteUnavailable({ invite }: { invite: InvitationLookup }) {
   const copy: Record<string, { title: string; body: string }> = {
-    used: {
-      title: 'This invitation has been used',
-      body: 'Each link works once. If you already RSVP’d, sign in with your email to see your invitations. Otherwise, ask whoever invited you for a new link.',
-    },
-    full: {
-      title: 'This event is full',
-      body: 'Every spot has been claimed. Spots open up if guests change their RSVP, so you can try this link again later.',
-    },
-    closed: { title: 'RSVPs are closed', body: 'The organizer is no longer accepting RSVPs for this event.' },
-    not_found: {
-      title: 'Invitation not found',
-      body: 'This link is invalid or was replaced by a newer one. Ask whoever invited you to send it again.',
-    },
+    used: { title: 'Already used', body: 'Each invitation works once.' },
+    full: { title: 'Fully booked', body: 'Every spot has been claimed.' },
+    closed: { title: 'RSVPs closed', body: 'This event is no longer taking RSVPs.' },
+    not_found: { title: 'Invitation not found', body: 'Ask whoever invited you for a new link.' },
   };
   const c = copy[invite.status] ?? copy.not_found;
   return (
-    <div className="card stack">
-      {invite.event && <p className="eyebrow">{invite.event.name}</p>}
-      <h1>{c.title}</h1>
-      <p className="muted">{c.body}</p>
-      <Link className="btn" to="/me">Sign in to my invitations</Link>
+    <div className="state">
+      <div className="state-body">
+        {invite.event && <span className="label">{invite.event.name}</span>}
+        <h1 className="title title--sm">{c.title}</h1>
+        <p className="muted">{c.body}</p>
+      </div>
+      <Link className="btn btn--block" to="/me">Already RSVP’d? Sign in</Link>
     </div>
   );
 }

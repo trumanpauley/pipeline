@@ -3,13 +3,16 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api, loadOrganizerData, type OrganizerData } from '../lib/api';
 import { signOut, useSession } from '../lib/auth';
 import { downloadCsv, toCsv } from '../lib/csv';
-import { formatEventDate, formatShortDate, inviteUrl } from '../lib/format';
+import { eventWhen, formatShortDate, inviteUrl } from '../lib/format';
 import {
   CONSENT_CSV_HEADERS, GUEST_CSV_HEADERS, REFERRAL_CSV_HEADERS, computeStats, consentCsvRows,
   growthByDay, guestCsvRows, latestMarketingConsent, referralCsvRows,
 } from '../lib/organizer';
 import type { MyEvent } from '../lib/types';
+import { ConfirmButton, useToast } from '../components/Feedback';
+import { MoreIcon } from '../components/Icons';
 import { ErrorNote, Layout, Spinner } from '../components/Layout';
+import { Sheet } from '../components/Sheet';
 import { SignIn } from '../components/SignIn';
 
 export function OrganizerPage() {
@@ -17,6 +20,7 @@ export function OrganizerPage() {
   const [params, setParams] = useSearchParams();
   const [hosted, setHosted] = useState<MyEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!session) return;
@@ -27,17 +31,19 @@ export function OrganizerPage() {
 
   if (session === undefined) return <Layout><Spinner /></Layout>;
   if (session === null) {
-    return <Layout><SignIn title="Organizer sign in" intro="Sign in with your organizer email. We'll send you a code." /></Layout>;
+    return <Layout><SignIn title="Organizer" /></Layout>;
   }
-  if (error) return <Layout><div className="card"><ErrorNote message={error} /></div></Layout>;
+  if (error) return <Layout><div className="state"><ErrorNote message={error} /></div></Layout>;
   if (!hosted) return <Layout><Spinner /></Layout>;
   if (hosted.length === 0) {
     return (
       <Layout>
-        <div className="card stack">
-          <h1>No organizer access</h1>
-          <p className="muted"><strong>{session.user.email}</strong> isn't an organizer for any event. Organizers are added in the Supabase SQL editor (see the README).</p>
-          <button className="link" onClick={() => signOut()}>Sign out</button>
+        <div className="state">
+          <div className="state-body">
+            <h1 className="title title--sm">No organizer access</h1>
+            <p className="muted">{session.user.email}</p>
+          </div>
+          <button className="btn btn--block" onClick={() => signOut()}>Use another email</button>
         </div>
       </Layout>
     );
@@ -45,17 +51,29 @@ export function OrganizerPage() {
 
   const selected = hosted.find(e => e.event_id === params.get('event')) ?? hosted[0];
   return (
-    <Layout wide>
-      {hosted.length > 1 && (
-        <select className="event-picker" value={selected.event_id} onChange={e => setParams({ event: e.target.value })}>
-          {hosted.map(e => <option key={e.event_id} value={e.event_id}>{e.name}</option>)}
-        </select>
-      )}
+    <Layout wide action={<button className="icon-btn" aria-label="Menu" onClick={() => setMenuOpen(true)}><MoreIcon /></button>}>
       <OrganizerDashboard key={selected.event_id} eventId={selected.event_id} />
-      <div className="row row--between small">
-        <Link to={`/e/${selected.event_id}`}>My guest view</Link>
-        <button className="link" onClick={() => signOut()}>Sign out ({session.user.email})</button>
-      </div>
+      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)}>
+        {hosted.length > 1 && (
+          <div className="menu-group">
+            <ul className="menu">
+              {hosted.map(e => (
+                <li key={e.event_id}>
+                  <button className="menu-item" onClick={() => { setParams({ event: e.event_id }); setMenuOpen(false); }}>
+                    <span>{e.name}</span>{e.event_id === selected.event_id && <span className="faint small">Current</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="menu-group">
+          <ul className="menu">
+            <li><Link className="menu-item" to={`/e/${selected.event_id}`}>Event page</Link></li>
+            <li><button className="menu-item" onClick={() => signOut()}><span>Sign out</span><span className="faint small">{session.user.email}</span></button></li>
+          </ul>
+        </div>
+      </Sheet>
     </Layout>
   );
 }
@@ -63,21 +81,22 @@ export function OrganizerPage() {
 function OrganizerDashboard({ eventId }: { eventId: string }) {
   const [data, setData] = useState<OrganizerData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  const toast = useToast();
 
   const load = useCallback(() => {
     loadOrganizerData(eventId)
-      .then(d => { setData(d); setRefreshedAt(new Date()); setError(null); })
+      .then(d => { setData(d); setError(null); })
       .catch(e => setError(e.message));
   }, [eventId]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (error && !data) return <div className="card"><ErrorNote message={error} /></div>;
+  if (error && !data) return <div className="state"><ErrorNote message={error} /></div>;
   if (!data) return <Spinner />;
 
   const stats = computeStats(data);
-  const pct = Math.min(100, Math.round((stats.attending / stats.capacity) * 100));
+  const pct = Math.min(100, (stats.attending / stats.capacity) * 100);
+  const when = eventWhen(data.event.starts_at, data.event.ends_at);
 
   function exportCsv(kind: 'guests' | 'referrals' | 'consents') {
     if (!data) return;
@@ -89,71 +108,69 @@ function OrganizerDashboard({ eventId }: { eventId: string }) {
   }
 
   return (
-    <div className="stack stack--lg">
-      <section className="hero hero--compact">
-        <p className="eyebrow">Organizer</p>
-        <h1 className="hero-title">{data.event.name}</h1>
-        <p className="muted small">
-          {formatEventDate(data.event.starts_at, data.event.ends_at)}
-          {refreshedAt && <> · updated {refreshedAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</>}
-          {' '}<button className="link" onClick={load}>Refresh</button>
-        </p>
+    <>
+      <header className="hero">
+        <span className={data.event.rsvp_open ? 'status status--going' : 'status'}>{data.event.rsvp_open ? 'RSVPs open' : 'RSVPs closed'}</span>
+        <h1 className="title title--sm">{data.event.name}</h1>
+        <div className="row row--between">
+          <span className="muted">{when.date}{when.time ? ` · ${when.time}` : ''}</span>
+          <button className="text-btn text-btn--green" onClick={load}>Refresh</button>
+        </div>
         <ErrorNote message={error} />
-      </section>
+      </header>
 
-      <section className="card stack">
-        <div className="section-head">
-          <h2>{stats.attending} / {stats.capacity} attending</h2>
-          <span className="muted small">{stats.capacity - stats.attending} spots left</span>
+      <section className="section">
+        <div className="stat-hero">
+          <span className="stat-hero-num">{stats.attending}</span>
+          <span className="muted">of {stats.capacity} attending</span>
         </div>
         <div className="meter" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
-        <div className="tiles">
-          <Tile label="Declined" value={stats.declined} />
-          <Tile label="Open links" value={stats.openInvites} />
-          <Tile label="Links accepted" value={stats.acceptedInvites} />
-          <Tile label="Acceptance" value={`${Math.round(stats.acceptanceRate * 100)}%`} />
-          <Tile label="Deepest chain" value={stats.maxDepth} />
-          <Tile label="Removal requests" value={data.removals.filter(r => r.status === 'pending').length} />
+        <div className="stats" style={{ marginTop: 12 }}>
+          <Stat label="Spots left" value={stats.capacity - stats.attending} />
+          <Stat label="Declined" value={stats.declined} />
+          <Stat label="Open links" value={stats.openInvites} />
+          <Stat label="Accepted" value={stats.acceptedInvites} />
+          <Stat label="Acceptance" value={`${Math.round(stats.acceptanceRate * 100)}%`} />
+          <Stat label="Longest chain" value={stats.maxDepth} />
         </div>
       </section>
 
       <RemovalRequests data={data} onChanged={load} />
 
-      <div className="grid-2">
-        <GrowthCard data={data} />
-        <section className="card stack">
-          <h2>Generations</h2>
-          <p className="muted small">Guests by number of invitations away from the organizers.</p>
+      <div className="split">
+        <GrowthSection data={data} />
+        <section className="section">
+          <span className="label">Generations</span>
           <BarList rows={stats.byDepth.map(d => ({ label: d.depth === 0 ? 'Organizers' : `Gen ${d.depth}`, value: d.count }))} />
           {stats.topInviters.length > 0 && (
             <>
-              <h3>Top inviters</h3>
+              <span className="label" style={{ marginTop: 16 }}>Top inviters</span>
               <BarList rows={stats.topInviters.map(t => ({ label: t.name, value: t.accepted }))} />
             </>
           )}
         </section>
       </div>
 
-      <HostInvitations data={data} onChanged={load} />
-      <GuestTable data={data} />
+      <HostInvitations data={data} onChanged={load} onToast={toast.show} />
+      <GuestList data={data} />
 
-      <section className="card stack">
-        <h2>Export</h2>
-        <p className="muted small">CSV files include emails — store them carefully. The referral file is the edge list for visualising the network later.</p>
+      <section className="section">
+        <span className="label">Export</span>
         <div className="row row--wrap">
-          <button className="btn btn--primary" onClick={() => exportCsv('guests')}>Guests CSV</button>
-          <button className="btn" onClick={() => exportCsv('referrals')}>Referrals CSV</button>
-          <button className="btn" onClick={() => exportCsv('consents')}>Consent log CSV</button>
+          <button className="btn btn--sm btn--primary" onClick={() => exportCsv('guests')}>Guests CSV</button>
+          <button className="btn btn--sm" onClick={() => exportCsv('referrals')}>Referrals CSV</button>
+          <button className="btn btn--sm" onClick={() => exportCsv('consents')}>Consent log CSV</button>
         </div>
       </section>
 
       <RsvpSwitch data={data} onChanged={load} />
-    </div>
+      {toast.node}
+    </>
   );
 }
 
-function Tile({ label, value }: { label: string; value: string | number }) {
-  return <div className="tile"><span className="tile-value">{value}</span><span className="tile-label">{label}</span></div>;
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return <div><span className="stat-num">{value}</span><span className="stat-label">{label}</span></div>;
 }
 
 function BarList({ rows }: { rows: { label: string; value: number }[] }) {
@@ -171,17 +188,17 @@ function BarList({ rows }: { rows: { label: string; value: number }[] }) {
   );
 }
 
-function GrowthCard({ data }: { data: OrganizerData }) {
+function GrowthSection({ data }: { data: OrganizerData }) {
   const points = useMemo(() => growthByDay(data.guests), [data.guests]);
   return (
-    <section className="card stack">
-      <h2>Invitation growth</h2>
-      {points.length === 0 ? (
-        <p className="muted">No RSVPs yet. Share your first links below.</p>
-      ) : (
-        <BarList rows={points.slice(-14).map(p => ({ label: formatShortDate(`${p.day}T12:00:00`), value: p.added }))} />
-      )}
-      {points.length > 0 && <p className="muted small">{points[points.length - 1].total} guests have joined through invitations.</p>}
+    <section className="section">
+      <div className="section-head">
+        <span className="label">Growth</span>
+        {points.length > 0 && <span className="faint small">{points[points.length - 1].total} joined</span>}
+      </div>
+      {points.length === 0
+        ? <p className="faint">No RSVPs yet</p>
+        : <BarList rows={points.slice(-14).map(p => ({ label: formatShortDate(`${p.day}T12:00:00`), value: p.added }))} />}
     </section>
   );
 }
@@ -190,13 +207,10 @@ function RemovalRequests({ data, onChanged }: { data: OrganizerData; onChanged: 
   const [error, setError] = useState<string | null>(null);
   const pending = data.removals.filter(r => r.status === 'pending');
   if (pending.length === 0) return null;
-  const names = new Map(data.guests.map(g => [g.id, g]));
+  const guests = new Map(data.guests.map(g => [g.id, g]));
 
   async function act(id: string, action: 'complete' | 'dismiss') {
-    const msg = action === 'complete'
-      ? "Remove this guest's name and email? Their anonymous node and invitation history are kept. This can't be undone."
-      : 'Dismiss this request without removing data?';
-    if (!confirm(msg)) return;
+    setError(null);
     try {
       await api.processRemoval(id, action);
       onChanged();
@@ -206,17 +220,20 @@ function RemovalRequests({ data, onChanged }: { data: OrganizerData; onChanged: 
   }
 
   return (
-    <section className="card stack card--alert">
-      <h2>Removal requests</h2>
+    <section className="alert">
+      <span className="label" style={{ color: 'var(--red)' }}>Removal requests</span>
       {pending.map(r => {
-        const g = names.get(r.guest_id);
+        const g = guests.get(r.guest_id);
         return (
-          <div key={r.id} className="stack stack--sm request">
-            <div><strong>{g?.full_name}</strong> <span className="muted small">{g?.email} · {formatShortDate(r.requested_at)}</span></div>
-            {r.note && <p className="small">“{r.note}”</p>}
+          <div key={r.id} className="form">
+            <div>
+              <div style={{ fontWeight: 600 }}>{g?.full_name}</div>
+              <div className="faint small">{g?.email} · {formatShortDate(r.requested_at)}</div>
+              {r.note && <p className="muted small" style={{ marginTop: 6 }}>“{r.note}”</p>}
+            </div>
             <div className="row">
-              <button className="btn btn--danger" onClick={() => act(r.id, 'complete')}>Remove data</button>
-              <button className="btn" onClick={() => act(r.id, 'dismiss')}>Dismiss</button>
+              <ConfirmButton className="btn btn--sm btn--danger" confirmLabel="Confirm removal" onConfirm={() => act(r.id, 'complete')}>Remove data</ConfirmButton>
+              <ConfirmButton className="btn btn--sm" confirmLabel="Confirm dismiss" onConfirm={() => act(r.id, 'dismiss')}>Dismiss</ConfirmButton>
             </div>
           </div>
         );
@@ -226,11 +243,10 @@ function RemovalRequests({ data, onChanged }: { data: OrganizerData; onChanged: 
   );
 }
 
-function HostInvitations({ data, onChanged }: { data: OrganizerData; onChanged: () => void }) {
+function HostInvitations({ data, onChanged, onToast }: { data: OrganizerData; onChanged: () => void; onToast: (m: string) => void }) {
   const [count, setCount] = useState(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
   const hostIds = new Set(data.guests.filter(g => g.role === 'host').map(g => g.id));
   const names = new Map(data.guests.map(g => [g.id, g.full_name]));
   const mine = data.invitations.filter(i => hostIds.has(i.inviter_guest_id));
@@ -250,29 +266,32 @@ function HostInvitations({ data, onChanged }: { data: OrganizerData; onChanged: 
   }
 
   async function copy(token: string) {
-    await navigator.clipboard.writeText(inviteUrl(token)).catch(() => window.prompt('Copy this link:', inviteUrl(token)));
-    setCopied(token);
-    setTimeout(() => setCopied(null), 1500);
+    try {
+      await navigator.clipboard.writeText(inviteUrl(token));
+      onToast('Link copied');
+    } catch {
+      window.prompt('Copy this link:', inviteUrl(token));
+    }
   }
 
   return (
-    <section className="card stack">
+    <section className="section">
       <div className="section-head">
-        <h2>Organizer invitations</h2>
-        <span className="muted small">{mine.length - open.length} of {mine.length} accepted</span>
+        <span className="label">Organizer links</span>
+        <span className="faint small">{mine.length - open.length}/{mine.length} accepted</span>
       </div>
-      <p className="muted small">These start new branches of the network. Each link works once; organizers have no two-link limit.</p>
       <div className="row">
-        <input type="number" min={1} max={50} value={count} onChange={e => setCount(Number(e.target.value))} className="num" aria-label="Number of links" />
-        <button className="btn btn--primary" onClick={create} disabled={busy || count < 1 || count > 50}>Create links</button>
+        <input type="number" min={1} max={50} value={count} onChange={e => setCount(Number(e.target.value))}
+          className="input num-input" aria-label="Number of links" />
+        <button className="btn btn--primary grow" onClick={create} disabled={busy || count < 1 || count > 50}>Create links</button>
       </div>
       <ErrorNote message={error} />
       {open.length > 0 && (
         <ul className="list">
           {open.map(i => (
-            <li key={i.id} className="row row--between invite-row">
-              <span className="mono small">#{i.slot} · {names.get(i.inviter_guest_id)}</span>
-              <button className="btn btn--sm" onClick={() => copy(i.token)}>{copied === i.token ? 'Copied' : 'Copy link'}</button>
+            <li key={i.id} className="list-row">
+              <span className="grow mono small faint">#{i.slot} · {names.get(i.inviter_guest_id)}</span>
+              <button className="btn btn--sm" onClick={() => copy(i.token)}>Copy link</button>
             </li>
           ))}
         </ul>
@@ -281,7 +300,7 @@ function HostInvitations({ data, onChanged }: { data: OrganizerData; onChanged: 
   );
 }
 
-function GuestTable({ data }: { data: OrganizerData }) {
+function GuestList({ data }: { data: OrganizerData }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'attending' | 'declined'>('all');
   const parentOf = useMemo(() => new Map(data.referrals.map(r => [r.invitee_guest_id, r.inviter_guest_id])), [data.referrals]);
@@ -294,36 +313,36 @@ function GuestTable({ data }: { data: OrganizerData }) {
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   return (
-    <section className="card stack">
+    <section className="section">
       <div className="section-head">
-        <h2>Guests</h2>
-        <span className="muted small">{rows.length} shown</span>
+        <span className="label">Guests</span>
+        <span className="faint small">{rows.length}</span>
       </div>
       <div className="row">
-        <input className="grow" type="search" placeholder="Search name or email" value={query} onChange={e => setQuery(e.target.value)} />
-        <select value={filter} onChange={e => setFilter(e.target.value as typeof filter)} aria-label="Filter RSVP">
+        <input className="input grow" type="search" placeholder="Search" aria-label="Search guests" value={query} onChange={e => setQuery(e.target.value)} />
+        <select className="input picker" style={{ width: 'auto' }} value={filter} onChange={e => setFilter(e.target.value as typeof filter)} aria-label="Filter RSVP">
           <option value="all">All</option>
-          <option value="attending">Attending</option>
+          <option value="attending">Going</option>
           <option value="declined">Declined</option>
         </select>
       </div>
-      <ul className="guest-list">
+      <ul className="list">
         {rows.slice(0, 400).map(g => {
           const parent = parentOf.get(g.id);
           return (
-            <li key={g.id} className="guest-row">
+            <li key={g.id} className="list-row">
               <div className="grow">
                 <div>
-                  <strong>{g.full_name}</strong>
-                  {g.role === 'host' && <span className="tag">Organizer</span>}
-                  {consent.get(g.id)?.granted && <span className="tag tag--soft" title="Opted in to Pipeline updates">Opt-in</span>}
+                  <span style={{ fontWeight: 600 }}>{g.full_name}</span>
+                  {g.role === 'host' && <span className="tag tag--green">Organizer</span>}
+                  {consent.get(g.id)?.granted && <span className="tag" title="Opted in to Pipeline updates">Opt-in</span>}
                 </div>
-                <div className="muted small">{g.email ?? 'removed'}</div>
-                {parent && <div className="muted small">via {names.get(parent)} · gen {g.depth}</div>}
+                <div className="faint small" style={{ overflowWrap: 'anywhere' }}>{g.email ?? 'Removed'}</div>
+                {parent && <div className="faint small">via {names.get(parent)} · gen {g.depth}</div>}
               </div>
               <div className="guest-meta">
-                <span className={g.rsvp_status === 'attending' ? 'pill pill--ok' : 'pill'}>{g.rsvp_status}</span>
-                <span className="muted small">{formatShortDate(g.created_at)}</span>
+                <span className={g.rsvp_status === 'attending' ? 'pill pill--green' : 'pill'}>{g.rsvp_status === 'attending' ? 'Going' : 'Declined'}</span>
+                <span className="faint small">{formatShortDate(g.created_at)}</span>
               </div>
             </li>
           );
@@ -337,7 +356,7 @@ function RsvpSwitch({ data, onChanged }: { data: OrganizerData; onChanged: () =>
   const [error, setError] = useState<string | null>(null);
   const open = data.event.rsvp_open;
   async function toggle() {
-    if (!confirm(open ? 'Close RSVPs? Unused links will stop working until you reopen.' : 'Reopen RSVPs?')) return;
+    setError(null);
     try {
       await api.setRsvpOpen(data.event.id, !open);
       onChanged();
@@ -346,9 +365,10 @@ function RsvpSwitch({ data, onChanged }: { data: OrganizerData; onChanged: () =>
     }
   }
   return (
-    <section className="card stack">
-      <h2>RSVPs are {open ? 'open' : 'closed'}</h2>
-      <button className={open ? 'btn btn--danger' : 'btn btn--primary'} onClick={toggle}>{open ? 'Close RSVPs' : 'Reopen RSVPs'}</button>
+    <section className="section">
+      {open
+        ? <ConfirmButton className="btn btn--block btn--danger" confirmLabel="Tap again — unused links stop working" onConfirm={toggle}>Close RSVPs</ConfirmButton>
+        : <button className="btn btn--block btn--primary" onClick={toggle}>Reopen RSVPs</button>}
       <ErrorNote message={error} />
     </section>
   );
