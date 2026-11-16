@@ -1,5 +1,7 @@
 # Pipeline
 
+> **The Pipeline Experiment** (referral-based research app) lives in [`experiment/`](experiment/README.md). It is a separate Vite + React app with its own Supabase migration and Vercel project.
+
 A lightweight networking-platform prototype for exploring how resume details can become an editable professional profile.
 
 ## Run locally

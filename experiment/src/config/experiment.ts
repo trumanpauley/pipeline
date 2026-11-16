@@ -1,0 +1,79 @@
+// Everything a non-engineer is likely to tweak lives here: copy and the three
+// classification methods. If you add/rename a stored value, also update the
+// `method_options` row in public.experiment_settings (the server validates it).
+
+export type MethodKey = 'strength' | 'context' | 'comfort';
+
+export interface MethodOption {
+  value: string;
+  label: string;
+  hint?: string;
+}
+
+export interface MethodDef {
+  key: MethodKey;
+  /** Short name used in the admin dashboard. */
+  adminName: string;
+  layout: 'stack' | 'grid' | 'scale';
+  question: (name: string) => string;
+  options: MethodOption[];
+  scaleLabels?: [string, string];
+}
+
+export const METHODS: Record<MethodKey, MethodDef> = {
+  strength: {
+    key: 'strength',
+    adminName: 'A · Strength',
+    layout: 'stack',
+    question: (name) => `How close are you to ${name}?`,
+    options: [
+      { value: 'close_friend', label: 'Close friend' },
+      { value: 'acquaintance', label: 'Acquaintance' },
+      { value: 'weak', label: 'Weak connection' },
+    ],
+  },
+  context: {
+    key: 'context',
+    adminName: 'B · Context',
+    layout: 'grid',
+    question: (name) => `Where do you know ${name} from?`,
+    options: [
+      { value: 'class', label: 'Class' },
+      { value: 'team', label: 'Team' },
+      { value: 'club', label: 'Club' },
+      { value: 'work', label: 'Work' },
+      { value: 'social', label: 'Social' },
+      { value: 'other', label: 'Other' },
+    ],
+  },
+  comfort: {
+    key: 'comfort',
+    adminName: 'C · Comfort',
+    layout: 'scale',
+    question: (name) => `How comfortable would you feel asking ${name} for an introduction?`,
+    options: ['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v })),
+    scaleLabels: ['Not at all', 'Completely'],
+  },
+};
+
+export const methodDef = (key: string): MethodDef =>
+  METHODS[(key as MethodKey) in METHODS ? (key as MethodKey) : 'strength'];
+
+export const labelFor = (method: string, value: string) =>
+  methodDef(method).options.find((o) => o.value === value)?.label ?? value;
+
+export const COPY = {
+  /** Invitation landing. `name` is the inviter's first name from the referral data. */
+  landingTitle: (name: string | null) => (name ? `${name} invited you.` : 'You’ve been invited.'),
+  landingBody: 'We’re a Harvard startup trying to understand how people are connected.',
+  landingCta: 'Enter the Experiment',
+  landingFollow: 'Take part in our experiment to learn more about us.',
+  landingMeta: 'Under two minutes · Voluntary',
+  shareText: 'A small student experiment about how people are connected. You’re invited:',
+  research: [
+    'We record how people describe their connections and how invitations spread.',
+    'Analysis is aggregate. Nobody sees how you described them.',
+    'Your name is shown only to people you invite.',
+    'You can delete your data at any time.',
+  ],
+};
