@@ -84,8 +84,11 @@ ok((await q(`select count(*)::int n from participants`))[0].n === 1, 'legacy par
 
 step('Apply migration 002 on top');
 psql('supabase/migrations/002_anonymous_onboarding.sql');
+psql('supabase/migrations/003_share_tracking.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
+const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
+ok(legacyInv.share_method === 'legacy' && legacyInv.shared_at, 'pre-003 links count as shared (no participant is re-locked)');
 ok((await asUser(null, `select open_invitation($1) as r`, [legacyLink]))[0].r.state === 'ok', 'legacy invitation link still opens');
 await q(`insert into public.admins (email) values ('admin@test.dev')`);
 
@@ -162,16 +165,23 @@ async function joinViaLink(page, link, name, opts) {
 }
 
 /** Create an invitation from the home screen; returns the link. */
-async function invite(page, label, { shots = false } = {}) {
+/** Create an invitation. By default the link is copied (which counts as sharing). */
+async function invite(page, label, { shots = false, share = true } = {}) {
   await page.getByRole('button', { name: 'Invite someone' }).first().click();
-  await page.getByLabel('Who are you inviting').fill(label);
+  await page.getByLabel('Their first name').fill(label);
+  if (shots) await page.waitForTimeout(400), await shot(page, `05-invite-who`);
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.locator('.sheet .classifier').waitFor();
-  if (shots) await page.waitForTimeout(500), await shot(page, `05-invite-classify`);
+  if (shots) await page.waitForTimeout(500), await shot(page, `05b-invite-classify`);
   await page.locator('.sheet .classifier .option, .sheet .classifier .scale-dot').last().click();
-  await page.getByRole('heading', { name: 'Your link is ready.' }).waitFor();
+  await page.getByRole('heading', { name: `${label}’s link is ready.` }).waitFor();
   const link = 'http://' + (await page.locator('.sheet .url').innerText());
-  await page.getByRole('button', { name: 'Done' }).click();
+  if (share) {
+    await page.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
+    await page.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
+  } else {
+    await page.locator('.sheet').getByRole('button', { name: 'Later' }).click();
+  }
   return link;
 }
 async function continueReveal(page) {
@@ -218,9 +228,47 @@ try {
   await alicePage.locator('.home').waitFor();
   ok(true, 'session persists across reloads without signing in');
 
-  step('Alice invites Bob and Carol → reveals → waitlist invitation');
-  const bobLink = await invite(alicePage, 'Bob', { shots: true });
-  await continueReveal(alicePage);
+  step('Invitation home: personal headline, locked second card, no network yet');
+  ok(await alicePage.getByRole('heading', { name: 'Now it’s your turn, Alice.' }).isVisible(), 'headline uses the participant’s first name');
+  ok(await alicePage.getByText('Invite two people to discover what we’re building.').isVisible(), 'supporting line shown');
+  ok(await alicePage.getByText('Unlock 1 — Our name').isVisible() && await alicePage.getByText('Unlock 2 — Our mission').isVisible(), 'cards name what each unlocks');
+  ok(await alicePage.getByRole('button', { name: /Second invitation/ }).isDisabled(), 'second invitation starts locked');
+  ok(await alicePage.locator('.network-card').count() === 0, 'network hidden before any invitation');
+
+  step('First invitation: created but not shared → nothing unlocks');
+  const bobLink = await invite(alicePage, 'Bob', { shots: true, share: false });
+  await alicePage.waitForTimeout(800);
+  ok(await alicePage.locator('.reveal-overlay').count() === 0, 'no reveal for an unshared link');
+  const [bobInv0] = await q(`select * from invitations where token = $1`, [bobLink.split('/i/')[1]]);
+  ok(bobInv0.shared_at === null && bobInv0.status === 'created', 'backend: created, not shared');
+  ok((await byName('Alice')).reveal_level === 0, 'reveal level still 0');
+  ok(await alicePage.getByRole('button', { name: /Second invitation/ }).isDisabled(), 'second invitation still locked');
+  ok((await alicePage.locator('.invite-card.is-filled').innerText()).includes('Bob') && (await alicePage.locator('.invite-card.is-filled .pill').innerText()).includes('Ready to share'), 'slot shows Bob · Ready to share');
+  ok(await alicePage.getByText('Share to unlock our name').isVisible(), 'hint to share');
+  await alicePage.locator('.network-card').waitFor();
+  ok(await alicePage.locator('.network-card .tree-node.kind-pending').count() === 1, 'network appears with Bob as a dim pending node');
+  await alicePage.waitForTimeout(900);
+  await alicePage.screenshot({ path: path.join(SHOTS, '05c-home-first-invite-unshared.png'), fullPage: true });
+
+  step('Copying the link unlocks "Pipeline" and the second invitation');
+  await alicePage.locator('.invite-card.is-filled').getByRole('button', { name: 'Copy link' }).click();
+  await alicePage.locator('.reveal-overlay').waitFor();
+  await alicePage.waitForTimeout(1800);
+  ok((await alicePage.locator('.reveal-title').innerText()).includes('part of Pipeline'), 'reveal 1: the name');
+  await alicePage.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
+  const [bobInv1] = await q(`select * from invitations where token = $1`, [bobLink.split('/i/')[1]]);
+  ok(bobInv1.shared_at && bobInv1.share_method === 'copy' && bobInv1.status === 'created' && bobInv1.opened_at === null, 'backend: shared (copy), not opened, not accepted');
+  await alicePage.getByRole('button', { name: /Invite someone.*Unlock 2/ }).waitFor();
+  ok(await alicePage.getByRole('button', { name: /Invite someone.*Unlock 2/ }).isEnabled(), 'second invitation unlocked');
+  ok((await alicePage.locator('.invite-card.is-filled .pill').innerText()).includes('Shared'), 'slot shows Shared');
+  await alicePage.waitForTimeout(300);
+  await shot(alicePage, '05d-home-second-unlocked');
+
+  step('Second invitation → mission → waitlist invitation');
+  await alicePage.getByRole('button', { name: 'Invite someone' }).first().click();
+  ok(await alicePage.getByRole('heading', { name: 'Who will you invite next?' }).isVisible(), 'second flow asks "Who will you invite next?"');
+  await alicePage.getByRole('button', { name: 'Close' }).click();
+  await alicePage.waitForTimeout(300);
   const carolLink = await invite(alicePage, 'Carol');
   await alicePage.locator('.reveal-overlay').waitFor();
   await alicePage.waitForTimeout(2200);
@@ -260,6 +308,7 @@ try {
     const p = await newPhone();
     await p.goto(bobLink);
     await p.getByRole('heading', { name: 'Alice invited you.' }).waitFor({ timeout: 5000 });
+    ok((await byName('Alice')).display_name === 'Alice', 'the name on the landing is the sender’s own first name');
     ok(true, 'headline uses the inviter’s first name');
     const t0 = Date.now();
     await p.getByRole('button', { name: 'Enter the Experiment' }).click();
@@ -308,9 +357,13 @@ try {
   await carolAnon.goto(carolLink);
   await carolAnon.getByRole('button', { name: 'Enter the Experiment' }).waitFor();
   await alicePage.goto(APP);
-  await alicePage.locator('.slot-accepted').waitFor();
-  const pills = await alicePage.locator('.pill').allInnerTexts();
+  await alicePage.locator('.invite-card.status-accepted').waitFor();
+  const pills = await alicePage.locator('.invite-card .pill').allInnerTexts();
   ok(pills.some((t) => t.includes('Joined')) && pills.some((t) => t.includes('Opened')), `Alice sees ${pills.join(' / ')}`);
+  ok(await alicePage.locator('.network-card .tree-node.kind-member').count() === 1
+    && await alicePage.locator('.network-card .tree-node.kind-pending').count() === 1, 'network: Bob lit up (joined), Carol still pending');
+  await alicePage.waitForTimeout(1300);
+  await alicePage.screenshot({ path: path.join(SHOTS, '05e-home-joined-and-pending.png'), fullPage: true });
   await bobPage.goto(carolLink);
   await bobPage.getByRole('button', { name: 'Enter the Experiment' }).click();
   await answer(bobPage);
@@ -355,8 +408,8 @@ try {
   await bobPhone2.getByRole('button', { name: 'Email me a code' }).click();
   await bobPhone2.getByLabel('Verification code').fill(await getCode('bob@test.dev'));
   await bobPhone2.getByRole('button', { name: 'Verify' }).click();
-  await bobPhone2.locator('.slots').waitFor();
-  ok((await bobPhone2.locator('.slot-main').first().innerText()).includes('Dave'), 'Bob’s network and links appear on the new device');
+  await bobPhone2.locator('.invite-slots').waitFor();
+  ok((await bobPhone2.locator('.invite-card.is-filled').first().innerText()).includes('Dave'), 'Bob’s network and links appear on the new device');
 
   // ---------- generation 3 ----------
   step('Generation 3: Dave joins through Bob’s link');
@@ -395,7 +448,7 @@ try {
   await leePage.getByRole('button', { name: 'Email me a code' }).click();
   await leePage.getByLabel('Verification code').fill(await getCode('legacy@test.dev'));
   await leePage.getByRole('button', { name: 'Verify' }).click();
-  await leePage.locator('.slot-accepted').waitFor();
+  await leePage.locator('.invite-card.status-accepted').waitFor();
   ok(true, 'legacy participant signs in by email and sees Erin joined');
 
   step('Rate limits');
@@ -440,6 +493,8 @@ try {
   ok(ov.totals.participants === 5 && ov.totals.max_depth === 3, 'totals: 5 participants, depth 3');
   ok(acct.linked_emails === 2 && acct.anonymous === 3, `accounts: 2 linked, 3 anonymous`);
   ok(acct.waitlist === 2, 'waitlist count (Alice, Dave via API)');
+  ok(acct.shared === 3 && acct.shared_by_copy === 3, `admin: ${acct.shared} links shared since tracking began (legacy excluded)`);
+  ok((await adminPage.locator('.funnel').innerText()).includes('Shared'), 'funnel shows the Shared step');
   ok((await adminPage.locator('.tiles').first().innerText()).includes('Waitlist'), 'dashboard shows the waitlist tile');
   ok(!JSON.stringify(await adminPage.locator('.settings').innerText()).includes('hash_salt'), 'salt hidden from the settings panel');
   const [download] = await Promise.all([

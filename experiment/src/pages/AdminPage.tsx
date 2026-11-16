@@ -86,10 +86,14 @@ export function AdminPage({ session }: { session: Session | null }) {
         <Tile label="Feedback answers" value={t.feedback} sub={`${t.deleted} deleted accounts`} />
       </section>
 
-      <Panel title="Invitation funnel" note="Referral links created by participants (seed links shown separately).">
+      <Panel
+        title="Invitation funnel"
+        note="Referral links created by participants (seed links shown separately). Shared = the participant tapped Share or Copy; that's intent, not proof the link was received."
+      >
         <Funnel
           steps={[
             ['Generated', inv.generated],
+            ['Shared', acct?.shared ?? 0],
             ['Opened', inv.opened],
             ['Answered', inv.answered],
             ['Joined', inv.accepted],

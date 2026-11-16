@@ -111,7 +111,7 @@ async function keyboardCheck(browser) {
   await p.locator('.home').waitFor({ timeout: 30000 });
 
   await p.getByRole('button', { name: 'Invite someone' }).first().click();
-  await check('invite-who', p.getByLabel('Who are you inviting'), p.locator('.sheet').getByRole('button', { name: 'Continue' }));
+  await check('invite-who', p.getByLabel('Their first name'), p.locator('.sheet').getByRole('button', { name: 'Continue' }));
   await p.getByRole('button', { name: 'Close' }).click();
   await p.waitForTimeout(400);
 

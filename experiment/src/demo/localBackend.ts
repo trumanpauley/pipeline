@@ -6,10 +6,11 @@ import { PGlite } from '@electric-sql/pglite';
 import shimSql from '../../test/local-supabase-shim.sql?raw';
 import m001 from '../../supabase/migrations/001_experiment_schema.sql?raw';
 import m002 from '../../supabase/migrations/002_anonymous_onboarding.sql?raw';
+import m003 from '../../supabase/migrations/003_share_tracking.sql?raw';
 
 const CODE = '123456';
 const ADMIN = 'admin@demo.dev';
-const SQL = [shimSql, m001, m002];
+const SQL = [shimSql, m001, m002, m003];
 // A new schema gets a new database, so an old demo can't break a newer build.
 const DB_KEY = `pipeline-demo-${SQL.reduce((n, s) => n + s.length, 0)}`;
 
