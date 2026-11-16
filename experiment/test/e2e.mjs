@@ -139,7 +139,7 @@ const answer = (page, scope = '') =>
 /** Landing → relationship question → name + consent. Returns at the join result. */
 async function startJoin(page, link, name, { shots = false } = {}) {
   await page.goto(link);
-  await page.getByRole('heading', { name: "You're connected." }).waitFor();
+  await page.getByRole('heading', { name: /invited you\.$/ }).waitFor();
   if (shots) await page.waitForTimeout(1600), await shot(page, `01-landing`);
   await page.getByRole('button', { name: 'Enter the Experiment' }).click();
   await page.locator('.classifier').waitFor();
@@ -254,6 +254,46 @@ try {
   ok((await rpcAs(null, 'get_my_state')).status >= 400, 'anonymous visitors cannot read participant state');
   ok((await rpcAs(aliceJwt, 'admin_overview')).body.message === 'forbidden', 'participants cannot read admin data');
   ok((await rpcAs(null, 'open_invitation', { p_token: 'AAAAAAAAAAAAAAAAAAAAAA' })).body.state === 'invalid', 'guessed token is invalid');
+
+  step('Invitation landing');
+  {
+    const p = await newPhone();
+    await p.goto(bobLink);
+    ok(await p.getByRole('heading', { name: 'Alice invited you.' }).isVisible(), 'headline uses the inviter’s first name');
+    const t0 = Date.now();
+    await p.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await p.locator('.classifier').waitFor();
+    ok(Date.now() - t0 < 1500, 'Enter works immediately, before the animation finishes');
+    await p.goBack().catch(() => {});
+
+    const seedPage = await newPhone();
+    await seedPage.goto(`${APP}/i/${seeds[2].token}`);
+    await seedPage.getByRole('heading', { name: 'Truman invited you.' }).waitFor();
+    ok(!(await seedPage.locator('.landing-cta').getAttribute('class')).includes('is-shown'), 'button starts hidden while the sentence types');
+    await seedPage.waitForTimeout(500);
+    await shot(seedPage, '01b-landing-typing');
+    await seedPage.waitForTimeout(3000);
+    ok((await seedPage.locator('.landing-cta').getAttribute('class')).includes('is-shown'), 'button fades in after the sentence');
+    ok((await seedPage.locator('.landing-follow .tw-rest').innerText()) === '', 'follow-up line fully typed');
+    ok((await seedPage.locator('.landing-meta').getAttribute('class')).includes('is-shown'), '"Under two minutes · Voluntary" shown last');
+    ok((await seedPage.locator('.landing-body .sr-only').innerText()).includes('Harvard startup'), 'screen readers get the full sentence');
+    await shot(seedPage, '01c-landing-complete');
+
+    const rc = await browser.newContext({ ...iphone, reducedMotion: 'reduce' });
+    contexts.push(rc);
+    const rm = await rc.newPage();
+    await rm.goto(`${APP}/i/${seeds[2].token}`);
+    await rm.getByRole('heading', { name: 'Truman invited you.' }).waitFor();
+    ok((await rm.locator('.landing-cta').getAttribute('class')).includes('is-shown')
+      && (await rm.locator('.landing-body .tw-rest').innerText()) === '', 'reduced motion: everything shown at once');
+
+    const sk = await newPhone();
+    await sk.goto(`${APP}/i/${seeds[2].token}`);
+    await sk.getByRole('heading', { name: 'Truman invited you.' }).waitFor();
+    await sk.mouse.click(200, 120);
+    await sk.waitForTimeout(100);
+    ok((await sk.locator('.landing-meta').getAttribute('class')).includes('is-shown'), 'a tap anywhere skips to the end');
+  }
 
   // ---------- generation 2 ----------
   step('Generation 2: Bob joins through Alice’s link');

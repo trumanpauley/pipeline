@@ -8,6 +8,7 @@ import { deviceId } from '../lib/device';
 import { captchaToken } from '../lib/captcha';
 import { COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
+import { LandingIntro } from '../components/LandingIntro';
 import { DemoLinks } from './HomePage';
 import { Button, Check, Constellation, ErrorText, Loading, Screen } from '../components/ui';
 
@@ -153,15 +154,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
   if (step === 'intro') {
     return (
       <Screen className="center landing">
-        <Constellation />
-        <div className="stack text-center">
-          <h1 className="display fade-up" style={{ animationDelay: '.5s' }}>{COPY.landingTitle}</h1>
-          <p className="muted fade-up" style={{ animationDelay: '.8s' }}>{COPY.landingBody}</p>
-        </div>
-        <div className="landing-actions fade-up" style={{ animationDelay: '1.1s' }}>
-          <Button onClick={() => setStep('classify')}>{COPY.landingCta}</Button>
-          <p className="fine">{COPY.landingMeta} · Voluntary</p>
-        </div>
+        <LandingIntro senderName={info?.sender_name ?? null} onEnter={() => setStep('classify')} />
       </Screen>
     );
   }

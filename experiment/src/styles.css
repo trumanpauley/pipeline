@@ -352,3 +352,24 @@ tr:last-child td { border-bottom: 0; }
 .early-card strong { display: block; font-size: 17px; font-weight: 620; letter-spacing: -0.01em; }
 .early-card span { font-size: 14px; color: var(--text-2); }
 .early-card .arrow { font-size: 22px; color: var(--text-2); }
+
+/* ---------- invitation landing (typed intro) ---------- */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.landing-intro { display: flex; flex-direction: column; gap: 28px; }
+.landing-title { text-wrap: balance; }
+.typewriter { margin: 0; }
+.landing-body { font-size: 18px; line-height: 1.45; max-width: 330px; align-self: center; }
+.tw-rest { visibility: hidden; }
+/* Zero-width anchor: the caret never shifts text or changes line breaks. */
+.tw-caret { position: relative; }
+.tw-caret::after {
+  content: ''; position: absolute; left: 1px; top: 0.1em; width: 1.5px; height: 1.1em;
+  background: currentColor; opacity: 0; transition: opacity 0.25s;
+}
+.tw-caret.is-on::after { opacity: 0.7; animation: caretBlink 1s steps(1) infinite; }
+@keyframes caretBlink { 50% { opacity: 0; } }
+.landing-cta { width: 100%; opacity: 0; transform: translateY(6px); transition: opacity 0.5s var(--ease), transform 0.5s var(--ease); }
+.landing-cta.is-shown { opacity: 1; transform: none; }
+.landing-follow { font-size: 15px; color: var(--text-2); text-align: center; max-width: 300px; }
+.landing-meta { opacity: 0; transition: opacity 0.6s var(--ease); }
+.landing-meta.is-shown { opacity: 1; }

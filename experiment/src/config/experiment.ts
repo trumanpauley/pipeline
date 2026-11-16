@@ -63,10 +63,12 @@ export const labelFor = (method: string, value: string) =>
   methodDef(method).options.find((o) => o.value === value)?.label ?? value;
 
 export const COPY = {
-  landingTitle: "You're connected.",
-  landingBody: 'A voluntary student startup experiment about how people are connected.',
+  /** Invitation landing. `name` is the inviter's first name from the referral data. */
+  landingTitle: (name: string | null) => (name ? `${name} invited you.` : 'You’ve been invited.'),
+  landingBody: 'We’re a Harvard startup trying to understand how people are connected.',
   landingCta: 'Enter the Experiment',
-  landingMeta: 'Under two minutes',
+  landingFollow: 'Take part in our experiment to learn more about us.',
+  landingMeta: 'Under two minutes · Voluntary',
   shareText: 'A small student experiment about how people are connected. You’re invited:',
   research: [
     'We record how people describe their connections and how invitations spread.',
