@@ -46,11 +46,19 @@ function Typewriter({
 
   useEffect(() => {
     if (!run || instant) return;
+    // Steady cadence: one letter per interval, at most one per frame. If the
+    // phone drops frames, typing resumes where it was instead of catching up
+    // in a burst, so the caret never jumps.
     let raf = 0;
-    const start = performance.now();
+    let n = 1;
+    let last = performance.now();
+    setCount(1);
     const tick = (now: number) => {
-      const n = Math.min(text.length, Math.floor((now - start) / msPerChar) + 1);
-      setCount(n);
+      if (now - last >= msPerChar) {
+        n += 1;
+        last = now - Math.min(now - last - msPerChar, msPerChar / 2);
+        setCount(n);
+      }
       if (n < text.length) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

@@ -278,6 +278,11 @@ It covers:
 
 It saves screenshots to `test-results/`.
 
+`npm run test:mobile` checks the phone experience on the browser-only demo build, with no database
+needed. On every text-entry screen, the field and its button must stay above a simulated iPhone
+keyboard. On the landing page, typing must advance one letter at a time with the caret always
+visible, even through a 300ms freeze. Screenshots go to `test-results/mobile/`.
+
 It needs PostgreSQL 14+ and Playwright's Chromium:
 
 ```bash
