@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, inviteUrl, type MyInvitation, type MyState } from '../lib/api';
+import { api, inviteUrl, type MyAccount, type MyInvitation, type MyState } from '../lib/api';
 import { navigate } from '../lib/router';
 import { pending } from '../lib/session';
 import { supabase } from '../lib/supabase';
@@ -9,7 +9,9 @@ import { Classifier } from '../components/Classifier';
 import { SignIn } from '../components/EmailAuth';
 import { RevealOverlay } from '../components/Reveal';
 import { Tree, type TreeNode } from '../components/Tree';
-import { Button, Check, Constellation, ErrorText, Loading, Screen, Sheet } from '../components/ui';
+import { WaitlistOverlay } from '../components/Waitlist';
+import { resetDeviceId } from '../lib/device';
+import { Button, Constellation, ErrorText, Loading, Screen, Sheet } from '../components/ui';
 
 export function HomePage({ session }: { session: Session | null }) {
   if (!session) return <SignedOut />;
@@ -25,7 +27,7 @@ function SignedOut() {
       {deleted && <div className="toast fade-up">Your data has been deleted.</div>}
       <SignIn
         heading="The Pipeline Experiment"
-        sub="Invitation only. Already part of it? Sign in with your email."
+        sub="Invitation only. Saved your network to an email? Sign in to open it here."
       />
       {p?.token && (
         <button className="link" onClick={() => navigate(`/i/${p.token}`)}>
@@ -44,6 +46,7 @@ export function DemoLinks() {
   const freshInvite = async () => {
     setBusy(true);
     pending.clear();
+    resetDeviceId(); // a "new person" in the demo gets a new browser identity too
     await supabase.auth.signOut();
     const { token } = await (await fetch('/__test/new-invite', { method: 'POST' })).json();
     navigate(`/i/${token}`);
@@ -63,6 +66,8 @@ export function DemoLinks() {
 
 function Home({ session }: { session: Session }) {
   const [state, setState] = useState<MyState | null>(null);
+  const [account, setAccount] = useState<MyAccount | null>(null);
+  const [overlay, setOverlay] = useState<null | 'waitlist' | 'link'>(null);
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | 'invite' | 'feedback' | 'privacy'>(null);
   const [reveal, setReveal] = useState<number | null>(null);
@@ -74,8 +79,9 @@ function Home({ session }: { session: Session }) {
 
   const load = useCallback(async () => {
     try {
-      const s = await api.getMyState();
+      const [s, a] = await Promise.all([api.getMyState(), api.getMyAccount()]);
       setState(s);
+      setAccount(a);
       return s;
     } catch (e) {
       setError((e as Error).message);
@@ -127,7 +133,8 @@ function Home({ session }: { session: Session }) {
           <Constellation small />
           <h1 className="title">Invitation only.</h1>
           <p className="muted">
-            {session.user.email} hasn’t joined yet. Open the invitation link someone sent you.
+            {session.user.email ? `${session.user.email} hasn’t joined yet.` : 'You haven’t joined yet.'} Open the
+            invitation link someone sent you.
           </p>
           {state.is_admin && <Button onClick={() => navigate('/admin')}>Admin dashboard</Button>}
           <button className="link" onClick={() => supabase.auth.signOut()}>Sign out</button>
@@ -192,6 +199,16 @@ function Home({ session }: { session: Session }) {
         )}
       </section>
 
+      {level >= 2 && !account?.waitlist_email && (
+        <button className="early-card fade-up" onClick={() => setOverlay('waitlist')}>
+          <div>
+            <strong>Early access</strong>
+            <span>Join the Pipeline waitlist.</span>
+          </div>
+          <span className="arrow" aria-hidden="true">→</span>
+        </button>
+      )}
+
       <section className="card">
         <div className="card-head">
           <h2>Your branch</h2>
@@ -229,13 +246,38 @@ function Home({ session }: { session: Session }) {
         />
       )}
       {sheet === 'privacy' && (
-        <PrivacySheet state={state} onClose={() => setSheet(null)} onChanged={load} />
+        <PrivacySheet
+          state={state}
+          account={account}
+          onClose={() => setSheet(null)}
+          onLink={() => { setSheet(null); setOverlay('link'); }}
+          onWaitlist={() => { setSheet(null); setOverlay('waitlist'); }}
+          onChanged={load}
+        />
       )}
       {reveal !== null && reveals[reveal - 1] && (
         <RevealOverlay
           step={reveal}
           title={reveals[reveal - 1].title}
-          onDone={() => setReveal(reveal < level ? reveal + 1 : null)}
+          onDone={() => {
+            if (reveal < level) return setReveal(reveal + 1);
+            setReveal(null);
+            // After the final reveal, invite them (once) to the early-access waitlist.
+            if (reveal >= 2 && !account?.waitlist_email && !waitlistPrompted.get()) {
+              waitlistPrompted.set();
+              setOverlay('waitlist');
+            }
+          }}
+        />
+      )}
+      {overlay && (
+        <WaitlistOverlay
+          mode={overlay}
+          account={account}
+          onClose={(changed) => {
+            setOverlay(null);
+            if (changed) void load();
+          }}
         />
       )}
     </main>
@@ -403,16 +445,39 @@ function FeedbackSheet({ question, onClose }: { question: string; onClose: (done
   );
 }
 
-function PrivacySheet({ state, onClose, onChanged }: { state: MyState; onClose: () => void; onChanged: () => Promise<unknown> }) {
-  const p = state.participant!;
-  const [marketing, setMarketing] = useState(p.marketing_consent);
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
+const waitlistPrompted = {
+  get: () => { try { return localStorage.getItem('px.waitlistPrompted') === '1'; } catch { return false; } },
+  set: () => { try { localStorage.setItem('px.waitlistPrompted', '1'); } catch { /* ignore */ } },
+};
 
-  const toggle = async (v: boolean) => {
-    setMarketing(v);
-    await api.setMarketingConsent(v);
+function PrivacySheet({
+  state,
+  account,
+  onClose,
+  onLink,
+  onWaitlist,
+  onChanged,
+}: {
+  state: MyState;
+  account: MyAccount | null;
+  onClose: () => void;
+  onLink: () => void;
+  onWaitlist: () => void;
+  onChanged: () => Promise<unknown>;
+}) {
+  const p = state.participant!;
+  const [confirming, setConfirming] = useState(false);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const anonymous = !account?.linked_email;
+
+  const leave = async () => {
+    await api.leaveWaitlist();
     await onChanged();
+  };
+  const signOut = async () => {
+    if (anonymous && !confirmSignOut) return setConfirmSignOut(true);
+    await supabase.auth.signOut();
   };
   const del = async () => {
     setBusy(true);
@@ -427,21 +492,45 @@ function PrivacySheet({ state, onClose, onChanged }: { state: MyState; onClose: 
       <div className="stack fade-up">
         <p className="eyebrow">Your data</p>
         <h2 className="title">{p.display_name}</h2>
-        <p className="muted small">{p.email}</p>
         <ul className="data-notes">
           {COPY.research.map((l) => <li key={l}>{l}</li>)}
         </ul>
-        <Check checked={marketing} onChange={toggle}>Email me about Pipeline</Check>
+
+        <div className="account-row">
+          <div>
+            <div>{anonymous ? 'Saved on this browser only' : 'Network saved'}</div>
+            <div className="muted">{anonymous ? 'Link an email to use it on any device.' : account?.linked_email}</div>
+          </div>
+          {anonymous && <button className="chip" onClick={onLink}>Save</button>}
+        </div>
+        <div className="account-row">
+          <div>
+            <div>Early-access waitlist</div>
+            <div className="muted">{account?.waitlist_email ?? 'Not joined'}</div>
+          </div>
+          {account?.waitlist_email ? (
+            <button className="chip ghost" onClick={leave}>Leave</button>
+          ) : (
+            <button className="chip" onClick={onWaitlist}>Join</button>
+          )}
+        </div>
+
         {!confirming ? (
           <>
-            <Button variant="secondary" onClick={() => supabase.auth.signOut()}>Sign out</Button>
+            {confirmSignOut && (
+              <p className="muted small">
+                Your network is saved only on this browser. If you sign out without linking an email, you
+                won’t be able to get back to it.
+              </p>
+            )}
+            <Button variant="secondary" onClick={signOut}>{confirmSignOut ? 'Sign out anyway' : 'Sign out'}</Button>
             <button className="link danger" onClick={() => setConfirming(true)}>Delete my data</button>
           </>
         ) : (
           <div className="stack confirm">
             <p className="muted small">
-              This erases your name, email, and answers, and closes any unused links. People who joined
-              through you stay in the experiment anonymously.
+              This erases your name, email, waitlist entry and answers, and closes any unused links.
+              People who joined through you stay in the experiment anonymously.
             </p>
             <Button onClick={del} busy={busy}>Delete permanently</Button>
             <button className="link" onClick={() => setConfirming(false)}>Cancel</button>

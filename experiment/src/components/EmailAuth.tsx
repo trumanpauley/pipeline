@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { captchaToken } from '../lib/captcha';
 import { Button, ErrorText } from './ui';
 
 /** Email → one-time code (or magic link). The parent reacts to the session. */
@@ -35,7 +36,7 @@ export function EmailCodeStep({
     setCooldown(30);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.href.split('#')[0] },
+      options: { emailRedirectTo: window.location.href.split('#')[0], captchaToken: await captchaToken() },
     });
     if (error) setError(error.message);
   };
@@ -77,7 +78,7 @@ export function EmailCodeStep({
 export async function sendCode(email: string, data?: Record<string, unknown>) {
   const { error } = await supabase.auth.signInWithOtp({
     email: email.trim().toLowerCase(),
-    options: { emailRedirectTo: window.location.href.split('#')[0], data },
+    options: { emailRedirectTo: window.location.href.split('#')[0], data, captchaToken: await captchaToken() },
   });
   if (error) {
     if (/rate limit/i.test(error.message)) throw new Error('Too many emails just now. Try again in a minute.');

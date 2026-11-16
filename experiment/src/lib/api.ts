@@ -3,8 +3,21 @@ import type { MethodKey } from '../config/experiment';
 
 export type InvitationStatus = 'created' | 'opened' | 'accepted' | 'duplicate' | 'revoked';
 
+export interface MyAccount {
+  is_anonymous: boolean;
+  linked_email: string | null;
+  waitlist_email: string | null;
+}
+
+export interface AdminAccountStats {
+  anonymous: number;
+  linked_emails: number;
+  waitlist: number;
+  flagged_same_network: number;
+}
+
 export interface OpenResult {
-  state: 'ok' | 'invalid' | 'used' | 'own' | 'joined';
+  state: 'ok' | 'invalid' | 'used' | 'own' | 'joined' | 'rate_limited';
   sender_name?: string | null;
   method?: MethodKey;
   answered?: boolean;
@@ -63,6 +76,9 @@ const MESSAGES: Record<string, string> = {
   forbidden: 'You don’t have access to this.',
   cannot_revoke: 'That link can’t be removed anymore.',
   invalid_answer: 'Please write a short answer.',
+  invalid_email: 'Enter a valid email.',
+  rate_limited: 'Too many attempts from this network. Try again in a little while.',
+  device_already_joined: 'This browser is already part of the experiment. Open the link on your own phone.',
 };
 
 export class ApiError extends Error {
@@ -83,12 +99,13 @@ export const api = {
   openInvitation: (token: string) => rpc<OpenResult>('open_invitation', { p_token: token }),
   answerInvitation: (token: string, value: string, ms: number) =>
     rpc('answer_invitation', { p_token: token, p_value: value, p_response_ms: ms }),
-  acceptInvitation: (token: string, name: string, research: boolean, marketing: boolean) =>
+  acceptInvitation: (token: string, name: string, research: boolean, device: string) =>
     rpc<{ state: 'joined' | 'already_participant' }>('accept_invitation', {
       p_token: token,
       p_display_name: name,
       p_research_consent: research,
-      p_marketing_consent: marketing,
+      p_marketing_consent: false, // never collected at join; see the waitlist instead
+      p_device: device,
     }),
   createInvitation: (value: string, label: string | null, ms: number) =>
     rpc<{ id: string; token: string }>('create_invitation', {
@@ -100,6 +117,10 @@ export const api = {
   submitFeedback: (answer: string) => rpc('submit_feedback', { p_answer: answer }),
   setMarketingConsent: (consent: boolean) => rpc('set_marketing_consent', { p_consent: consent }),
   getMyState: () => rpc<MyState>('get_my_state'),
+  getMyAccount: () => rpc<MyAccount>('get_my_account'),
+  joinWaitlist: (email: string, source: string) => rpc('join_waitlist', { p_email: email, p_source: source }),
+  leaveWaitlist: () => rpc('leave_waitlist'),
+  adminAccountStats: () => rpc<AdminAccountStats>('admin_account_stats'),
   deleteMyData: () => rpc('delete_my_data'),
   // admin
   adminOverview: () => rpc<AdminOverview>('admin_overview'),

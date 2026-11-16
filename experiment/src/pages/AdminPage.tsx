@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, inviteUrl, type AdminOverview } from '../lib/api';
+import { api, inviteUrl, type AdminAccountStats, type AdminOverview } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { navigate } from '../lib/router';
 import { labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
@@ -21,11 +21,14 @@ const secs = (ms: number | null) => (ms == null ? '—' : `${(ms / 1000).toFixed
 
 export function AdminPage({ session }: { session: Session | null }) {
   const [data, setData] = useState<AdminOverview | null>(null);
+  const [acct, setAcct] = useState<AdminAccountStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setData(await api.adminOverview());
+      const [o, a] = await Promise.all([api.adminOverview(), api.adminAccountStats()]);
+      setData(o);
+      setAcct(a);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -75,10 +78,11 @@ export function AdminPage({ session }: { session: Session | null }) {
 
       <section className="tiles">
         <Tile label="Participants" value={t.participants} sub={`${t.seed_participants} seeds`} />
-        <Tile label="Verified emails" value={t.verified_emails} sub={pct(t.verified_emails, t.participants)} />
+        <Tile label="Linked emails" value={acct?.linked_emails ?? t.verified_emails} sub={`${acct?.anonymous ?? 0} anonymous`} />
         <Tile label="Tree depth" value={t.max_depth} sub="generations" />
         <Tile label="Referral conversion" value={pct(inv.accepted, inv.generated)} sub={`${inv.accepted} of ${inv.generated} links`} />
-        <Tile label="Marketing opt-in" value={t.marketing_opt_in} sub={pct(t.marketing_opt_in, t.participants)} />
+        <Tile label="Waitlist" value={acct?.waitlist ?? 0} sub={pct(acct?.waitlist ?? 0, t.participants)} />
+        <Tile label="Same-network joins" value={acct?.flagged_same_network ?? 0} sub="flagged for review" />
         <Tile label="Feedback answers" value={t.feedback} sub={`${t.deleted} deleted accounts`} />
       </section>
 
@@ -145,9 +149,9 @@ export function AdminPage({ session }: { session: Session | null }) {
         <Legend />
       </Panel>
 
-      <Panel title="Research exports" note="CSV. Only the participants file contains email addresses.">
+      <Panel title="Research exports" note="CSV. Only the participants and waitlist files contain email addresses.">
         <div className="export-row">
-          {['participants', 'invitations', 'classifications', 'reciprocal', 'feedback'].map((k) => (
+          {['participants', 'invitations', 'classifications', 'reciprocal', 'feedback', 'waitlist'].map((k) => (
             <ExportButton key={k} kind={k} />
           ))}
         </div>
@@ -156,7 +160,9 @@ export function AdminPage({ session }: { session: Session | null }) {
       <DemoLinks />
 
       <Panel title="Settings" note="Edit in Supabase → Table editor → experiment_settings. Changes apply immediately.">
-        <pre className="settings">{JSON.stringify(data.settings, null, 2)}</pre>
+        <pre className="settings">
+          {JSON.stringify(Object.fromEntries(Object.entries(data.settings).filter(([k]) => k !== 'hash_salt')), null, 2)}
+        </pre>
       </Panel>
     </main>
   );

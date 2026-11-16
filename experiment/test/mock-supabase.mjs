@@ -40,9 +40,10 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
     id: u.id,
     aud: 'authenticated',
     role: 'authenticated',
-    email: u.email,
+    email: u.email ?? '',
     email_confirmed_at: u.email_confirmed_at,
-    app_metadata: { provider: 'email', providers: ['email'] },
+    is_anonymous: !u.email,
+    app_metadata: u.email ? { provider: 'email', providers: ['email'] } : { provider: 'anonymous', providers: ['anonymous'] },
     user_metadata: u.raw_user_meta_data,
     created_at: u.created_at,
     updated_at: u.created_at,
@@ -51,7 +52,8 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
   const session = (u) => {
     const now = Math.floor(Date.now() / 1000);
     const access_token = signJwt({
-      sub: u.id, role: 'authenticated', aud: 'authenticated', email: u.email, exp: now + 3600, iat: now,
+      sub: u.id, role: 'authenticated', aud: 'authenticated', email: u.email ?? '', exp: now + 3600, iat: now,
+      is_anonymous: !u.email,
     });
     const refresh_token = crypto.randomBytes(16).toString('hex');
     refreshTokens.set(refresh_token, u.id);
@@ -71,7 +73,7 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
         'content-type': 'application/json',
         'access-control-allow-origin': '*',
         'access-control-allow-headers': '*',
-        'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+        'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
       });
       res.end(body === undefined ? '' : JSON.stringify(body));
     };
@@ -96,6 +98,28 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
         codes.set(email, { code, redirect: url.searchParams.get('redirect_to') });
         return send(200, {});
       }
+      if (url.pathname === '/auth/v1/signup' && req.method === 'POST' && !body.email) {
+        // signInAnonymously()
+        const u = (await pool.query(
+          `insert into auth.users (email, raw_user_meta_data) values (null, $1) returning *`, [body.data || {}],
+        )).rows[0];
+        return send(200, session(u));
+      }
+      if (url.pathname === '/auth/v1/user' && req.method === 'PUT') {
+        // updateUser({ email }) — starts linking an email to this (anonymous) user
+        const claims = verifyJwt(bearer);
+        const u = claims && (await userRow('id', claims.sub));
+        if (!u) return send(401, { code: 401, msg: 'invalid JWT' });
+        const email = String(body.email || '').toLowerCase();
+        if (email) {
+          const taken = await userRow('email', email);
+          if (taken && taken.id !== u.id) {
+            return send(422, { code: 422, error_code: 'email_exists', msg: 'A user with this email address has already been registered' });
+          }
+          codes.set(email, { code: fixedCode ?? String(crypto.randomInt(100000, 999999)), redirect: url.searchParams.get('redirect_to'), userId: u.id });
+        }
+        return send(200, { ...userJson(u), new_email: email || undefined });
+      }
       if (url.pathname === '/auth/v1/verify' && req.method === 'POST') {
         const email = String(body.email).toLowerCase();
         const entry = codes.get(email);
@@ -103,6 +127,12 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
           return send(403, { code: 403, error_code: 'otp_expired', msg: 'Token has expired or is invalid' });
         }
         codes.delete(email);
+        if (body.type === 'email_change' && entry.userId) {
+          const u = (await pool.query(
+            `update auth.users set email = $1, email_confirmed_at = now() where id = $2 returning *`, [email, entry.userId],
+          )).rows[0];
+          return send(200, session(u));
+        }
         return send(200, session(await confirm(email)));
       }
       if (url.pathname === '/auth/v1/user' && req.method === 'GET') {
@@ -131,6 +161,8 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
           await client.query('begin');
           await client.query(`set local role ${role}`);
           await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)]);
+          const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+          await client.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-forwarded-for': ip })]);
           const r = await client.query(`select public.${m[1]}(${args}) as result`, keys.map((k) => body[k]));
           await client.query('commit');
           return send(200, r.rows[0].result);

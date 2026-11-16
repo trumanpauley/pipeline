@@ -3,13 +3,15 @@ import type { Session } from '@supabase/supabase-js';
 import { api, type OpenResult } from '../lib/api';
 import { navigate } from '../lib/router';
 import { pending, pendingFromSession } from '../lib/session';
+import { supabase } from '../lib/supabase';
+import { deviceId } from '../lib/device';
+import { captchaToken } from '../lib/captcha';
 import { COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
 import { DemoLinks } from './HomePage';
-import { EmailCodeStep, isEmail, sendCode } from '../components/EmailAuth';
 import { Button, Check, Constellation, ErrorText, Loading, Screen } from '../components/ui';
 
-type Step = 'loading' | 'intro' | 'classify' | 'join' | 'code' | 'joining' | 'message';
+type Step = 'loading' | 'intro' | 'classify' | 'join' | 'joining' | 'message';
 
 export function InvitePage({ token, session }: { token: string; session: Session | null }) {
   const [step, setStep] = useState<Step>('loading');
@@ -18,9 +20,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [research, setResearch] = useState(false);
-  const [marketing, setMarketing] = useState(false);
   const [showData, setShowData] = useState(false);
   const [busy, setBusy] = useState(false);
   const accepting = useRef(false);
@@ -34,12 +34,12 @@ export function InvitePage({ token, session }: { token: string; session: Session
   };
 
   const accept = useCallback(
-    async (p: { name: string; research: boolean; marketing: boolean }) => {
+    async (p: { name: string; research: boolean }) => {
       if (accepting.current) return;
       accepting.current = true;
       setStep('joining');
       try {
-        const r = await api.acceptInvitation(token, p.name, p.research, p.marketing);
+        const r = await api.acceptInvitation(token, p.name, p.research, deviceId());
         pending.clear();
         navigate(r.state === 'already_participant' ? '/?already=1' : '/?welcome=1', true);
       } catch (e) {
@@ -51,7 +51,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
     [token],
   );
 
-  // Initial load (and re-run when the session appears after email verification).
+  // Initial load (and re-run when the session changes).
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -64,6 +64,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
       }
       if (!alive) return;
       setInfo(r);
+      if (r.state === 'rate_limited') return show('Give it a moment.', 'Too many visits from this network. Try again shortly.');
       if (r.state === 'invalid') return show('This link isn’t active.', 'Ask the person who sent it for a new one.');
       if (r.state === 'used')
         return show('This invitation has already been used.', 'Each link works once. Ask for a new one, or sign in if it was yours.', 'Sign in');
@@ -77,7 +78,6 @@ export function InvitePage({ token, session }: { token: string; session: Session
         if (p) {
           setName(p.name);
           setResearch(p.research);
-          setMarketing(p.marketing);
         }
         return setStep(r.answered ? 'join' : 'intro');
       }
@@ -92,7 +92,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
   // An existing participant who answered: record as a duplicate, no new node.
   useEffect(() => {
     if (step === 'joining' && info?.already_participant && session && !accepting.current) {
-      void accept({ name: 'x', research: true, marketing: false });
+      void accept({ name: 'x', research: true });
     }
   }, [step, info, session, accept]);
 
@@ -112,19 +112,21 @@ export function InvitePage({ token, session }: { token: string; session: Session
     const n = name.trim();
     if (!n) return setError('Please enter your first name.');
     if (!research) return setError('Please agree to take part in the research to continue.');
-    const p = { token, name: n, research, marketing };
+    const p = { token, name: n, research, marketing: false };
     pending.set(p);
     if (signedIn) return void accept(p);
-    if (!isEmail(email)) return setError('Enter a valid email.');
+    // No account needed: an anonymous Supabase identity is created silently and
+    // kept in this browser, so the participant can come back without signing in.
     setBusy(true);
     try {
-      await sendCode(email, {
-        invite_token: token,
-        display_name: n,
-        research_consent: true,
-        marketing_consent: marketing,
+      const { error: authError } = await supabase.auth.signInAnonymously({
+        options: {
+          captchaToken: await captchaToken(),
+          data: { display_name: n, research_consent: true, invite_token: token },
+        },
       });
-      setStep('code');
+      if (authError) throw new Error('We couldn’t start your session. Please try again.');
+      await accept(p);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -173,14 +175,6 @@ export function InvitePage({ token, session }: { token: string; session: Session
     );
   }
 
-  if (step === 'code') {
-    return (
-      <Screen className="center">
-        <EmailCodeStep email={email.trim().toLowerCase()} onBack={() => setStep('join')} />
-      </Screen>
-    );
-  }
-
   // join
   return (
     <Screen className="center">
@@ -196,20 +190,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
           onChange={(e) => setName(e.target.value)}
           aria-label="First name"
         />
-        {signedIn ? (
-          <p className="muted small">Signed in as {session?.user.email}</p>
-        ) : (
-          <input
-            className="input"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            aria-label="Email"
-          />
-        )}
+        {session?.user.email && <p className="muted small">Signed in as {session.user.email}</p>}
         <div className="consents">
           <Check checked={research} onChange={setResearch}>
             I agree to take part in this research.{' '}
@@ -224,15 +205,12 @@ export function InvitePage({ token, session }: { token: string; session: Session
               ))}
             </ul>
           )}
-          <Check checked={marketing} onChange={setMarketing}>
-            Email me about Pipeline. Optional.
-          </Check>
         </div>
         <ErrorText error={error} />
         <Button type="submit" busy={busy}>
-          {signedIn ? 'Join' : 'Continue'}
+          Continue
         </Button>
-        <p className="fine text-center">Your name is shown only to people you invite.</p>
+        <p className="fine text-center">No account needed. Your name is shown only to people you invite.</p>
       </form>
     </Screen>
   );

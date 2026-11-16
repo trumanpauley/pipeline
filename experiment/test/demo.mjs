@@ -17,12 +17,19 @@ await admin.connect();
 await admin.query('drop database if exists px with (force)');
 await admin.query('create database px');
 await admin.end();
-for (const f of ['test/local-supabase-shim.sql', 'supabase/migrations/001_experiment_schema.sql']) {
+for (const f of [
+  'test/local-supabase-shim.sql',
+  'supabase/migrations/001_experiment_schema.sql',
+  'supabase/migrations/002_anonymous_onboarding.sql',
+]) {
   execSync(`psql "${DB}" -v ON_ERROR_STOP=1 -q -f ${path.join(root, f)}`);
 }
 const db = new pg.Client({ connectionString: DB });
 await db.connect();
 await db.query(`insert into admins (email) values ('admin@demo.dev')`);
+// Every demo visitor shares one local IP, so relax the per-IP limits here only.
+await db.query(`update experiment_settings set value = '{"joins_per_ip_hour": 10000, "opens_per_ip_hour": 100000,
+  "waitlist_per_ip_hour": 10000, "invites_per_participant_hour": 100}' where key = 'rate_limits'`);
 const seeds = (await db.query(
   `insert into invitations (token, sender_name, admin_note)
    select px_new_token(), 'Truman', 'demo' from generate_series(1, 5) returning token`)).rows;
