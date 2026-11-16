@@ -259,7 +259,8 @@ try {
   {
     const p = await newPhone();
     await p.goto(bobLink);
-    ok(await p.getByRole('heading', { name: 'Alice invited you.' }).isVisible(), 'headline uses the inviter’s first name');
+    await p.getByRole('heading', { name: 'Alice invited you.' }).waitFor({ timeout: 5000 });
+    ok(true, 'headline uses the inviter’s first name');
     const t0 = Date.now();
     await p.getByRole('button', { name: 'Enter the Experiment' }).click();
     await p.locator('.classifier').waitFor();
