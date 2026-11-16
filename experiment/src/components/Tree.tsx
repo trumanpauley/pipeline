@@ -9,9 +9,9 @@ export interface TreeNode {
   info?: string;
 }
 
-const GAP_X = 34;
+const GAP_X = 64;
 const GAP_Y = 58;
-const PAD = 24;
+const PAD = 30;
 
 /**
  * Tidy top-down tree in plain SVG. Leaves are spaced evenly; parents sit over
@@ -93,7 +93,7 @@ export function Tree({ nodes, height }: { nodes: TreeNode[]; height?: number }) 
                 <circle r={18} className="hit" />
                 <circle r={r} style={n.color ? { fill: n.color } : undefined} />
                 {n.label && (
-                  <text y={r + 14} textAnchor="middle">
+                  <text y={n.kind === 'self' || n.kind === 'root' ? -(r + 8) : r + 14} textAnchor="middle">
                     {n.label}
                   </text>
                 )}

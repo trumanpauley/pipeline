@@ -171,9 +171,10 @@ npm install
 PX_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/px npm run demo
 ```
 
-Open http://localhost:5173 (in Codespaces, use the forwarded port 5173 in the Ports tab). The
-sign-in page shows demo invitation links and an Admin link (`admin@demo.dev`). Each start
-resets the `px` database.
+Open http://localhost:5173 (in Codespaces, use the forwarded port 5173 in the Ports tab). Every
+page shows a dashed demo box: **Fresh invite as a new visitor** signs you out and opens a brand-new
+invitation link, so you can replay the flow as many times as you like; **Admin** opens the
+dashboard (`admin@demo.dev`). Each start resets the `px` database.
 
 ## Testing
 

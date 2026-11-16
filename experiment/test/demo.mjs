@@ -33,7 +33,7 @@ await startMockSupabase({ port: 54321, connectionString: DB, fixedCode: '123456'
 // (One forwarded port is enough in Codespaces or any remote dev box.)
 process.env.VITE_SUPABASE_URL = '/';
 process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'anon-key';
-process.env.VITE_DEMO_TOKENS = seeds.map((s) => s.token).join(',');
+process.env.VITE_DEMO = '1';
 const vite = await createServer({ root, server: {
     port: PORT,
     strictPort: true,

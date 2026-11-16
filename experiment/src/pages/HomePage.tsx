@@ -37,18 +37,25 @@ function SignedOut() {
   );
 }
 
-/** Only rendered by the local demo (test/demo.mjs); real builds never set this. */
-function DemoLinks() {
-  const tokens = (import.meta.env.VITE_DEMO_TOKENS as string | undefined)?.split(',').filter(Boolean);
-  if (!tokens?.length) return null;
+/** Only rendered by the local demo (test/demo.mjs); real builds never set VITE_DEMO. */
+export function DemoLinks() {
+  const [busy, setBusy] = useState(false);
+  if (!import.meta.env.VITE_DEMO) return null;
+  const freshInvite = async () => {
+    setBusy(true);
+    pending.clear();
+    await supabase.auth.signOut();
+    const { token } = await (await fetch('/__test/new-invite', { method: 'POST' })).json();
+    navigate(`/i/${token}`);
+    setBusy(false);
+  };
   return (
     <div className="demo-box">
-      <p className="fine">Demo · every email code is 123456 · admin: admin@demo.dev</p>
+      <p className="fine">Demo mode · every email code is 123456 · admin: admin@demo.dev</p>
       <div className="demo-links">
-        {tokens.map((t, i) => (
-          <button key={t} className="chip" onClick={() => navigate(`/i/${t}`)}>Invite {i + 1}</button>
-        ))}
+        <button className="chip" onClick={freshInvite} disabled={busy}>Fresh invite as a new visitor</button>
         <button className="chip" onClick={() => navigate('/admin')}>Admin</button>
+        <button className="chip" onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}>Sign out</button>
       </div>
     </div>
   );
@@ -124,6 +131,7 @@ function Home({ session }: { session: Session }) {
           </p>
           {state.is_admin && <Button onClick={() => navigate('/admin')}>Admin dashboard</Button>}
           <button className="link" onClick={() => supabase.auth.signOut()}>Sign out</button>
+          <DemoLinks />
         </div>
       </Screen>
     );
@@ -200,6 +208,7 @@ function Home({ session }: { session: Session }) {
       {state.is_admin && (
         <button className="link center-link" onClick={() => navigate('/admin')}>Admin dashboard</button>
       )}
+      <DemoLinks />
 
       {sheet === 'invite' && (
         <InviteSheet

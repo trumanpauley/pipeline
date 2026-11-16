@@ -5,6 +5,7 @@ import { navigate } from '../lib/router';
 import { pending, pendingFromSession } from '../lib/session';
 import { COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
+import { DemoLinks } from './HomePage';
 import { EmailCodeStep, isEmail, sendCode } from '../components/EmailAuth';
 import { Button, Check, Constellation, ErrorText, Loading, Screen } from '../components/ui';
 
@@ -141,6 +142,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
           <h1 className="title">{message.title}</h1>
           {message.body && <p className="muted">{message.body}</p>}
           {message.cta && <Button onClick={() => navigate('/')}>{message.cta}</Button>}
+          <DemoLinks />
         </div>
       </Screen>
     );

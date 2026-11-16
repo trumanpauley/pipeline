@@ -144,6 +144,13 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
       }
 
       // ---------------- test helpers ----------------
+      if (url.pathname === '/__test/new-invite' && req.method === 'POST') {
+        // Demo helper: a fresh seed invitation so the flow can be replayed.
+        const r = await pool.query(
+          `insert into public.invitations (token, sender_name, admin_note)
+           values (public.px_new_token(), 'Truman', 'demo') returning token`);
+        return send(200, { token: r.rows[0].token });
+      }
       if (url.pathname === '/__test/code') {
         return send(200, codes.get(url.searchParams.get('email')) ?? null);
       }

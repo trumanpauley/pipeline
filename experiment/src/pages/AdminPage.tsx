@@ -7,6 +7,7 @@ import { labelFor, METHODS, methodDef, type MethodKey } from '../config/experime
 import { SignIn } from '../components/EmailAuth';
 import { Tree, type TreeNode } from '../components/Tree';
 import { Button, ErrorText, Loading, Screen } from '../components/ui';
+import { DemoLinks } from './HomePage';
 
 // Categorical slots validated for the dark surface (dataviz palette, slots 1–3).
 const METHOD_COLOR: Record<string, string> = {
@@ -151,6 +152,8 @@ export function AdminPage({ session }: { session: Session | null }) {
           ))}
         </div>
       </Panel>
+
+      <DemoLinks />
 
       <Panel title="Settings" note="Edit in Supabase → Table editor → experiment_settings. Changes apply immediately.">
         <pre className="settings">{JSON.stringify(data.settings, null, 2)}</pre>
