@@ -154,8 +154,12 @@ sudo service postgresql start
 ```
 
 ```bash
-sudo -u postgres psql -c "alter user postgres password 'postgres';"
+sudo su postgres -c "psql -c \"alter user postgres password 'postgres';\""
 ```
+
+Use `sudo su postgres -c ...`, not `sudo -u postgres ...`. In Codespaces `sudo` needs no password
+when running as root, but `sudo -u` asks for one you don't have. After a Codespace restart, run
+`sudo service postgresql start` again before the demo.
 
 Then run the demo:
 
