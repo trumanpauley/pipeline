@@ -189,6 +189,31 @@ Open http://localhost:5173/admin, sign in with your admin email, and generate a 
    reciprocal pairs, feedback and the waitlist. Only participants (linked emails) and waitlist
    contain email addresses.
 
+## Try it on a phone (no Supabase, no Codespace)
+
+`npm run build:demo` produces a static site in `dist-demo/` with the whole backend running inside
+the page. It uses the real schema and both migrations in PGlite, which is Postgres compiled to
+WebAssembly. Host it anywhere and open it on a phone.
+
+**Easiest: a free Vercel project for the demo**
+1. In Vercel, **Add New → Project**, import this repo, and set **Root Directory** to `experiment`.
+2. Under **Environment Variables**, add `PIPELINE_DEMO` = `1`. No Supabase variables are needed.
+3. Deploy, then open the `*.vercel.app` URL on your phone.
+
+The same repo can also have your real project. That one simply doesn't set `PIPELINE_DEMO`.
+
+How the demo behaves:
+- Everything stays **on that one device**: each phone gets its own private demo world, saved in
+  the browser. An invite link opened on a *different* phone shows "This link isn't active".
+- To see the invitee side, use **Fresh invite as a new visitor** in the demo box.
+- Every email code is `123456`. The admin is `admin@demo.dev` (open `#/admin`).
+- **Reset demo** wipes the device's demo data.
+- The first visit downloads about 16 MB (the in-browser database), then it's cached.
+- To test real multi-phone referrals, use the real deployment with Supabase.
+
+The normal build never includes any of this: the demo backend is swapped for an empty stub, and
+production `dist/` stays around 450 KB.
+
 ## Preview without Supabase
 
 To click through the UI before connecting a real project, run a local demo. It uses a local

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { appUrl } from './router';
 import type { MethodKey } from '../config/experiment';
 
 export type InvitationStatus = 'created' | 'opened' | 'accepted' | 'duplicate' | 'revoked';
@@ -134,7 +135,7 @@ export const api = {
   adminRevoke: (id: string) => rpc('admin_revoke_invitation', { p_invitation_id: id }),
 };
 
-export const inviteUrl = (token: string) => `${window.location.origin}/i/${token}`;
+export const inviteUrl = (token: string) => appUrl(`/i/${token}`);
 
 export interface AdminOverview {
   totals: {

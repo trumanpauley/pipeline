@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { api, inviteUrl, type MyAccount, type MyInvitation, type MyState } from '../lib/api';
-import { navigate } from '../lib/router';
+import { currentQuery, navigate } from '../lib/router';
+import { demoNewInvite, demoReset, isLocalDemo } from '../lib/demo';
 import { pending } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import { COPY } from '../config/experiment';
@@ -20,7 +21,7 @@ export function HomePage({ session }: { session: Session | null }) {
 
 function SignedOut() {
   const p = pending.get();
-  const deleted = new URLSearchParams(window.location.search).has('deleted');
+  const deleted = currentQuery().has('deleted');
   return (
     <Screen className="center landing">
       <Constellation small />
@@ -48,7 +49,7 @@ export function DemoLinks() {
     pending.clear();
     resetDeviceId(); // a "new person" in the demo gets a new browser identity too
     await supabase.auth.signOut();
-    const { token } = await (await fetch('/__test/new-invite', { method: 'POST' })).json();
+    const token = await demoNewInvite();
     navigate(`/i/${token}`);
     setBusy(false);
   };
@@ -59,6 +60,7 @@ export function DemoLinks() {
         <button className="chip" onClick={freshInvite} disabled={busy}>Fresh invite as a new visitor</button>
         <button className="chip" onClick={() => navigate('/admin')}>Admin</button>
         <button className="chip" onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}>Sign out</button>
+        {isLocalDemo && <button className="chip ghost" onClick={demoReset}>Reset demo</button>}
       </div>
     </div>
   );
@@ -72,7 +74,7 @@ function Home({ session }: { session: Session }) {
   const [sheet, setSheet] = useState<null | 'invite' | 'feedback' | 'privacy'>(null);
   const [reveal, setReveal] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(() => {
-    const q = new URLSearchParams(window.location.search);
+    const q = currentQuery();
     if (q.get('already')) return 'You were already part of the experiment. Thanks for answering.';
     return null;
   });
@@ -91,7 +93,7 @@ function Home({ session }: { session: Session }) {
 
   useEffect(() => {
     void load();
-    if (window.location.search) window.history.replaceState(null, '', '/');
+    if ([...currentQuery().keys()].length) navigate('/', true);
   }, [load]);
 
   // Signed in but not yet joined, with an invitation in progress: resume it.
