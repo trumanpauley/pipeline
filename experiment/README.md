@@ -137,6 +137,18 @@ Open http://localhost:5173/admin, sign in with your admin email, and generate a 
 3. Watch the dashboard. The CSV exports cover participants (the only file with emails),
    invitations, classifications, reciprocal pairs and feedback.
 
+## Preview without Supabase
+
+To click through the UI before connecting a real project, run a local demo. It uses a local
+PostgreSQL and a simulated Supabase, and every email "receives" the code `123456`:
+
+```bash
+PX_DATABASE_URL=postgres://postgres@127.0.0.1:5432/px node test/demo.mjs
+```
+
+Open http://localhost:5173. The sign-in page shows demo invitation links and an Admin link
+(`admin@demo.dev`). This resets the `px` database each time it starts.
+
 ## Testing
 
 `npm run test:e2e` runs a full browser test on an iPhone viewport against the real SQL migration on

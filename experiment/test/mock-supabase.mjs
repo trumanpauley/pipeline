@@ -28,7 +28,7 @@ function verifyJwt(token) {
   return claims;
 }
 
-export function startMockSupabase({ port, connectionString }) {
+export function startMockSupabase({ port, connectionString, fixedCode = null }) {
   const pool = new pg.Pool({ connectionString, max: 8 });
   const codes = new Map(); // email -> { code, redirect }
   const refreshTokens = new Map(); // refresh -> user id
@@ -92,7 +92,7 @@ export function startMockSupabase({ port, connectionString }) {
             [email, body.data || {}],
           )).rows[0];
         }
-        const code = String(crypto.randomInt(100000, 999999));
+        const code = fixedCode ?? String(crypto.randomInt(100000, 999999));
         codes.set(email, { code, redirect: url.searchParams.get('redirect_to') });
         return send(200, {});
       }

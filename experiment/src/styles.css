@@ -330,3 +330,7 @@ tr:last-child td { border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* local demo helper (test/demo.mjs only) */
+.demo-box { border: 1px dashed var(--line-strong); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.demo-links { display: flex; flex-wrap: wrap; gap: 6px; }

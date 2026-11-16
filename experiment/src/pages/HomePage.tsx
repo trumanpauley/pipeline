@@ -32,7 +32,25 @@ function SignedOut() {
           Continue your invitation
         </button>
       )}
+      <DemoLinks />
     </Screen>
+  );
+}
+
+/** Only rendered by the local demo (test/demo.mjs); real builds never set this. */
+function DemoLinks() {
+  const tokens = (import.meta.env.VITE_DEMO_TOKENS as string | undefined)?.split(',').filter(Boolean);
+  if (!tokens?.length) return null;
+  return (
+    <div className="demo-box">
+      <p className="fine">Demo · every email code is 123456 · admin: admin@demo.dev</p>
+      <div className="demo-links">
+        {tokens.map((t, i) => (
+          <button key={t} className="chip" onClick={() => navigate(`/i/${t}`)}>Invite {i + 1}</button>
+        ))}
+        <button className="chip" onClick={() => navigate('/admin')}>Admin</button>
+      </div>
+    </div>
   );
 }
 
