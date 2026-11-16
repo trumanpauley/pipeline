@@ -140,14 +140,36 @@ Open http://localhost:5173/admin, sign in with your admin email, and generate a 
 ## Preview without Supabase
 
 To click through the UI before connecting a real project, run a local demo. It uses a local
-PostgreSQL and a simulated Supabase, and every email "receives" the code `123456`:
+PostgreSQL and a simulated Supabase, and every email "receives" the code `123456`. Only one
+port (5173) is used, so it works in GitHub Codespaces too.
+
+In a Codespace or another Ubuntu/Debian machine, install Postgres once:
 
 ```bash
-PX_DATABASE_URL=postgres://postgres@127.0.0.1:5432/px node test/demo.mjs
+sudo apt-get update && sudo apt-get install -y postgresql
 ```
 
-Open http://localhost:5173. The sign-in page shows demo invitation links and an Admin link
-(`admin@demo.dev`). This resets the `px` database each time it starts.
+```bash
+sudo service postgresql start
+```
+
+```bash
+sudo -u postgres psql -c "alter user postgres password 'postgres';"
+```
+
+Then run the demo:
+
+```bash
+npm install
+```
+
+```bash
+PX_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/px npm run demo
+```
+
+Open http://localhost:5173 (in Codespaces, use the forwarded port 5173 in the Ports tab). The
+sign-in page shows demo invitation links and an Admin link (`admin@demo.dev`). Each start
+resets the `px` database.
 
 ## Testing
 

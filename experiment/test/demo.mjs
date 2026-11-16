@@ -29,10 +29,23 @@ const seeds = (await db.query(
 await db.end();
 
 await startMockSupabase({ port: 54321, connectionString: DB, fixedCode: '123456' });
-process.env.VITE_SUPABASE_URL = 'http://localhost:54321';
+// The browser talks only to the Vite port; Vite proxies auth/rest to the mock.
+// (One forwarded port is enough in Codespaces or any remote dev box.)
+process.env.VITE_SUPABASE_URL = '/';
 process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'anon-key';
 process.env.VITE_DEMO_TOKENS = seeds.map((s) => s.token).join(',');
-const vite = await createServer({ root, server: { port: PORT, strictPort: true, host: true } });
+const vite = await createServer({ root, server: {
+    port: PORT,
+    strictPort: true,
+    host: true,
+    allowedHosts: true,
+    proxy: {
+      '/auth/v1': 'http://localhost:54321',
+      '/rest/v1': 'http://localhost:54321',
+      '/__test': 'http://localhost:54321',
+    },
+  },
+});
 await vite.listen();
 
 console.log(`\nDemo running on http://localhost:${PORT}  (every email code is 123456)`);
