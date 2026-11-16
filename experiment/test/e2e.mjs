@@ -273,7 +273,7 @@ try {
     ok(!(await seedPage.locator('.landing-cta').getAttribute('class')).includes('is-shown'), 'button starts hidden while the sentence types');
     await seedPage.waitForTimeout(500);
     await shot(seedPage, '01b-landing-typing');
-    await seedPage.waitForTimeout(3000);
+    await seedPage.waitForTimeout(6500);
     ok((await seedPage.locator('.landing-cta').getAttribute('class')).includes('is-shown'), 'button fades in after the sentence');
     ok((await seedPage.locator('.landing-follow .tw-rest').innerText()) === '', 'follow-up line fully typed');
     ok((await seedPage.locator('.landing-meta').getAttribute('class')).includes('is-shown'), '"Under two minutes · Voluntary" shown last');

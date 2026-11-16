@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { COPY } from '../config/experiment';
 import { Button, Constellation } from './ui';
 
-// Timeline (ms). Fast enough to finish in ~2.5s; any tap skips straight to the end.
+// Timeline (ms). The whole sequence takes ~5.5s; the button works throughout and
+// any tap skips straight to the end.
 const T = {
   typeStart: 750, // after the headline has settled
-  bodyMsPerChar: 17,
-  buttonFade: 260, // pause after the sentence before the button fades in
-  followDelay: 220,
-  followMsPerChar: 14,
+  bodyMsPerChar: 38,
+  buttonFade: 300, // pause after the sentence before the button fades in
+  followDelay: 300,
+  followMsPerChar: 32,
 };
 
 const prefersReducedMotion = () =>
