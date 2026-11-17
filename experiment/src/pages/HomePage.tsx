@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { api, type MyAccount, type MyState } from '../lib/api';
 import { currentQuery, navigate } from '../lib/router';
 import { demoNewInvite, demoReset, isLocalDemo } from '../lib/demo';
 import { pending } from '../lib/session';
 import { supabase } from '../lib/supabase';
-import { COPY } from '../config/experiment';
+import { BRAND, COPY } from '../config/experiment';
 import { InviteSheet, InviteSlots } from '../components/Invitations';
 import { SignIn } from '../components/EmailAuth';
 import { RevealOverlay } from '../components/Reveal';
 import { Tree, type TreeNode } from '../components/Tree';
 import { WaitlistOverlay } from '../components/Waitlist';
+import { SaveNetworkOverlay } from '../components/SaveNetwork';
+import { formatPhone, phoneEnabled } from '../lib/phone';
 import { resetDeviceId } from '../lib/device';
 import { Button, Constellation, ErrorText, Loading, Screen, Sheet } from '../components/ui';
 
@@ -22,12 +24,15 @@ export function HomePage({ session }: { session: Session | null }) {
 function SignedOut() {
   const p = pending.get();
   const deleted = currentQuery().has('deleted');
+  useEffect(() => {
+    document.title = BRAND.hidden;
+  }, []);
   return (
     <Screen className="center landing">
       <Constellation small />
       {deleted && <div className="toast fade-up">Your data has been deleted.</div>}
       <SignIn
-        heading="The Pipeline Experiment"
+        heading={BRAND.hidden}
         sub="Invitation only. Saved your network to an email? Sign in to open it here."
       />
       {p?.token && (
@@ -55,7 +60,7 @@ export function DemoLinks() {
   };
   return (
     <div className="demo-box">
-      <p className="fine">Demo mode · every email code is 123456 · admin: admin@demo.dev</p>
+      <p className="fine">Demo mode · every email and text code is 123456 · admin: admin@demo.dev</p>
       <div className="demo-links">
         <button className="chip" onClick={freshInvite} disabled={busy}>Fresh invite as a new visitor</button>
         <button className="chip" onClick={() => navigate('/admin')}>Admin</button>
@@ -69,7 +74,7 @@ export function DemoLinks() {
 function Home({ session }: { session: Session }) {
   const [state, setState] = useState<MyState | null>(null);
   const [account, setAccount] = useState<MyAccount | null>(null);
-  const [overlay, setOverlay] = useState<null | 'waitlist' | 'link'>(null);
+  const [overlay, setOverlay] = useState<null | 'waitlist' | 'link' | 'phone'>(null);
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | 'invite' | 'feedback' | 'privacy'>(null);
   const [reveal, setReveal] = useState<number | null>(null);
@@ -154,13 +159,15 @@ function Home({ session }: { session: Session }) {
   const firstName = p.display_name?.trim().split(/\s+/)[0] ?? '';
   // The network appears once there's something in it: a link or a joined person.
   const showNetwork = invites.length > 0 || joined > 0;
+  const brand = level >= 1 ? BRAND.revealed : BRAND.hidden;
+  const networkSaved = Boolean(account?.linked_email || account?.linked_phone);
+  // Saving the network uses a verified phone when SMS is enabled, otherwise email.
+  const saveNetwork = () => setOverlay(phoneEnabled ? 'phone' : 'link');
 
   return (
     <main className="home">
       <header className="home-header">
-        <span className={`wordmark ${level >= 1 ? 'is-revealed' : ''}`}>
-          {level >= 1 ? 'Pipeline' : 'The Pipeline Experiment'}
-        </span>
+        <Wordmark brand={brand} revealed={level >= 1} />
         <button className="icon-btn" onClick={() => setSheet('privacy')} aria-label="Your data">
           <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M5 20c1.2-3.6 4-5 7-5s5.8 1.4 7 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
         </button>
@@ -193,6 +200,16 @@ function Home({ session }: { session: Session }) {
       {level < 2 && (
         <button className="link center-link" onClick={() => setSheet('feedback')}>
           Rather not invite anyone? Answer one question instead.
+        </button>
+      )}
+
+      {phoneEnabled && level >= 1 && account && !networkSaved && (
+        <button className="early-card save-card fade-up" onClick={saveNetwork}>
+          <div>
+            <strong>Save your network</strong>
+            <span>Verify your phone to use it on any device.</span>
+          </div>
+          <span className="arrow" aria-hidden="true">→</span>
         </button>
       )}
 
@@ -250,7 +267,7 @@ function Home({ session }: { session: Session }) {
           state={state}
           account={account}
           onClose={() => setSheet(null)}
-          onLink={() => { setSheet(null); setOverlay('link'); }}
+          onLink={() => { setSheet(null); saveNetwork(); }}
           onWaitlist={() => { setSheet(null); setOverlay('waitlist'); }}
           onChanged={load}
         />
@@ -270,7 +287,15 @@ function Home({ session }: { session: Session }) {
           }}
         />
       )}
-      {overlay && (
+      {overlay === 'phone' && (
+        <SaveNetworkOverlay
+          onClose={(changed) => {
+            setOverlay(null);
+            if (changed) void load();
+          }}
+        />
+      )}
+      {(overlay === 'waitlist' || overlay === 'link') && (
         <WaitlistOverlay
           mode={overlay}
           account={account}
@@ -321,6 +346,28 @@ function FeedbackSheet({ question, onClose }: { question: string; onClose: (done
   );
 }
 
+/**
+ * Header name. "The Experiment" until the first unlock, then "Pipeline". The
+ * change animates only when it happens in front of the participant; returning
+ * participants simply see "Pipeline". The tab title follows the same rule.
+ */
+function Wordmark({ brand, revealed }: { brand: string; revealed: boolean }) {
+  const startedRevealed = useRef(revealed);
+  const [animating, setAnimating] = useState(false);
+  useEffect(() => {
+    document.title = brand;
+    if (revealed && !startedRevealed.current) {
+      startedRevealed.current = true;
+      setAnimating(true);
+    }
+  }, [brand, revealed]);
+  return (
+    <span className={`wordmark ${revealed ? 'is-revealed' : ''} ${animating ? 'is-revealing' : ''}`} key={brand}>
+      {brand}
+    </span>
+  );
+}
+
 const waitlistPrompted = {
   get: () => { try { return localStorage.getItem('px.waitlistPrompted') === '1'; } catch { return false; } },
   set: () => { try { localStorage.setItem('px.waitlistPrompted', '1'); } catch { /* ignore */ } },
@@ -345,7 +392,8 @@ function PrivacySheet({
   const [confirming, setConfirming] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [busy, setBusy] = useState(false);
-  const anonymous = !account?.linked_email;
+  const anonymous = !account?.linked_email && !account?.linked_phone;
+  const savedAs = account?.linked_phone ? formatPhone(account.linked_phone) : account?.linked_email;
 
   const leave = async () => {
     await api.leaveWaitlist();
@@ -375,10 +423,13 @@ function PrivacySheet({
         <div className="account-row">
           <div>
             <div>{anonymous ? 'Saved on this browser only' : 'Network saved'}</div>
-            <div className="muted">{anonymous ? 'Link an email to use it on any device.' : account?.linked_email}</div>
+            <div className="muted">
+              {anonymous ? `Verify your ${phoneEnabled ? 'phone' : 'email'} to use it on any device.` : savedAs}
+            </div>
           </div>
           {anonymous && <button className="chip" onClick={onLink}>Save</button>}
         </div>
+        {p.reveal_level >= 1 && (
         <div className="account-row">
           <div>
             <div>Early-access waitlist</div>
@@ -390,12 +441,13 @@ function PrivacySheet({
             <button className="chip" onClick={onWaitlist}>Join</button>
           )}
         </div>
+        )}
 
         {!confirming ? (
           <>
             {confirmSignOut && (
               <p className="muted small">
-                Your network is saved only on this browser. If you sign out without linking an email, you
+                Your network is saved only on this browser. If you sign out without saving it first, you
                 won’t be able to get back to it.
               </p>
             )}

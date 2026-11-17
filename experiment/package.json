@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:demo": "tsc --noEmit && VITE_DEMO=1 VITE_DEMO_LOCAL=1 VITE_HASH_ROUTER=1 VITE_SUPABASE_URL=http://local.demo VITE_SUPABASE_PUBLISHABLE_KEY=demo vite build --base ./ --outDir dist-demo",
+    "build:demo": "tsc --noEmit && VITE_DEMO=1 VITE_DEMO_LOCAL=1 VITE_PHONE_AUTH=1 VITE_HASH_ROUTER=1 VITE_SUPABASE_URL=http://local.demo VITE_SUPABASE_PUBLISHABLE_KEY=demo vite build --base ./ --outDir dist-demo",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:e2e": "node test/e2e.mjs",

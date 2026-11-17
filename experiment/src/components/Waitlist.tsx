@@ -7,10 +7,16 @@ import { Button, Check, Constellation, ErrorText } from './ui';
 type Mode = 'waitlist' | 'link';
 type Step = 'form' | 'code' | 'done';
 
+const DEFAULT_CONSENT = 'Email me Pipeline updates and early-access news. Unsubscribe anytime.';
+
 /**
- * Full-screen, optional. "waitlist" appears after the second reveal; "link"
- * (save your network to a verified email) is offered from the same screen and
- * from Your data. Waitlist consent is stored separately from research consent.
+ * Full-screen and optional.
+ *  - "waitlist": Pipeline updates / early-access signup. Requires an explicit,
+ *    unticked-by-default consent checkbox; the exact wording comes from the
+ *    server and is stored with the signup. It is separate from research
+ *    consent and from saving the network.
+ *  - "link": save the network to a verified email (used while phone
+ *    verification is switched off). Not a mailing list.
  */
 export function WaitlistOverlay({
   mode,
@@ -21,31 +27,14 @@ export function WaitlistOverlay({
   account: MyAccount | null;
   onClose: (changed: boolean) => void;
 }) {
-  const canLink = !account?.linked_email;
   const [step, setStep] = useState<Step>('form');
   const [email, setEmail] = useState(account?.waitlist_email ?? '');
-  const [alsoLink, setAlsoLink] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [joined, setJoined] = useState(false);
-  const [linked, setLinked] = useState<string | null>(null);
-  const [linkNote, setLinkNote] = useState<string | null>(null);
-
-  const wantsLink = mode === 'link' || (alsoLink && canLink);
+  const consentText = account?.waitlist_consent_text ?? DEFAULT_CONSENT;
   const clean = email.trim().toLowerCase();
-
-  /** Starts email linking; returns null on success or a message explaining why not. */
-  const startLink = async (): Promise<string | null> => {
-    const { error: e } = await supabase.auth.updateUser(
-      { email: clean },
-      { emailRedirectTo: window.location.origin },
-    );
-    if (!e) return null;
-    if (/already|exists|registered/i.test(e.message)) return 'That email already holds a saved network, so it wasn’t linked here.';
-    if (/rate limit/i.test(e.message)) return 'Too many emails just now. You can save your network later from Your data.';
-    return 'We couldn’t send a code right now. You can try again from Your data.';
-  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -54,15 +43,15 @@ export function WaitlistOverlay({
     setBusy(true);
     try {
       if (mode === 'waitlist') {
+        if (!consent) return setError('Tick the box to get Pipeline updates.');
         await api.joinWaitlist(clean, 'reveal');
-        setJoined(true);
-      }
-      const problem = wantsLink ? await startLink() : null;
-      if (wantsLink && !problem) setStep('code');
-      else if (mode === 'link') setError(problem);
-      else {
-        setLinkNote(problem);
         setStep('done');
+      } else {
+        const { error: err } = await supabase.auth.updateUser({ email: clean }, { emailRedirectTo: window.location.origin });
+        if (!err) return setStep('code');
+        if (/already|exists|registered/i.test(err.message)) setError('That email already holds a saved network.');
+        else if (/rate limit/i.test(err.message)) setError('Too many emails just now. Try again in a few minutes.');
+        else setError('We couldn’t send a code right now.');
       }
     } catch (err) {
       setError((err as Error).message);
@@ -78,7 +67,6 @@ export function WaitlistOverlay({
     const { error: err } = await supabase.auth.verifyOtp({ email: clean, token: code, type: 'email_change' });
     setBusy(false);
     if (err) return setError('That code didn’t work. Check it and try again.');
-    setLinked(clean);
     setStep('done');
   };
 
@@ -98,7 +86,7 @@ export function WaitlistOverlay({
             <p className="muted fade-up" style={{ animationDelay: '.5s' }}>
               {mode === 'waitlist'
                 ? 'Pipeline opens to a small group first. Leave your email to join the waitlist.'
-                : 'Link a verified email to open your branch on any device.'}
+                : 'Link a verified email to open your network on any device.'}
             </p>
             <div className="stack fade-up" style={{ animationDelay: '.65s' }}>
               <input
@@ -111,21 +99,16 @@ export function WaitlistOverlay({
                 onChange={(e) => setEmail(e.target.value)}
                 aria-label="Email"
               />
-              {mode === 'waitlist' && canLink && (
-                <Check checked={alsoLink} onChange={setAlsoLink}>
-                  Also save my network to this email
-                  <span className="check-sub">Use it on any device. We’ll send a 6-digit code.</span>
-                </Check>
+              {mode === 'waitlist' && (
+                <Check checked={consent} onChange={setConsent}>{consentText}</Check>
               )}
               <ErrorText error={error} />
-              <Button type="submit" busy={busy}>
+              <Button type="submit" busy={busy} disabled={mode === 'waitlist' && !consent}>
                 {mode === 'waitlist' ? 'Join the waitlist' : 'Send code'}
               </Button>
-              <p className="fine text-center">
-                {mode === 'waitlist'
-                  ? 'Only about early access. Unsubscribe anytime.'
-                  : 'Used only to sign you in. Not added to any mailing list.'}
-              </p>
+              {mode === 'link' && (
+                <p className="fine text-center">Used only to sign you in. Not added to any mailing list.</p>
+              )}
               <button type="button" className="link center-link" onClick={() => onClose(false)}>
                 Not now
               </button>
@@ -135,11 +118,8 @@ export function WaitlistOverlay({
 
         {step === 'code' && (
           <form className="stack fade-up" onSubmit={verify}>
-            {joined && <p className="eyebrow">You’re on the list</p>}
             <h1 className="title">Enter the code</h1>
-            <p className="muted">
-              Sent to <span className="em">{clean}</span>. This saves your network to that email.
-            </p>
+            <p className="muted">Sent to <span className="em">{clean}</span>.</p>
             <input
               className="input code-input"
               inputMode="numeric"
@@ -153,9 +133,7 @@ export function WaitlistOverlay({
             />
             <ErrorText error={error} />
             <Button type="submit" busy={busy} disabled={code.length < 6}>Verify</Button>
-            <button type="button" className="link center-link" onClick={() => (joined ? setStep('done') : onClose(false))}>
-              Skip for now
-            </button>
+            <button type="button" className="link center-link" onClick={() => onClose(false)}>Skip for now</button>
           </form>
         )}
 
@@ -164,10 +142,12 @@ export function WaitlistOverlay({
             <div className="ready-mark" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="28" height="28"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
-            <h1 className="title fade-up">{joined ? 'You’re on the list.' : 'Network saved.'}</h1>
-            {joined && <p className="muted fade-up">We’ll email {clean} when early access opens.</p>}
-            {linked && <p className="muted fade-up">Your network is saved to {linked}. Sign in with it on any device.</p>}
-            {linkNote && <p className="muted small fade-up">{linkNote}</p>}
+            <h1 className="title fade-up">{mode === 'waitlist' ? 'You’re on the list.' : 'Network saved.'}</h1>
+            <p className="muted fade-up">
+              {mode === 'waitlist'
+                ? `We’ll email ${clean} when early access opens.`
+                : `Sign in with ${clean} on any device.`}
+            </p>
             <Button onClick={() => onClose(true)}>Continue</Button>
           </div>
         )}

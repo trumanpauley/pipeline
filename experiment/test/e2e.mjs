@@ -85,6 +85,7 @@ ok((await q(`select count(*)::int n from participants`))[0].n === 1, 'legacy par
 step('Apply migration 002 on top');
 psql('supabase/migrations/002_anonymous_onboarding.sql');
 psql('supabase/migrations/003_share_tracking.sql');
+psql('supabase/migrations/004_phone_ready.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
@@ -96,6 +97,7 @@ await q(`insert into public.admins (email) values ('admin@test.dev')`);
 const mock = await startMockSupabase({ port: API_PORT, connectionString: DB });
 process.env.VITE_SUPABASE_URL = API;
 process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'anon-key';
+process.env.VITE_PHONE_AUTH = '1'; // exercise the (off-by-default) phone flow against the mock; no SMS is sent
 const vite = await createServer({ root, server: { port: APP_PORT, strictPort: true }, logLevel: 'error' });
 await vite.listen();
 
@@ -117,6 +119,20 @@ const getCode = async (email) => {
   }
   throw new Error(`no code for ${email}`);
 };
+const getPhoneCode = async (phone) => {
+  for (let i = 0; i < 40; i++) {
+    const r = await (await fetch(`${API}/__test/code?phone=${encodeURIComponent(phone)}`)).json();
+    if (r?.code) return r.code;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`no SMS code for ${phone}`);
+};
+/** Everything a participant can see: page text, tab title, and share-preview tags. */
+const visibleBrand = (page) => page.evaluate(() => [
+  document.body.innerText,
+  document.title,
+  ...[...document.querySelectorAll('meta[property^="og:"], meta[name^="twitter:"], meta[name="description"], meta[name="apple-mobile-web-app-title"]')].map((m) => m.content),
+].join(' | '));
 const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 const byName = async (name) => (await q(`select * from participants where display_name = $1 and deleted_at is null`, [name]))[0];
 const authUser = async (id) => (await q(`select * from auth.users where id = $1`, [id]))[0];
@@ -198,7 +214,7 @@ try {
   await adminPage.getByLabel('Email', { exact: true }).fill('admin@test.dev');
   await adminPage.getByRole('button', { name: 'Email me a code' }).click();
   await adminPage.getByLabel('Verification code').fill(await getCode('admin@test.dev'));
-  await adminPage.getByRole('button', { name: 'Verify' }).click();
+  await adminPage.getByRole('button', { name: 'Verify', exact: true }).click();
   await adminPage.getByRole('heading', { name: 'Dashboard' }).waitFor();
   await adminPage.getByLabel('Number of links').fill('3');
   await adminPage.getByLabel('Sender name').fill('Truman');
@@ -227,6 +243,17 @@ try {
   await alicePage.reload();
   await alicePage.locator('.home').waitFor();
   ok(true, 'session persists across reloads without signing in');
+
+  step('Branding stays hidden before the first unlock');
+  ok(!(await visibleBrand(alicePage)).includes('Pipeline'), 'home: no "Pipeline" in page, tab title or share tags');
+  ok((await alicePage.locator('.wordmark').innerText()) === 'The Experiment' && (await alicePage.title()) === 'The Experiment', 'header and tab say "The Experiment"');
+  await alicePage.getByLabel('Your data').click();
+  await alicePage.waitForTimeout(400);
+  ok(!(await visibleBrand(alicePage)).includes('Pipeline'), 'Your data sheet: no "Pipeline" (waitlist row hidden until unlock)');
+  ok(await alicePage.getByText('Early-access waitlist').count() === 0, 'waitlist row hidden before unlock');
+  ok(await alicePage.locator('.save-card').count() === 0, 'no "Save your network" prompt before discovering Pipeline');
+  await alicePage.getByRole('button', { name: 'Close' }).click();
+  await alicePage.waitForTimeout(300);
 
   step('Invitation home: personal headline, locked second card, no network yet');
   ok(await alicePage.getByRole('heading', { name: 'Now it’s your turn, Alice.' }).isVisible(), 'headline uses the participant’s first name');
@@ -259,6 +286,13 @@ try {
   const [bobInv1] = await q(`select * from invitations where token = $1`, [bobLink.split('/i/')[1]]);
   ok(bobInv1.shared_at && bobInv1.share_method === 'copy' && bobInv1.status === 'created' && bobInv1.opened_at === null, 'backend: shared (copy), not opened, not accepted');
   await alicePage.getByRole('button', { name: /Invite someone.*Unlock 2/ }).waitFor();
+  ok((await alicePage.locator('.wordmark').innerText()) === 'Pipeline' && (await alicePage.title()) === 'Pipeline', 'after the first unlock the header and tab say "Pipeline"');
+  ok((await alicePage.locator('.wordmark').getAttribute('class')).includes('is-revealing'), 'header transitions in place when it unlocks');
+  await alicePage.locator('.save-card').waitFor();
+  ok(await alicePage.getByText('Save your network').isVisible(), 'after discovering Pipeline: optional "Save your network" (phone)');
+  await alicePage.reload();
+  await alicePage.locator('.home').waitFor();
+  ok((await alicePage.locator('.wordmark').innerText()) === 'Pipeline' && !(await alicePage.locator('.wordmark').getAttribute('class')).includes('is-revealing'), 'returning participant keeps "Pipeline" (no replayed animation)');
   ok(await alicePage.getByRole('button', { name: /Invite someone.*Unlock 2/ }).isEnabled(), 'second invitation unlocked');
   ok((await alicePage.locator('.invite-card.is-filled .pill').innerText()).includes('Shared'), 'slot shows Shared');
   await alicePage.waitForTimeout(300);
@@ -279,12 +313,16 @@ try {
   await shot(alicePage, '07-waitlist');
   ok(true, 'early-access screen appears after the second reveal');
   await alicePage.getByLabel('Email', { exact: true }).fill('Alice@Test.dev');
+  ok(await alicePage.getByRole('button', { name: 'Join the waitlist' }).isDisabled(), 'waitlist needs explicit consent (unticked by default)');
+  ok(await alicePage.getByText('Also save my network').count() === 0, 'waitlist is separate from saving the network');
+  const consentLabel = await alicePage.locator('.waitlist-overlay .check-label').innerText();
+  await alicePage.locator('.waitlist-overlay .check').click();
   await alicePage.getByRole('button', { name: 'Join the waitlist' }).click();
   await alicePage.getByRole('heading', { name: 'You’re on the list.' }).waitFor();
   await shot(alicePage, '08-waitlist-done');
   await alicePage.getByRole('button', { name: 'Continue' }).click();
   const [wl] = await q(`select * from waitlist where participant_id = $1`, [alice.id]);
-  ok(wl && wl.email === 'alice@test.dev' && wl.consent_text.includes('early access'), 'waitlist entry with its own consent text');
+  ok(wl && wl.email === 'alice@test.dev' && wl.consent_text === consentLabel.trim(), `stored consent text matches the checkbox exactly ("${wl?.consent_text}")`);
   ok((await byName('Alice')).marketing_consent === false, 'joining the waitlist does not touch research/marketing fields');
   ok((await authUser(alice.user_id)).email === null, 'waitlist email is not linked to the account unless asked');
 
@@ -309,6 +347,7 @@ try {
     await p.goto(bobLink);
     await p.getByRole('heading', { name: 'Alice invited you.' }).waitFor({ timeout: 5000 });
     ok((await byName('Alice')).display_name === 'Alice', 'the name on the landing is the sender’s own first name');
+    ok(!(await visibleBrand(p)).includes('Pipeline') && (await p.title()) === 'The Experiment', 'invitation landing: no "Pipeline" in page, tab title or share tags');
     ok(true, 'headline uses the inviter’s first name');
     const t0 = Date.now();
     await p.getByRole('button', { name: 'Enter the Experiment' }).click();
@@ -378,16 +417,25 @@ try {
   await shot(bobPage, '09-your-data-anonymous');
   await bobPage.locator('.account-row').getByRole('button', { name: 'Save' }).click();
   await bobPage.getByRole('heading', { name: 'Keep your network.' }).waitFor();
-  await bobPage.getByLabel('Email', { exact: true }).fill('bob@test.dev');
-  await bobPage.getByRole('button', { name: 'Send code' }).click();
-  await bobPage.getByLabel('Verification code').fill(await getCode('bob@test.dev'));
-  await bobPage.getByRole('button', { name: 'Verify' }).click();
+  await bobPage.getByLabel('Phone number').fill('(617) 555-0142');
+  await bobPage.waitForTimeout(300);
+  await shot(bobPage, '09b-save-network-phone');
+  await bobPage.getByRole('button', { name: 'Text me a code' }).click();
+  await bobPage.getByLabel('Verification code').fill(await getPhoneCode('+16175550142'));
+  await bobPage.getByRole('button', { name: 'Verify', exact: true }).click();
   await bobPage.getByRole('heading', { name: 'Network saved.' }).waitFor();
   await bobPage.getByRole('button', { name: 'Continue' }).click();
   const bobAuth = await authUser(bob.user_id);
-  ok(bobAuth.email === 'bob@test.dev' && bobAuth.email_confirmed_at, 'email linked to the SAME identity (user id unchanged)');
-  ok((await byName('Bob')).id === bob.id, 'participant record and referrals unchanged');
-  ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [bob.id]))[0].n === 0, 'linking an email does not join the waitlist');
+  ok(bobAuth.phone === '+16175550142' && bobAuth.phone_confirmed_at && bobAuth.email === null, 'verified phone linked to the SAME identity (user id unchanged)');
+  ok((await q(`select count(*)::int n from auth.users where phone = '+16175550142'`))[0].n === 1, 'no duplicate account created');
+  const bobAfter = await byName('Bob');
+  ok(bobAfter.id === bob.id && bobAfter.parent_id === alice.id && bobAfter.invitation_id === bob.invitation_id, 'participant id, parent and invitation unchanged');
+  ok((await q(`select count(*)::int n from invitations where sender_id = $1`, [bob.id]))[0].n === 1, 'referral links unchanged');
+  ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [bob.id]))[0].n === 0, 'saving the network does not join the email list');
+  // The same number can't be attached to a second participant.
+  const aliceJwt2 = await jwtOf(alicePage);
+  const dup = await fetch(`${API}/auth/v1/user`, { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${aliceJwt2}` }, body: JSON.stringify({ phone: '+16175550142' }) });
+  ok(dup.status === 422, 'a number already holding a network cannot be linked to another participant');
 
   step('Browser-level protections');
   await bobPage.getByLabel('Your data').click();
@@ -401,13 +449,19 @@ try {
   ok(true, 'second participant from the same browser blocked');
   ok(!(await byName('NotBob')) && !(await byName('BobAgain')), 'no duplicate participant rows created');
 
-  step('Cross-device: Bob signs in with his linked email on a new phone');
+  step('Cross-device: Bob signs in with his verified phone on a new device');
   const bobPhone2 = await newPhone();
   await bobPhone2.goto(APP);
-  await bobPhone2.getByLabel('Email', { exact: true }).fill('bob@test.dev');
-  await bobPhone2.getByRole('button', { name: 'Email me a code' }).click();
-  await bobPhone2.getByLabel('Verification code').fill(await getCode('bob@test.dev'));
-  await bobPhone2.getByRole('button', { name: 'Verify' }).click();
+  ok((await bobPhone2.title()) === 'The Experiment' && !(await visibleBrand(bobPhone2)).includes('Pipeline'), 'start page: no "Pipeline"');
+  await bobPhone2.getByRole('button', { name: 'Use phone number instead' }).click();
+  await bobPhone2.getByLabel('Phone number').fill('+1 999 555 0000');
+  await bobPhone2.getByRole('button', { name: 'Text me a code' }).click();
+  await bobPhone2.getByText('No saved network uses that number.').waitFor();
+  ok(true, 'unknown numbers can’t sign in (no new accounts, no SMS)');
+  await bobPhone2.getByLabel('Phone number').fill('617-555-0142');
+  await bobPhone2.getByRole('button', { name: 'Text me a code' }).click();
+  await bobPhone2.getByLabel('Verification code').fill(await getPhoneCode('+16175550142'));
+  await bobPhone2.getByRole('button', { name: 'Verify', exact: true }).click();
   await bobPhone2.locator('.invite-slots').waitFor();
   ok((await bobPhone2.locator('.invite-card.is-filled').first().innerText()).includes('Dave'), 'Bob’s network and links appear on the new device');
 
@@ -430,7 +484,7 @@ try {
   await continueReveal(davePage);
   await davePage.getByRole('heading', { name: 'Be first in.' }).waitFor();
   await davePage.getByRole('button', { name: 'Not now' }).click();
-  await davePage.locator('.early-card').waitFor();
+  await davePage.locator('.early-card:not(.save-card)').waitFor();
   await davePage.waitForTimeout(600);
   await shot(davePage, '10-home-early-access-card');
   ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [dave.id]))[0].n === 0, '"Not now" stores nothing');
@@ -447,7 +501,7 @@ try {
   await leePage.getByLabel('Email', { exact: true }).fill('legacy@test.dev');
   await leePage.getByRole('button', { name: 'Email me a code' }).click();
   await leePage.getByLabel('Verification code').fill(await getCode('legacy@test.dev'));
-  await leePage.getByRole('button', { name: 'Verify' }).click();
+  await leePage.getByRole('button', { name: 'Verify', exact: true }).click();
   await leePage.locator('.invite-card.status-accepted').waitFor();
   ok(true, 'legacy participant signs in by email and sees Erin joined');
 
@@ -491,7 +545,7 @@ try {
   const ov = (await rpcAs(adminJwt, 'admin_overview')).body;
   const acct = (await rpcAs(adminJwt, 'admin_account_stats')).body;
   ok(ov.totals.participants === 5 && ov.totals.max_depth === 3, 'totals: 5 participants, depth 3');
-  ok(acct.linked_emails === 2 && acct.anonymous === 3, `accounts: 2 linked, 3 anonymous`);
+  ok(acct.linked_emails === 1 && acct.linked_phones === 1 && acct.anonymous === 3, `accounts: 1 email, 1 phone, 3 anonymous`);
   ok(acct.waitlist === 2, 'waitlist count (Alice, Dave via API)');
   ok(acct.shared === 3 && acct.shared_by_copy === 3, `admin: ${acct.shared} links shared since tracking began (legacy excluded)`);
   ok((await adminPage.locator('.funnel').innerText()).includes('Shared'), 'funnel shows the Shared step');

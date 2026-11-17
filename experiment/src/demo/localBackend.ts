@@ -7,15 +7,16 @@ import shimSql from '../../test/local-supabase-shim.sql?raw';
 import m001 from '../../supabase/migrations/001_experiment_schema.sql?raw';
 import m002 from '../../supabase/migrations/002_anonymous_onboarding.sql?raw';
 import m003 from '../../supabase/migrations/003_share_tracking.sql?raw';
+import m004 from '../../supabase/migrations/004_phone_ready.sql?raw';
 
 const CODE = '123456';
 const ADMIN = 'admin@demo.dev';
-const SQL = [shimSql, m001, m002, m003];
+const SQL = [shimSql, m001, m002, m003, m004];
 // A new schema gets a new database, so an old demo can't break a newer build.
 const DB_KEY = `pipeline-demo-${SQL.reduce((n, s) => n + s.length, 0)}`;
 
 type Row = Record<string, unknown>;
-interface User { id: string; email: string | null; email_confirmed_at: string | null; raw_user_meta_data: Row; created_at: string }
+interface User { id: string; email: string | null; email_confirmed_at: string | null; phone: string | null; phone_confirmed_at: string | null; raw_user_meta_data: Row; created_at: string }
 
 let dbPromise: Promise<PGlite> | null = null;
 const codes = new Map<string, { userId?: string }>();
@@ -63,7 +64,7 @@ const unb64u = (s: string) => decodeURIComponent(escape(atob(s.replace(/-/g, '+'
 
 function accessToken(u: User) {
   const now = Math.floor(Date.now() / 1000);
-  const claims = { sub: u.id, role: 'authenticated', aud: 'authenticated', email: u.email ?? '', is_anonymous: !u.email, iat: now, exp: now + 3600 };
+  const claims = { sub: u.id, role: 'authenticated', aud: 'authenticated', email: u.email ?? '', is_anonymous: !u.email && !u.phone, iat: now, exp: now + 3600 };
   return `${b64u(JSON.stringify({ alg: 'none', typ: 'JWT' }))}.${b64u(JSON.stringify(claims))}.demo`;
 }
 function claimsOf(token: string | null): Row | null {
@@ -75,7 +76,8 @@ function claimsOf(token: string | null): Row | null {
 
 const userJson = (u: User) => ({
   id: u.id, aud: 'authenticated', role: 'authenticated', email: u.email ?? '',
-  email_confirmed_at: u.email_confirmed_at, is_anonymous: !u.email,
+  email_confirmed_at: u.email_confirmed_at, phone: u.phone ?? '', phone_confirmed_at: u.phone_confirmed_at,
+  is_anonymous: !u.email && !u.phone,
   app_metadata: u.email ? { provider: 'email', providers: ['email'] } : { provider: 'anonymous', providers: ['anonymous'] },
   user_metadata: u.raw_user_meta_data, created_at: u.created_at, updated_at: u.created_at,
 });
@@ -90,7 +92,7 @@ const session = (u: User) => {
 const json = (status: number, body?: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-async function userBy(col: 'id' | 'email', v: unknown): Promise<User | undefined> {
+async function userBy(col: 'id' | 'email' | 'phone', v: unknown): Promise<User | undefined> {
   const db = await getDb();
   return (await db.query<User>(`select * from auth.users where ${col} = $1`, [v])).rows[0];
 }
@@ -106,6 +108,34 @@ export async function localFetch(input: RequestInfo | URL, init?: RequestInit): 
 
   try {
     switch (true) {
+      // ----- phone (demo: no SMS is sent; the code is always 123456) -----
+      case url.pathname === '/auth/v1/otp' && Boolean(body.phone): {
+        if (!(await userBy('phone', body.phone)) && body.create_user === false) {
+          return json(422, { code: 422, error_code: 'otp_disabled', msg: 'Signups not allowed for otp' });
+        }
+        codes.set(`phone:${body.phone}`, {});
+        return json(200, {});
+      }
+      case url.pathname === '/auth/v1/user' && req.method === 'PUT' && Boolean(body.phone): {
+        const u = await userBy('id', claimsOf(bearer)?.sub);
+        if (!u) return json(401, { code: 401, msg: 'invalid JWT' });
+        const taken = await userBy('phone', body.phone);
+        if (taken && taken.id !== u.id) return json(422, { code: 422, error_code: 'phone_exists', msg: 'A user with this phone number has already been registered' });
+        codes.set(`phone:${body.phone}`, { userId: u.id });
+        return json(200, { ...userJson(u), new_phone: body.phone });
+      }
+      case url.pathname === '/auth/v1/verify' && Boolean(body.phone): {
+        const key = `phone:${body.phone}`;
+        const entry = codes.get(key) ?? (body.type !== 'phone_change' && (await userBy('phone', body.phone)) ? {} : undefined);
+        if (!entry || String(body.token) !== CODE) {
+          return json(403, { code: 403, error_code: 'otp_expired', msg: 'Token has expired or is invalid' });
+        }
+        codes.delete(key);
+        const u = body.type === 'phone_change' && entry.userId
+          ? (await db.query<User>(`update auth.users set phone = $1, phone_confirmed_at = now() where id = $2 returning *`, [body.phone, entry.userId])).rows[0]
+          : (await db.query<User>(`update auth.users set phone_confirmed_at = coalesce(phone_confirmed_at, now()) where phone = $1 returning *`, [body.phone])).rows[0];
+        return json(200, session(u));
+      }
       case url.pathname === '/auth/v1/otp': {
         const email = String(body.email).toLowerCase();
         if (!(await userBy('email', email))) {

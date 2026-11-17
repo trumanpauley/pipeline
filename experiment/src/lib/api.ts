@@ -7,7 +7,10 @@ export type InvitationStatus = 'created' | 'opened' | 'accepted' | 'duplicate' |
 export interface MyAccount {
   is_anonymous: boolean;
   linked_email: string | null;
+  linked_phone?: string | null;
   waitlist_email: string | null;
+  /** Exact consent text shown on the waitlist checkbox (and stored with the signup). */
+  waitlist_consent_text?: string;
 }
 
 export interface AdminAccountStats {
@@ -16,6 +19,7 @@ export interface AdminAccountStats {
   waitlist: number;
   flagged_same_network: number;
   shared?: number;
+  linked_phones?: number;
   shared_by_share?: number;
   shared_by_copy?: number;
 }
@@ -83,6 +87,7 @@ const MESSAGES: Record<string, string> = {
   invalid_answer: 'Please write a short answer.',
   invalid_email: 'Enter a valid email.',
   rate_limited: 'Too many attempts from this network. Try again in a little while.',
+  invalid_phone: 'Enter a valid phone number.',
   device_already_joined: 'This browser is already part of the experiment. Open the link on your own phone.',
 };
 

@@ -62,6 +62,16 @@ export const methodDef = (key: string): MethodDef =>
 export const labelFor = (method: string, value: string) =>
   methodDef(method).options.find((o) => o.value === value)?.label ?? value;
 
+/**
+ * Branding. Before a participant's first unlock, the company name must not
+ * appear anywhere they can see (headers, tab title, share previews). Admin
+ * screens always use the real name.
+ */
+export const BRAND = {
+  hidden: 'The Experiment',
+  revealed: 'Pipeline',
+};
+
 export const COPY = {
   /** Invitation landing. `name` is the inviter's first name from the referral data. */
   landingTitle: (name: string | null) => (name ? `${name} invited you.` : 'You’ve been invited.'),

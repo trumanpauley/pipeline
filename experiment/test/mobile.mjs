@@ -126,12 +126,19 @@ async function keyboardCheck(browser) {
   }
 
   await p.getByRole('heading', { name: 'Be first in.' }).waitFor();
-  await p.getByText('Also save my network to this email').click();
+  await p.locator('.waitlist-overlay .check').click(); // explicit consent
   await check('waitlist-email', p.getByLabel('Email', { exact: true }), p.getByRole('button', { name: 'Join the waitlist' }));
   await p.getByLabel('Email', { exact: true }).fill('maya@college.edu');
   await p.getByRole('button', { name: 'Join the waitlist' }).click();
+  await p.getByRole('heading', { name: 'You’re on the list.' }).waitFor();
+  await p.getByRole('button', { name: 'Continue' }).click();
+  // Save the network by phone (demo build has phone verification on; no SMS is sent)
+  await p.locator('.save-card').click();
+  await check('save-phone', p.getByLabel('Phone number'), p.getByRole('button', { name: 'Text me a code' }));
+  await p.getByLabel('Phone number').fill('(617) 555-0199');
+  await p.getByRole('button', { name: 'Text me a code' }).click();
   await p.getByLabel('Verification code').waitFor();
-  await check('link-code', p.getByLabel('Verification code'), p.getByRole('button', { name: 'Verify' }));
+  await check('phone-code', p.getByLabel('Verification code'), p.getByRole('button', { name: 'Verify', exact: true }));
   await ctx.close();
 }
 
