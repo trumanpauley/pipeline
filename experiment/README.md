@@ -35,10 +35,13 @@ Nobody types an email before the referral stage:
    calls Supabase `signInAnonymously()`. That creates a real, unique auth user (no email, no
    password), and the participant, their answers and their links are tied to it.
 2. **The session is kept in the browser,** so returning on the same phone needs no sign-in.
-3. **After the second reveal,** an optional "Be first in." screen offers the early-access
-   **waitlist**. It's stored in its own `waitlist` table with its own consent text, separate from
-   research consent. Nobody is subscribed to anything automatically, and "Not now" stores nothing.
-   An Early access card stays on the home screen for later.
+3. **After the mission reveal,** an optional **Pipeline Community** screen ("You're just getting
+   connected.") asks for an email and two separate, unticked choices: *Invite me to future
+   Pipeline experiments* and *Send me Pipeline updates and early access*. Joining needs at least
+   one; with neither ticked nothing is stored. "Maybe later" stores nothing except that the screen
+   was dismissed (on the server, so it never reappears), and participation is unaffected. A
+   Pipeline Community card on the home screen and a row in *Your data* let people join later,
+   change either choice, or unsubscribe. See [Pipeline Community](#pipeline-community).
 4. **Saving the network (optional):** from that screen ("Also save my network to this email") or
    from **Your data → Save**, the participant links a verified email with a 6-digit code. The email
    is attached to the *same* Supabase user (`updateUser` + `verifyOtp`, type `email_change`), so
@@ -67,7 +70,8 @@ people genuinely share browsers.
 | `invitations`         | Single-use links. `token` (122 random bits), `status`: `created → opened → accepted`, or `duplicate` (opened by someone already in, so no credit) / `revoked`. A `sender_id` of null marks a seed link. |
 | `classifications`     | One row per (invitation, direction). `outbound` = sender rates recipient *before* the link exists; `inbound` = recipient rates sender after opening. Stores method, value and response time. |
 | `feedback`            | The optional question that unlocks the reveals without inviting anyone. |
-| `waitlist`            | Optional early-access sign-ups: email, exact consent text, timestamp, withdrawal. Separate from research consent. |
+| `waitlist`            | Legacy early-access sign-ups (kept; active rows were copied into `community_signups` by `009`). |
+| `community_signups`   | Optional Pipeline Community: one row per participant and per email; each consent (`research_invites`, `updates`) has its own exact text, timestamp and withdrawal timestamp; `unsubscribed_at`. No table access via the API at all. |
 | `rate_events`         | Short-lived, hashed counters for rate limiting. |
 | `experiment_settings` | Tunable parameters (see below). |
 | `admins`              | Emails allowed to use `/admin`. |
@@ -152,7 +156,7 @@ project still works if you have to.
 1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
    `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
-   `008_live_invitation_tracking.sql`. If you've already run some, run
+   `008_live_invitation_tracking.sql` and `009_pipeline_community.sql`. If you've already run some, run
    only the ones after them.
 2. **Make yourself an admin:**
    ```sql
@@ -375,8 +379,32 @@ To switch it on:
    to your first name; invitees will be asked "How close are you to {name}?".
 2. Send each person their own link. Each link works once.
 3. Watch the dashboard. The CSV exports cover participants, invitations, classifications,
-   reciprocal pairs, feedback and the waitlist. Only participants (linked emails) and waitlist
+   reciprocal pairs, feedback, the waitlist and the Pipeline Community (`community.csv`,
+   `research_pool.csv`). Only participants (linked emails), waitlist and the community files
    contain email addresses.
+
+## Pipeline Community
+
+Optional, shown once after the mission reveal (migration `009`).
+
+- **Privacy.** Emails live only in `community_signups`, which has RLS on and no grants: the REST
+  API can't read or write it. Participants see their own signup through `get_my_account()`;
+  everything else goes through server-validated RPCs (`join_community`,
+  `update_community_preferences`, `dismiss_community_prompt`). No password or account is created:
+  the email is attached to the participant's existing anonymous identity.
+- **Consent.** Each choice keeps the exact checkbox wording (setting `community_consent_texts`),
+  when it was given and when it was withdrawn. Turning both off sets `unsubscribed_at`; the row is
+  kept as the consent record and can be rejoined. "Delete my data" removes it entirely.
+- **Duplicates.** One row per participant and one per email. Submitting an address that already
+  belongs to someone else returns a normal success, changes nothing and creates nothing, so
+  addresses can't be probed. Sign-ups are rate-limited per IP (`community_per_ip_hour`).
+- **Admin.** The dashboard's *Pipeline Community* panel shows signups, each consent, conversion
+  (active signups ÷ participants who reached the mission), "Maybe later" and unsubscribes, and
+  signups by generation, with two admin-only CSVs:
+  - `community.csv`: every signup with both consents and all timestamps.
+  - `research_pool.csv`: only people with an active *future experiments* consent (participant
+    id, email, generation). It contains no relationship data and is the list to use when
+    Experiment 2 needs to contact people.
 
 ## Try it on a phone (no Supabase, no Codespace)
 
@@ -455,14 +483,17 @@ It covers:
   after `002`, including a new participant joining their link and them signing in by email.
 - **Email-free onboarding:** seed → generation 1 → 2 → 3 with no email field, on anonymous
   identities; the session survives reloads.
-- **Reveals and early access:** both reveals; the waitlist screen after the second (join, and
-  "Not now" storing nothing and not nagging again); waitlist kept separate from research consent.
+- **Reveals and Pipeline Community:** both reveals; the community screen right after the mission;
+  signup with only future experiments, only updates, and both; the button disabled with neither;
+  "Maybe later" storing nothing and never reappearing; joining later from the home card; changing
+  and withdrawing consent (with timestamps kept); duplicate emails creating nothing and revealing
+  nothing; admin-only stats and exports; nothing readable through the table API.
 - **Email linking:** an email linked to the *same* identity, then sign-in on a second phone showing
   the same network.
 - **Abuse protections:** self-referral by account and by browser, one participant per browser,
   link reuse, duplicate credit, invite limits, invalid values, guessed tokens, and per-IP rate
-  limits on joins, opens and waitlist sign-ups.
-- **Privacy and admin:** branch privacy, RLS on every table, admin numbers, waitlist CSV, and data
+  limits on joins, opens and community sign-ups.
+- **Privacy and admin:** branch privacy, RLS on every table, admin numbers, community CSVs, and data
   deletion (including the anonymous auth user).
 
 It saves screenshots to `test-results/`.

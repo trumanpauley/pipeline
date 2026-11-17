@@ -2,7 +2,7 @@
 //   * a legacy participant created under migration 001 (email flow) survives 002
 //   * admin seed links → seed participant → two more referral generations,
 //     none of whom enter an email before the referral stage
-//   * reveals, post-reveal waitlist, optional email linking + cross-device sign-in
+//   * reveals, post-reveal Pipeline Community signup, optional email linking + cross-device sign-in
 //   * abuse cases: self-referral (account and browser), one participant per
 //     browser, link reuse, duplicate credit, limits, rate limits, guessed tokens
 //   * RLS, admin numbers, CSV exports, deletion
@@ -90,6 +90,7 @@ psql('supabase/migrations/005_name_moderation.sql');
 psql('supabase/migrations/006_circular_strength.sql');
 psql('supabase/migrations/007_invited_names.sql');
 psql('supabase/migrations/008_live_invitation_tracking.sql');
+psql('supabase/migrations/009_pipeline_community.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
@@ -313,8 +314,8 @@ try {
   ok((await alicePage.locator('.wordmark').innerText()) === 'The Experiment' && (await alicePage.title()) === 'The Experiment', 'header and tab say "The Experiment"');
   await alicePage.getByLabel('Your data').click();
   await alicePage.waitForTimeout(400);
-  ok(!(await visibleBrand(alicePage)).includes('Pipeline'), 'Your data sheet: no "Pipeline" (waitlist row hidden until unlock)');
-  ok(await alicePage.getByText('Early-access waitlist').count() === 0, 'waitlist row hidden before unlock');
+  ok(!(await visibleBrand(alicePage)).includes('Pipeline'), 'Your data sheet: no "Pipeline" (community row hidden until the mission)');
+  ok(await alicePage.locator('[data-testid="community-row"]').count() === 0, 'community row hidden before the mission reveal');
   ok(await alicePage.locator('.save-card').count() === 0, 'no "Save your network" prompt before discovering Pipeline');
   await alicePage.getByRole('button', { name: 'Close' }).click();
   await alicePage.waitForTimeout(300);
@@ -362,7 +363,7 @@ try {
   await alicePage.waitForTimeout(300);
   await shot(alicePage, '05d-home-second-unlocked');
 
-  step('Second invitation → mission → waitlist invitation');
+  step('Second invitation → mission → Pipeline Community');
   await alicePage.getByRole('button', { name: 'Invite someone' }).first().click();
   ok(await alicePage.getByRole('heading', { name: 'Who will you invite next?' }).isVisible(), 'second flow asks "Who will you invite next?"');
   await alicePage.getByRole('button', { name: 'Close' }).click();
@@ -372,23 +373,83 @@ try {
   await alicePage.waitForTimeout(2200);
   await shot(alicePage, '06-reveal-2');
   await alicePage.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
-  await alicePage.getByRole('heading', { name: 'Be first in.' }).waitFor();
+  await alicePage.getByRole('heading', { name: 'You’re just getting connected.' }).waitFor();
   await alicePage.waitForTimeout(900);
-  await shot(alicePage, '07-waitlist');
-  ok(true, 'early-access screen appears after the second reveal');
-  await alicePage.getByLabel('Email', { exact: true }).fill('Alice@Test.dev');
-  ok(await alicePage.getByRole('button', { name: 'Join the waitlist' }).isDisabled(), 'waitlist needs explicit consent (unticked by default)');
-  ok(await alicePage.getByText('Also save my network').count() === 0, 'waitlist is separate from saving the network');
-  const consentLabel = await alicePage.locator('.waitlist-overlay .check-label').innerText();
-  await alicePage.locator('.waitlist-overlay .check').click();
-  await alicePage.getByRole('button', { name: 'Join the waitlist' }).click();
-  await alicePage.getByRole('heading', { name: 'You’re on the list.' }).waitFor();
-  await shot(alicePage, '08-waitlist-done');
+  await shot(alicePage, '07-community');
+  ok(true, 'community screen appears right after the mission reveal');
+  const overlayText = await alicePage.locator('.waitlist-overlay').innerText();
+  ok(/welcome to pipeline/i.test(overlayText)
+    && overlayText.includes('Help us build a better way to navigate the people and communities we’re connected to.')
+    && overlayText.includes('Early access, future experiments, and occasional updates. Optional.'), 'community copy');
+  const joinBtn = alicePage.getByRole('button', { name: 'Join the Pipeline Community' });
+  const checks = alicePage.locator('.waitlist-overlay .check input');
+  ok(!(await checks.nth(0).isChecked()) && !(await checks.nth(1).isChecked()), 'both consents unticked by default');
+  await alicePage.getByLabel('Your email address').fill('Alice@Test.dev');
+  ok(await joinBtn.isDisabled(), 'join disabled until a preference is chosen');
+  ok(await alicePage.getByTestId('community-none-note').isVisible(), 'explains that nothing is saved with neither selected');
+  const researchLabel = (await alicePage.locator('.waitlist-overlay .check-label').nth(0).innerText()).trim();
+  ok(researchLabel === 'Invite me to future Pipeline experiments.', 'first checkbox wording');
+  ok((await alicePage.locator('.waitlist-overlay .check-label').nth(1).innerText()).trim() === 'Send me Pipeline updates and early access.', 'second checkbox wording');
+  await alicePage.locator('.waitlist-overlay .check').nth(0).click();
+  ok(!(await joinBtn.isDisabled()), 'join enabled with one preference');
+  await joinBtn.click();
+  await alicePage.getByRole('heading', { name: 'You’re in.' }).waitFor();
+  await shot(alicePage, '08-community-done');
   await alicePage.getByRole('button', { name: 'Continue' }).click();
-  const [wl] = await q(`select * from waitlist where participant_id = $1`, [alice.id]);
-  ok(wl && wl.email === 'alice@test.dev' && wl.consent_text === consentLabel.trim(), `stored consent text matches the checkbox exactly ("${wl?.consent_text}")`);
-  ok((await byName('Alice')).marketing_consent === false, 'joining the waitlist does not touch research/marketing fields');
-  ok((await authUser(alice.user_id)).email === null, 'waitlist email is not linked to the account unless asked');
+  let [cs] = await q(`select * from community_signups where participant_id = $1`, [alice.id]);
+  ok(cs && cs.email === 'alice@test.dev' && cs.signed_up_at, 'signup stored against the participant, email normalised, timestamped');
+  ok(cs.research_invites && cs.research_invites_text === researchLabel && cs.research_invites_at, 'only future experiments: consent + exact text + timestamp');
+  ok(!cs.updates && cs.updates_at === null && cs.unsubscribed_at === null, 'updates not consented');
+  ok((await byName('Alice')).marketing_consent === false, 'community signup does not touch research/marketing fields');
+  ok((await authUser(alice.user_id)).email === null, 'no account or password: email is not linked to the auth identity');
+  await alicePage.locator('.early-card:not(.save-card)').waitFor({ state: 'detached', timeout: 5000 }).then(() => ok(true, 'no community card once joined'), () => ok(false, 'no community card once joined'));
+
+  step('Pipeline Community: return later, update and withdraw consent');
+  await alicePage.reload();
+  await alicePage.locator('.home').waitFor();
+  await alicePage.waitForTimeout(800);
+  ok(await alicePage.getByRole('heading', { name: 'You’re just getting connected.' }).count() === 0, 'screen not shown again after joining');
+  await alicePage.getByLabel('Your data').click();
+  const row = alicePage.locator('[data-testid="community-row"]');
+  ok((await row.innerText()).includes('alice@test.dev'), 'Your data shows the community signup');
+  await row.getByRole('button', { name: 'Manage' }).click();
+  await alicePage.getByRole('heading', { name: 'Your preferences' }).waitFor();
+  ok(await checks.nth(0).isChecked() && !(await checks.nth(1).isChecked()), 'manage screen reflects current preferences');
+  await alicePage.locator('.waitlist-overlay .check').nth(1).click();
+  await alicePage.getByRole('button', { name: 'Save preferences' }).click();
+  await alicePage.getByRole('heading', { name: 'Preferences saved.' }).waitFor();
+  await alicePage.getByRole('button', { name: 'Continue' }).click();
+  [cs] = await q(`select * from community_signups where participant_id = $1`, [alice.id]);
+  ok(cs.research_invites && cs.updates && cs.updates_at && cs.updates_text === 'Send me Pipeline updates and early access.', 'both: updates consent added with its own timestamp');
+  const firstResearchAt = cs.research_invites_at.getTime();
+  await alicePage.getByLabel('Your data').click();
+  await row.getByRole('button', { name: 'Manage' }).click();
+  await alicePage.getByRole('button', { name: 'Unsubscribe from everything' }).click();
+  await alicePage.getByRole('heading', { name: 'You’re unsubscribed.' }).waitFor();
+  await alicePage.getByRole('button', { name: 'Continue' }).click();
+  [cs] = await q(`select * from community_signups where participant_id = $1`, [alice.id]);
+  ok(!cs.research_invites && !cs.updates && cs.unsubscribed_at && cs.research_invites_withdrawn_at && cs.updates_withdrawn_at, 'unsubscribe withdraws both, with timestamps');
+  ok(cs.research_invites_at.getTime() === firstResearchAt, 'original consent record kept for audit');
+  await alicePage.locator('.early-card:not(.save-card)').waitFor();
+  ok(true, 'community card returns after unsubscribing');
+  await alicePage.locator('.early-card:not(.save-card)').click();
+  await alicePage.getByRole('heading', { name: 'You’re just getting connected.' }).waitFor();
+  ok((await alicePage.getByLabel('Your email address').inputValue()) === 'alice@test.dev', 'rejoin pre-fills the email');
+  await alicePage.locator('.waitlist-overlay .check').nth(1).click();
+  await joinBtn.click();
+  await alicePage.getByRole('heading', { name: 'You’re in.' }).waitFor();
+  await alicePage.getByRole('button', { name: 'Continue' }).click();
+  [cs] = await q(`select * from community_signups where participant_id = $1`, [alice.id]);
+  ok(!cs.research_invites && cs.updates && cs.unsubscribed_at === null, 'only updates (rejoined)');
+  ok((await q(`select count(*)::int n from community_signups where participant_id = $1`, [alice.id]))[0].n === 1, 'still one row per participant');
+  {
+    const jwt = await jwtOf(alicePage);
+    ok((await rpcAs(jwt, 'join_community', { p_email: 'alice@test.dev', p_research_invites: false, p_updates: false })).body.error === 'no_preference', 'API: neither selected is refused (nothing subscribed)');
+    ok((await rpcAs(jwt, 'join_community', { p_email: 'not-an-email', p_research_invites: true, p_updates: false })).body.error === 'invalid_email', 'API: invalid email refused');
+    ok((await rpcAs(null, 'join_community', { p_email: 'x@test.dev', p_research_invites: true, p_updates: true })).status >= 400, 'API: anonymous visitors cannot sign up');
+    [cs] = await q(`select * from community_signups where participant_id = $1`, [alice.id]);
+    ok(!cs.research_invites && cs.updates, 'refused calls changed nothing');
+  }
 
   step('Abuse cases (server-side)');
   const aliceJwt = await jwtOf(alicePage);
@@ -495,7 +556,7 @@ try {
   const bobAfter = await byName('Bob');
   ok(bobAfter.id === bob.id && bobAfter.parent_id === alice.id && bobAfter.invitation_id === bob.invitation_id, 'participant id, parent and invitation unchanged');
   ok((await q(`select count(*)::int n from invitations where sender_id = $1`, [bob.id]))[0].n === 1, 'referral links unchanged');
-  ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [bob.id]))[0].n === 0, 'saving the network does not join the email list');
+  ok((await q(`select count(*)::int n from community_signups where participant_id = $1`, [bob.id]))[0].n === 0, 'saving the network does not join the community');
   // The same number can't be attached to a second participant.
   const aliceJwt2 = await jwtOf(alicePage);
   const dup = await fetch(`${API}/auth/v1/user`, { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${aliceJwt2}` }, body: JSON.stringify({ phone: '+16175550142' }) });
@@ -547,21 +608,47 @@ try {
   await reused.getByRole('heading', { name: 'This invitation has already been used.' }).waitFor();
   ok(true, 'an accepted link cannot be reused');
 
-  step('Dave takes the feedback path, then declines the waitlist');
+  step('Dave takes the feedback path, skips the community, joins later');
   await davePage.getByText('Answer one question instead').click();
   await davePage.getByLabel('Your answer').fill('Not wanting to impose.');
   await davePage.getByRole('button', { name: 'Submit and reveal' }).click();
   await continueReveal(davePage);
   await continueReveal(davePage);
-  await davePage.getByRole('heading', { name: 'Be first in.' }).waitFor();
-  await davePage.getByRole('button', { name: 'Not now' }).click();
+  await davePage.getByRole('heading', { name: 'You’re just getting connected.' }).waitFor();
+  await davePage.getByRole('button', { name: 'Maybe later' }).click();
   await davePage.locator('.early-card:not(.save-card)').waitFor();
   await davePage.waitForTimeout(600);
-  await shot(davePage, '10-home-early-access-card');
-  ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [dave.id]))[0].n === 0, '"Not now" stores nothing');
+  await shot(davePage, '10-home-community-card');
+  ok((await q(`select count(*)::int n from community_signups where participant_id = $1`, [dave.id]))[0].n === 0, '"Maybe later" stores no email or consent');
+  ok((await byName('Dave')).community_prompt_dismissed_at, 'skip remembered on the server');
+  ok(await davePage.locator('.home').count() === 1 && (await byName('Dave')).reveal_level === 2, 'skipping does not affect participation (back on the dashboard)');
   await davePage.reload();
   await davePage.locator('.home').waitFor();
-  ok(await davePage.getByRole('heading', { name: 'Be first in.' }).count() === 0, 'waitlist screen does not nag again');
+  await davePage.waitForTimeout(800);
+  ok(await davePage.getByRole('heading', { name: 'You’re just getting connected.' }).count() === 0, 'community screen does not reappear after "Maybe later"');
+  {
+    // Duplicate: someone else's address changes nothing and reveals nothing.
+    const before = (await q(`select * from community_signups where participant_id = $1`, [alice.id]))[0];
+    const r2 = await rpcAs(await jwtOf(davePage), 'join_community', { p_email: 'ALICE@test.dev ', p_research_invites: true, p_updates: true });
+    const after = (await q(`select * from community_signups where participant_id = $1`, [alice.id]))[0];
+    ok(r2.body.ok === true, 'duplicate email: generic response (no enumeration)');
+    ok(after.research_invites === before.research_invites && after.updated_at.getTime() === before.updated_at.getTime(), 'duplicate email does not modify the existing signup');
+    ok((await q(`select count(*)::int n from community_signups where email = 'alice@test.dev'`))[0].n === 1
+      && (await q(`select count(*)::int n from community_signups where participant_id = $1`, [dave.id]))[0].n === 0, 'no duplicate subscription created');
+  }
+  await davePage.locator('.early-card:not(.save-card)').click();
+  await davePage.getByLabel('Your email address').fill('dave@test.dev');
+  await davePage.locator('.waitlist-overlay .check').nth(0).click();
+  await davePage.locator('.waitlist-overlay .check').nth(1).click();
+  await davePage.getByRole('button', { name: 'Join the Pipeline Community' }).click();
+  await davePage.getByRole('heading', { name: 'You’re in.' }).waitFor();
+  await davePage.getByRole('button', { name: 'Continue' }).click();
+  {
+    const [d] = await q(`select * from community_signups where participant_id = $1`, [dave.id]);
+    ok(d && d.research_invites && d.updates && d.research_invites_at && d.updates_at, 'both preferences, each timestamped (joined later from the dashboard)');
+    const again = await rpcAs(await jwtOf(davePage), 'join_community', { p_email: 'dave@test.dev', p_research_invites: true, p_updates: true });
+    ok(again.body.ok && (await q(`select count(*)::int n from community_signups where email = 'dave@test.dev'`))[0].n === 1, 'resubmitting the same email does not duplicate');
+  }
 
   step('Legacy participant keeps working');
   const erinPage = await newPhone();
@@ -579,8 +666,8 @@ try {
   step('Rate limits');
   const daveJwt = await jwtOf(davePage);
   const results = [];
-  for (let i = 0; i < 11; i++) results.push((await rpcAs(daveJwt, 'join_waitlist', { p_email: `d${i}@test.dev` }, '9.9.9.9')).body);
-  ok(results.slice(0, 10).every((b) => b.ok) && results[10].message === 'rate_limited', 'waitlist: 11th signup from one IP within an hour is refused');
+  for (let i = 0; i < 21; i++) results.push((await rpcAs(daveJwt, 'join_community', { p_email: 'dave@test.dev', p_research_invites: true, p_updates: true }, '9.9.9.9')).body);
+  ok(results.slice(0, 20).every((b) => b.ok) && results[20].message === 'rate_limited', 'community: 21st signup from one IP within an hour is refused');
   await q(`update experiment_settings set value = jsonb_set(value, '{joins_per_ip_hour}', '0') where key = 'rate_limits'`);
   const anon = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
   r = await rpcAs(anon, 'accept_invitation', { p_token: seeds[2].token, p_display_name: 'Bot', p_research_consent: true, p_device: 'bot-1' }, '7.7.7.7');
@@ -726,6 +813,17 @@ try {
   ok((await asUser(null, 'select * from participants')).error, 'anon cannot select participants');
   ok((await asUser(null, 'select * from waitlist')).error, 'anon cannot select waitlist');
   ok((await asUser(bob.user_id, 'select * from waitlist')).length === 0, 'participants cannot see others’ waitlist rows');
+  ok((await asUser(null, 'select * from community_signups')).error, 'anon cannot select community signups');
+  ok((await asUser(alice.user_id, 'select * from community_signups')).error, 'participants cannot read the signups table, even their own row');
+  ok((await asUser(alice.user_id, `insert into community_signups (participant_id, email) values ('${bob.id}', 'x@test.dev')`)).error, 'no direct writes to signups');
+  {
+    const jwt = await jwtOf(alicePage);
+    ok((await rpcAs(jwt, 'admin_community_stats')).body.message === 'forbidden', 'community stats are admin-only');
+    ok((await rpcAs(jwt, 'admin_export', { p_kind: 'community' })).body.message === 'forbidden', 'community export is admin-only');
+    ok((await rpcAs(jwt, 'admin_export', { p_kind: 'research_pool' })).body.message === 'forbidden', 'research pool export is admin-only');
+    const mine = (await rpcAs(jwt, 'get_my_account')).body;
+    ok(mine.community?.email === 'alice@test.dev' && !JSON.stringify(mine).includes('dave@test.dev'), 'participants see only their own signup');
+  }
   ok((await asUser(bob.user_id, 'select * from rate_events')).error, 'rate limit records are private');
   ok((await asUser(bob.user_id, 'select id from participants')).length === 1, 'participant sees only their own row');
   ok((await asUser(bob.user_id, `update participants set reveal_level = 2`)).error, 'no direct writes');
@@ -739,10 +837,15 @@ try {
   const acct = (await rpcAs(adminJwt, 'admin_account_stats')).body;
   ok(ov.totals.participants === 6 && ov.totals.max_depth === 3, 'totals: 6 participants, depth 3');
   ok(acct.linked_emails === 1 && acct.linked_phones === 1 && acct.anonymous === 4, `accounts: 1 email, 1 phone, 4 anonymous`);
-  ok(acct.waitlist === 2, 'waitlist count (Alice, Dave via API)');
+  const cst = (await rpcAs(adminJwt, 'admin_community_stats')).body;
+  ok(cst.total === 2 && cst.research_invites === 1 && cst.updates === 2 && cst.both === 1, `community stats: ${cst.total} signups, ${cst.research_invites} future experiments, ${cst.updates} updates`);
+  ok(cst.eligible >= 2 && cst.by_generation.some((g) => g.depth === 1 && g.signups === 1) && cst.by_generation.some((g) => g.depth === 3 && g.signups === 1), 'community conversion base and signups by generation');
   ok(acct.shared === 3 && acct.shared_by_copy === 3, `admin: ${acct.shared} links shared since tracking began (legacy excluded)`);
   ok((await adminPage.locator('.funnel').innerText()).includes('Shared'), 'funnel shows the Shared step');
-  ok((await adminPage.locator('.tiles').first().innerText()).includes('Waitlist'), 'dashboard shows the waitlist tile');
+  ok((await adminPage.locator('.tiles').first().innerText()).includes('Community'), 'dashboard shows the community tile');
+  ok(await adminPage.getByRole('heading', { name: 'Pipeline Community' }).isVisible(), 'admin: Pipeline Community section');
+  await adminPage.getByRole('heading', { name: 'Pipeline Community' }).scrollIntoViewIfNeeded();
+  await adminPage.screenshot({ path: path.join(SHOTS, '12c-admin-community.png') });
   ok(!JSON.stringify(await adminPage.locator('.settings').innerText()).includes('hash_salt'), 'salt hidden from the settings panel');
   ok(await adminPage.getByRole('heading', { name: 'Names & moderation' }).isVisible(), 'admin: Names & moderation section');
   const peopleTable = adminPage.locator('.moderation table');
@@ -757,10 +860,16 @@ try {
   await adminPage.screenshot({ path: path.join(SHOTS, '12b-admin-moderation.png') });
   const [download] = await Promise.all([
     adminPage.waitForEvent('download'),
-    adminPage.getByRole('button', { name: 'waitlist.csv' }).click(),
+    adminPage.getByRole('button', { name: 'community.csv' }).click(),
   ]);
   const csv = fs.readFileSync(await download.path(), 'utf8');
-  ok(csv.startsWith('email,') && csv.trim().split('\n').length === 3, 'waitlist CSV export (2 rows)');
+  ok(['participant_id', 'depth', 'email', 'research_invites', 'research_invites_at', 'research_invites_withdrawn_at', 'updates', 'updates_at', 'updates_withdrawn_at', 'signed_up_at', 'unsubscribed_at'].every((c) => csv.split('\n')[0].split(',').includes(c)) && csv.trim().split('\n').length === 3, 'community CSV export (2 rows, consents + timestamps)');
+  const [poolDl] = await Promise.all([
+    adminPage.waitForEvent('download'),
+    adminPage.getByRole('button', { name: 'research_pool.csv' }).click(),
+  ]);
+  const pool = fs.readFileSync(await poolDl.path(), 'utf8').trim().split('\n');
+  ok(pool.length === 2 && pool[0].split(',').sort().join() === 'depth,email,participant_id,research_invites_at' && pool[1].includes('dave@test.dev'), 'research pool: only people who agreed to future experiments, no relationship data');
 
   step('Right to erasure');
   await davePage.getByLabel('Your data').click();
@@ -771,6 +880,7 @@ try {
   ok(tomb.display_name === null && tomb.user_id === null && tomb.device_hash === null && tomb.deleted_at, 'personal data erased, anonymous node kept');
   ok(tomb.invited_name === null && tomb.confirmed_name === null, 'invited and confirmed names erased too');
   ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [dave.id]))[0].n === 0, 'waitlist entry deleted');
+  ok((await q(`select count(*)::int n from community_signups where participant_id = $1`, [dave.id]))[0].n === 0, 'community signup deleted');
   ok(!(await authUser(dave.user_id)), 'anonymous auth user removed');
 
 

@@ -27,6 +27,7 @@ for (const f of [
   'supabase/migrations/006_circular_strength.sql',
   'supabase/migrations/007_invited_names.sql',
   'supabase/migrations/008_live_invitation_tracking.sql',
+  'supabase/migrations/009_pipeline_community.sql',
 ]) {
   execSync(`psql "${DB}" -v ON_ERROR_STOP=1 -q -f ${path.join(root, f)}`);
 }

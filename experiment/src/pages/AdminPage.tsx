@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, inviteUrl, type AdminAccountStats, type AdminMethodStats, type AdminOverview } from '../lib/api';
+import { api, inviteUrl, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { navigate } from '../lib/router';
 import { labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
@@ -25,15 +25,22 @@ export function AdminPage({ session }: { session: Session | null }) {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [acct, setAcct] = useState<AdminAccountStats | null>(null);
   const [mstats, setMstats] = useState<AdminMethodStats | null>(null);
+  const [cstats, setCstats] = useState<AdminCommunityStats | null>(null);
   const [version, setVersion] = useState(0); // bumps on every refresh so sub-panels reload too
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [o, a, m] = await Promise.all([api.adminOverview(), api.adminAccountStats(), api.adminMethodStats().catch(() => null)]);
+      const [o, a, m, c] = await Promise.all([
+        api.adminOverview(),
+        api.adminAccountStats(),
+        api.adminMethodStats().catch(() => null),
+        api.adminCommunityStats().catch(() => null),
+      ]);
       setData(o);
       setAcct(a);
       setMstats(m);
+      setCstats(c);
       setVersion((n) => n + 1);
       setError(null);
     } catch (e) {
@@ -96,7 +103,7 @@ export function AdminPage({ session }: { session: Session | null }) {
         />
         <Tile label="Tree depth" value={t.max_depth} sub="generations" />
         <Tile label="Referral conversion" value={pct(inv.accepted, inv.generated)} sub={`${inv.accepted} of ${inv.generated} links`} />
-        <Tile label="Waitlist" value={acct?.waitlist ?? 0} sub={pct(acct?.waitlist ?? 0, t.participants)} />
+        <Tile label="Community" value={cstats?.total ?? 0} sub={`${pct(cstats?.total ?? 0, cstats?.eligible ?? 0)} of mission reveals`} />
         <Tile label="Same-network joins" value={acct?.flagged_same_network ?? 0} sub="flagged for review" />
         <Tile label="Feedback answers" value={t.feedback} sub={`${t.deleted} deleted accounts`} />
       </section>
@@ -177,7 +184,9 @@ export function AdminPage({ session }: { session: Session | null }) {
         <Legend />
       </Panel>
 
-      <Panel title="Research exports" note="CSV. Only the participants and waitlist files contain email addresses.">
+      {cstats && <CommunityPanel stats={cstats} />}
+
+      <Panel title="Research exports" note="CSV. Only the participants, waitlist and community files contain email addresses.">
         <div className="export-row">
           {['participants', 'invitations', 'classifications', 'classification_events', 'reciprocal', 'feedback', 'waitlist'].map((k) => (
             <ExportButton key={k} kind={k} />
@@ -399,6 +408,32 @@ function SeedPanel({ seeds, onChanged }: { seeds: AdminOverview['seeds']; onChan
           />
         </>
       )}
+    </Panel>
+  );
+}
+
+/** Optional Pipeline Community signups (after the mission reveal). Emails only via CSV. */
+function CommunityPanel({ stats: c }: { stats: AdminCommunityStats }) {
+  return (
+    <Panel
+      title="Pipeline Community"
+      note="Optional signup shown after the mission reveal. Conversion = active signups ÷ participants who reached the mission. research_pool.csv lists only people who agreed to future experiments (id, email, generation; no relationship data)."
+    >
+      <div className="tiles community-tiles">
+        <Tile label="Signups" value={c.total} sub={`${c.both} chose both`} />
+        <Tile label="Future experiments" value={c.research_invites} sub={pct(c.research_invites, c.total)} />
+        <Tile label="Updates" value={c.updates} sub={pct(c.updates, c.total)} />
+        <Tile label="Conversion" value={pct(c.total, c.eligible)} sub={`${c.total} of ${c.eligible} reached mission · ${pct(c.total, c.participants)} of all`} />
+        <Tile label="Maybe later" value={c.dismissed} sub={`${c.unsubscribed} unsubscribed`} />
+      </div>
+      <Table
+        head={['Gen', 'Reached mission', 'Signups', 'Conversion']}
+        rows={c.by_generation.map((g) => [g.depth, g.eligible, g.signups, pct(g.signups, g.eligible)])}
+      />
+      <div className="export-row">
+        <ExportButton kind="community" />
+        <ExportButton kind="research_pool" />
+      </div>
     </Panel>
   );
 }
