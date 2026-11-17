@@ -174,7 +174,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
     return (
       <Screen className="center">
         <p className="eyebrow fade-up">First, one question</p>
-        <Classifier method={info.method} name={senderName} onSelect={onClassified} />
+        <Classifier method={info.method} name={senderName} onSelect={onClassified} track={{ direction: 'inbound', token }} />
       </Screen>
     );
   }

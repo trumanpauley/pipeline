@@ -465,3 +465,43 @@ tr:last-child td { border-bottom: 0; }
 .moderation td.actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .moderation tr.is-suspended td:first-child { text-decoration: line-through; color: var(--text-3); }
 .suspended-pill { margin-left: 8px; }
+
+/* ---------- Experiment D: circular strength slider ---------- */
+.circular { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
+.circular-question { align-self: stretch; margin-bottom: 4px; }
+.circular-dial { position: relative; width: min(80vw, 300px); aspect-ratio: 1; }
+.circular-svg { position: relative; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; overflow: visible; }
+/* Soft halo behind the dial that brightens with the rating. */
+.circular-halo {
+  position: absolute; inset: 12%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(138, 180, 255, calc(0.04 + var(--g) * 0.16)) 0%, transparent 70%);
+  filter: blur(calc(6px + var(--g) * 10px));
+}
+.circular-track { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-width: 3; }
+.circular-progress {
+  fill: none; stroke: rgba(255, 255, 255, calc(0.55 + var(--g) * 0.45)); stroke-width: 4; stroke-linecap: round;
+  filter: drop-shadow(0 0 calc(1px + var(--g) * 7px) rgba(138, 180, 255, calc(0.35 + var(--g) * 0.45)));
+}
+.circular-node-hit { fill: transparent; cursor: grab; }
+.circular-dial.is-dragging .circular-node-hit { cursor: grabbing; }
+.circular-node {
+  fill: var(--text); pointer-events: none;
+  filter: drop-shadow(0 0 calc(4px + var(--g) * 8px) rgba(138, 180, 255, calc(0.45 + var(--g) * 0.45)));
+  transition: r 0.2s var(--ease);
+}
+.circular-dial.is-dragging .circular-node { r: 13; }
+/* Until first touched, the node breathes gently to show it can be moved. */
+.circular-dial:not(.is-touched) .circular-node { animation: nodeBreathe 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes nodeBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+.circular-readout {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; pointer-events: none;
+}
+.circular-pct { font-size: clamp(44px, 14vw, 60px); font-weight: 620; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.circular-pct small { font-size: 0.45em; font-weight: 500; color: var(--text-2); margin-left: 2px; }
+.circular-label { font-size: 15px; color: var(--text-2); min-height: 1.4em; }
+.circular-hint { margin: 0; font-size: 13px; color: var(--text-3); transition: opacity 0.4s var(--ease); }
+.circular-hint.is-hidden { opacity: 0; }
+.circular .btn { max-width: 420px; }
+/* Keyboard focus on the hidden range input shows as a ring around the dial. */
+.circular-dial:has(.circular-input:focus-visible) .circular-track { stroke: var(--accent); stroke-width: 3.5; }

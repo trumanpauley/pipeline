@@ -9,10 +9,11 @@ import m002 from '../../supabase/migrations/002_anonymous_onboarding.sql?raw';
 import m003 from '../../supabase/migrations/003_share_tracking.sql?raw';
 import m004 from '../../supabase/migrations/004_phone_ready.sql?raw';
 import m005 from '../../supabase/migrations/005_name_moderation.sql?raw';
+import m006 from '../../supabase/migrations/006_circular_strength.sql?raw';
 
 const CODE = '123456';
 const ADMIN = 'admin@demo.dev';
-const SQL = [shimSql, m001, m002, m003, m004, m005];
+const SQL = [shimSql, m001, m002, m003, m004, m005, m006];
 // A new schema gets a new database, so an old demo can't break a newer build.
 const DB_KEY = `pipeline-demo-${SQL.reduce((n, s) => n + s.length, 0)}`;
 

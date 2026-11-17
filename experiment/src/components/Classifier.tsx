@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { api } from '../lib/api';
+import { CircularSlider } from './CircularSlider';
 import { methodDef } from '../config/experiment';
 
 /**
@@ -9,14 +11,42 @@ export function Classifier({
   method,
   name,
   onSelect,
+  track,
 }: {
   method: string;
   name: string;
   onSelect: (value: string, responseMs: number) => void;
+  /** Research telemetry: which question this is (rating the inviter, or someone being invited). */
+  track?: { direction: 'inbound' | 'outbound'; token?: string };
 }) {
   const def = methodDef(method);
   const started = useRef(performance.now());
   const [chosen, setChosen] = useState<string | null>(null);
+
+  // Record that the question was shown (for completion / abandonment rates),
+  // exactly once per showing (React's dev mode runs mount effects twice).
+  const logged = useRef(false);
+  useEffect(() => {
+    if (!track || logged.current) return;
+    logged.current = true;
+    void api.logClassificationEvent(track.direction, 'shown', track.token).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (def.layout === 'circular') {
+    return (
+      <div className="classifier layout-circular" data-method={def.key}>
+        <CircularSlider
+          name={name}
+          question={def.question(name)}
+          onInteract={(ms) => {
+            if (track) void api.logClassificationEvent(track.direction, 'interacted', track.token, ms).catch(() => undefined);
+          }}
+          onConfirm={(value, ms) => onSelect(String(value), ms)}
+        />
+      </div>
+    );
+  }
 
   const choose = (value: string) => {
     if (chosen) return;
