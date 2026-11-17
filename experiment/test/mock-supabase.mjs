@@ -7,6 +7,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import pg from 'pg';
+import { WebSocketServer } from 'ws';
 
 const SECRET = 'local-test-secret';
 const b64u = (b) => Buffer.from(b).toString('base64url');
@@ -199,7 +200,7 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
           await client.query(`set local role ${role}`);
           await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)]);
           const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-          await client.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-forwarded-for': ip })]);
+          await client.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-forwarded-for': ip, 'user-agent': req.headers['user-agent'] ?? '' })]);
           const r = await client.query(`select public.${m[1]}(${args}) as result`, keys.map((k) => body[k]));
           await client.query('commit');
           return send(200, r.rows[0].result);
@@ -246,7 +247,89 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
     }
   });
 
+  // ---------------- Realtime (postgres_changes) ----------------
+  // A minimal stand-in for Supabase Realtime: Phoenix protocol v2 over
+  // WebSocket, fed by a NOTIFY trigger on public.invitations. Like Supabase,
+  // it only delivers rows the subscriber may read (RLS: invitations they sent).
+  const wss = new WebSocketServer({ server, path: '/realtime/v1/websocket' });
+  const subs = new Set(); // { ws, topic, joinRef, participantId, bindings: [{ id, event, table, filter }] }
+  let bindingId = 1;
+  const sendMsg = (ws, joinRef, ref, topic, event, payload) => {
+    if (ws.readyState === 1) ws.send(JSON.stringify([joinRef, ref, topic, event, payload]));
+  };
+  const participantFor = async (token) => {
+    const claims = verifyJwt(token);
+    if (!claims?.sub) return null;
+    return (await pool.query(`select id from public.participants where user_id = $1 and deleted_at is null`, [claims.sub])).rows[0]?.id ?? null;
+  };
+  wss.on('connection', (ws) => {
+    ws.on('message', async (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw.toString()); } catch { return; }
+      const [joinRef, ref, topic, event, payload] = msg;
+      if (topic === 'phoenix' && event === 'heartbeat') return sendMsg(ws, null, ref, 'phoenix', 'phx_reply', { status: 'ok', response: {} });
+      if (event === 'phx_join') {
+        const bindings = (payload?.config?.postgres_changes ?? []).map((b) => ({ ...b, id: bindingId++ }));
+        const sub = { ws, topic, joinRef, participantId: await participantFor(payload?.access_token), bindings };
+        for (const old of subs) if (old.ws === ws && old.topic === topic) subs.delete(old);
+        subs.add(sub);
+        return sendMsg(ws, joinRef, ref, topic, 'phx_reply', { status: 'ok', response: { postgres_changes: bindings } });
+      }
+      if (event === 'access_token') {
+        for (const sub of subs) if (sub.ws === ws && sub.topic === topic) sub.participantId = await participantFor(payload?.access_token);
+        return sendMsg(ws, joinRef, ref, topic, 'phx_reply', { status: 'ok', response: {} });
+      }
+      if (event === 'phx_leave') {
+        for (const sub of subs) if (sub.ws === ws && sub.topic === topic) subs.delete(sub);
+        return sendMsg(ws, joinRef, ref, topic, 'phx_reply', { status: 'ok', response: {} });
+      }
+    });
+    ws.on('close', () => { for (const sub of subs) if (sub.ws === ws) subs.delete(sub); });
+  });
+  const matches = (filter, record) => {
+    if (!filter) return true;
+    const m = filter.match(/^(\w+)=eq\.(.+)$/);
+    return m ? String(record[m[1]]) === m[2] : false;
+  };
+  const listener = new pg.Client({ connectionString });
+  const realtimeReady = (async () => {
+    await listener.connect();
+    await listener.query(`
+      create or replace function public.px_test_realtime_notify() returns trigger language plpgsql as $f$
+      begin
+        perform pg_notify('px_realtime', json_build_object('table', tg_table_name, 'type', tg_op,
+          'record', row_to_json(new), 'old_record', case when tg_op = 'UPDATE' then row_to_json(old) end)::text);
+        return new;
+      end $f$;
+      drop trigger if exists px_test_realtime on public.invitations;
+      create trigger px_test_realtime after insert or update on public.invitations
+        for each row execute function public.px_test_realtime_notify();`).catch(() => {});
+    await listener.query('listen px_realtime');
+    listener.on('notification', (n) => {
+      const change = JSON.parse(n.payload);
+      for (const sub of subs) {
+        // RLS: invitations are readable only by their sender.
+        if (!sub.participantId || change.record.sender_id !== sub.participantId) continue;
+        const ids = sub.bindings
+          .filter((b) => b.table === change.table && (b.event === '*' || b.event === change.type) && matches(b.filter, change.record))
+          .map((b) => b.id);
+        if (!ids.length) continue;
+        sendMsg(sub.ws, sub.joinRef, null, sub.topic, 'postgres_changes', {
+          ids,
+          data: {
+            schema: 'public', table: change.table, commit_timestamp: new Date().toISOString(), type: change.type,
+            record: change.record, old_record: change.old_record ?? {},
+            columns: Object.keys(change.record).map((name) => ({ name, type: 'text' })), errors: null,
+          },
+        });
+      }
+    });
+  })();
+
   return new Promise((resolve) =>
-    server.listen(port, () => resolve({ server, pool, close: () => { server.close(); return pool.end(); } })),
+    server.listen(port, async () => {
+      await realtimeReady;
+      resolve({ server, pool, close: async () => { wss.close(); server.close(); await listener.end(); return pool.end(); } });
+    }),
   );
 }

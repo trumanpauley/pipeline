@@ -78,7 +78,7 @@ export interface AdminAccountStats {
 }
 
 export interface OpenResult {
-  state: 'ok' | 'invalid' | 'used' | 'own' | 'joined' | 'rate_limited';
+  state: 'ok' | 'invalid' | 'used' | 'own' | 'joined' | 'rate_limited' | 'preview';
   sender_name?: string | null;
   /** First name the inviter gave for this invitation (seed links have none). */
   invited_name?: string | null;
@@ -108,6 +108,7 @@ export interface BranchNode {
 export interface MyState {
   is_admin: boolean;
   participant: null | {
+    id?: string;
     display_name: string;
     email: string;
     method: MethodKey;
@@ -169,7 +170,8 @@ export async function rpc<T>(fn: string, args?: Record<string, unknown>): Promis
 }
 
 export const api = {
-  openInvitation: (token: string) => rpc<OpenResult>('open_invitation', { p_token: token }),
+  /** The device id lets the server recognise the sender's own browser (never counted as an open). */
+  openInvitation: (token: string, device?: string) => rpc<OpenResult>('open_invitation', { p_token: token, p_device: device ?? null }),
   answerInvitation: (token: string, value: string, ms: number) =>
     rpc('answer_invitation', { p_token: token, p_value: value, p_response_ms: ms }),
   acceptInvitation: (token: string, name: string, research: boolean, device: string) =>
