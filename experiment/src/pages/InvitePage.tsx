@@ -176,9 +176,16 @@ export function InvitePage({ token, session }: { token: string; session: Session
   // join
   return (
     <Screen className="center">
-      <form className="stack fade-up" onSubmit={submitJoin}>
-        <p className="eyebrow">Thanks. Now it’s your turn.</p>
-        <h1 className="title">Invite two people. Find out what this is.</h1>
+      <form className="stack join-form" onSubmit={submitJoin}>
+        <header className="join-intro">
+          <p className="stealth">
+            <span className="stealth-dot" aria-hidden="true" />
+            {COPY.joinEyebrow}
+          </p>
+          <h1 className="join-title">{COPY.joinTitle}</h1>
+          <p className="muted join-body">{COPY.joinBody}</p>
+        </header>
+        <div className="join-fields stack">
         <input
           className="input"
           placeholder="First name"
@@ -191,7 +198,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
         {session?.user.email && <p className="muted small">Signed in as {session.user.email}</p>}
         <div className="consents">
           <Check checked={research} onChange={setResearch}>
-            I agree to take part in this research.{' '}
+            {COPY.joinConsent}{' '}
             <button type="button" className="link inline" onClick={() => setShowData((v) => !v)}>
               How data is used
             </button>
@@ -205,10 +212,12 @@ export function InvitePage({ token, session }: { token: string; session: Session
           )}
         </div>
         <ErrorText error={error} />
-        <Button type="submit" busy={busy}>
+        {/* Enabled once there's a first name and the research consent is ticked. */}
+        <Button type="submit" busy={busy} disabled={!name.trim() || !research}>
           Continue
         </Button>
-        <p className="fine text-center">No account needed. Your name is shown only to people you invite.</p>
+        <p className="fine text-center">{COPY.joinFooter}</p>
+        </div>
       </form>
     </Screen>
   );

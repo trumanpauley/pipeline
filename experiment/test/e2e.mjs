@@ -156,7 +156,8 @@ const answer = (page, scope = '') =>
   page.locator(`${scope} .classifier .option, ${scope} .classifier .scale-dot`).first().click();
 
 /** Landing → relationship question → name + consent. Returns at the join result. */
-async function startJoin(page, link, name, { shots = false } = {}) {
+const CONSENT = 'I agree to take part in this research on how people are connected.';
+async function startJoin(page, link, name, { shots = false, checks = false } = {}) {
   await page.goto(link);
   await page.getByRole('heading', { name: /invited you\.$/ }).waitFor();
   if (shots) await page.waitForTimeout(1600), await shot(page, `01-landing`);
@@ -165,9 +166,31 @@ async function startJoin(page, link, name, { shots = false } = {}) {
   const method = await page.locator('.classifier').getAttribute('data-method');
   if (shots) await page.waitForTimeout(600), await shot(page, `02-question-${method}`);
   await answer(page);
-  await page.getByPlaceholder('First name').fill(name);
-  await page.getByText('I agree to take part in this research.').click();
-  if (shots) await shot(page, `03-name-consent`);
+  if (checks) {
+    // First-name + consent page ("stealth mode")
+    await page.getByText('We’re in stealth mode.').waitFor();
+    if (shots) await page.waitForTimeout(1500), await shot(page, `03-name-consent-empty`);
+    ok(await page.getByRole('heading', { name: 'The more you connect, the more we reveal.' }).isVisible(), 'join page: new headline');
+    ok(await page.getByText('Participate in our experiment to discover our name and what we’re building.').isVisible(), 'join page: supporting text');
+    ok(await page.getByText('No account needed.', { exact: true }).isVisible(), 'join page: "No account needed." footer');
+    ok(await page.getByText('Invite two people. Find out what this is.').count() === 0, 'old headline removed');
+    const cont = page.getByRole('button', { name: 'Continue' });
+    ok(await cont.isDisabled(), 'Continue disabled with no name and no consent');
+    await page.getByPlaceholder('First name').fill(name);
+    ok(await cont.isDisabled(), 'Continue still disabled with a name but no consent');
+    await page.getByPlaceholder('First name').fill('   ');
+    await page.getByText(CONSENT).click();
+    ok(await cont.isDisabled(), 'Continue disabled with consent but a blank name');
+    await page.getByRole('button', { name: 'How data is used' }).click();
+    ok(await page.getByText('We record how people describe their connections and how invitations spread.').isVisible(), 'consent details still accessible');
+    ok(!(await visibleBrand(page)).includes('Pipeline'), 'join page: no "Pipeline" anywhere (page, tab, share tags)');
+    await page.getByPlaceholder('First name').fill(name);
+    ok(await cont.isEnabled(), 'Continue enabled with a name and consent');
+    if (shots) await shot(page, `03-name-consent`);
+  } else {
+    await page.getByPlaceholder('First name').fill(name);
+    await page.getByText(CONSENT).click();
+  }
   await page.getByRole('button', { name: 'Continue' }).click();
   return method;
 }
@@ -226,7 +249,7 @@ try {
   // ---------- generation 1 ----------
   step('Generation 1: Alice joins with only a name and consent');
   const alicePage = await newPhone();
-  const a = await joinViaLink(alicePage, `${APP}/i/${seeds[0].token}`, 'Alice', { shots: true });
+  const a = await joinViaLink(alicePage, `${APP}/i/${seeds[0].token}`, 'Alice', { shots: true, checks: true });
   ok(await alicePage.getByPlaceholder('Email').count() === 0, 'no email field before the referral stage');
   console.log(`    journey time (automated): ${a.seconds.toFixed(1)}s`);
   await alicePage.waitForTimeout(800);
