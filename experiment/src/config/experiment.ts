@@ -80,6 +80,12 @@ export const COPY = {
   landingFollow: 'Take part in our experiment to learn more about us.',
   landingMeta: 'Under two minutes · Voluntary',
   shareText: 'A small student experiment about how people are connected. You’re invited:',
+  // First-name + consent page (after the relationship question). Never name the company here.
+  joinEyebrow: 'We’re in stealth mode.',
+  joinTitle: 'The more you connect, the more we reveal.',
+  joinBody: 'Participate in our experiment to discover our name and what we’re building.',
+  joinConsent: 'I agree to take part in this research on how people are connected.',
+  joinFooter: 'No account needed.',
   research: [
     'We record how people describe their connections and how invitations spread.',
     'Analysis is aggregate. Nobody sees how you described them.',

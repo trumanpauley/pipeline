@@ -104,7 +104,7 @@ async function keyboardCheck(browser) {
   await p.getByRole('button', { name: 'Enter the Experiment' }).click({ timeout: 60000 });
   await p.locator('.classifier .option, .classifier .scale-dot').first().click();
   await p.getByPlaceholder('First name').waitFor();
-  await p.getByText('I agree to take part in this research.').click();
+  await p.getByText('I agree to take part in this research on how people are connected.').click();
   await check('join-name', p.getByPlaceholder('First name'), p.getByRole('button', { name: 'Continue' }));
   await p.getByPlaceholder('First name').fill('Maya');
   await p.getByRole('button', { name: 'Continue' }).click();
