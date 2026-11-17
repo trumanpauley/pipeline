@@ -151,7 +151,8 @@ project still works if you have to.
 
 1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
-   `005_name_moderation.sql` and `006_circular_strength.sql`. If you've already run some, run
+   `005_name_moderation.sql`, `006_circular_strength.sql` and `007_invited_names.sql`. If you've
+   already run some, run
    only the ones after them.
 2. **Make yourself an admin:**
    ```sql
@@ -222,6 +223,33 @@ isn't visible to participants.
 The JavaScript bundle still contains the word (for example the post-unlock header), so someone
 reading the page source could find it. Reveal texts themselves are served by the database only
 after unlocking.
+
+### Inviter-provided names
+
+When someone invites a person, they type that person's first name. It's stored on the invitation as
+`invited_name`; no participant exists until the person actually joins.
+
+**The recipient's journey.** They open the link, see the landing page, answer the relationship
+question, then get:
+- **"Are you Sarah?"**, with "That's who Nadia invited.", "Yes, that's me" and "That's not my name".
+  Research consent must be ticked first.
+- **"That's not my name"** shows a first-name field. A quiet "This invite wasn't meant for me" link
+  handles forwarded links: the invitation is **not** accepted, the stranger's relationship answer is
+  discarded, `misdirected_count` is recorded, and the link stays open for the intended person.
+- **Seed links** (no invited name) show "And you are?" with the normal name field.
+- **Refreshing** returns to the same step with the same choice, typed name and consent. Progress is
+  kept on the device, per invitation.
+
+**What's stored.**
+- `participants`: `invited_name`, `confirmed_name` (confirmed or typed by the recipient), and
+  `name_was_corrected`, which the server computes rather than trusting the browser. These sit
+  alongside `invitation_id` and `user_id`.
+- An inviter's suggestion is never treated as a verified identity.
+- Both names go through name moderation. A hidden or replaced invitee name flows through
+  automatically, because `invited_name` mirrors the moderated value.
+
+**Ratings.** Each side's relationship rating is stored separately on the same invitation: outbound
+by the inviter, inbound by the recipient. Neither is ever shown to the other or carried in the link.
 
 ### Names: validation, privacy and moderation
 

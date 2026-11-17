@@ -80,6 +80,8 @@ export interface AdminAccountStats {
 export interface OpenResult {
   state: 'ok' | 'invalid' | 'used' | 'own' | 'joined' | 'rate_limited';
   sender_name?: string | null;
+  /** First name the inviter gave for this invitation (seed links have none). */
+  invited_name?: string | null;
   method?: MethodKey;
   answered?: boolean;
   already_participant?: boolean;
@@ -193,6 +195,8 @@ export const api = {
   getMyState: () => rpc<MyState>('get_my_state'),
   getMyAccount: () => rpc<MyAccount>('get_my_account'),
   /** Server-side name check (profanity, slurs, URLs, spam…). Returns ok only. */
+  /** "This wasn't meant for me": records a forwarded link without accepting it. */
+  reportWrongRecipient: (token: string) => rpc<{ ok: boolean }>('report_wrong_recipient', { p_token: token }),
   checkName: (name: string) => rpc<{ ok: boolean }>('check_name', { p_name: name }),
   /** Research telemetry: a classification question was shown / first touched. Fire-and-forget. */
   logClassificationEvent: (direction: 'inbound' | 'outbound', event: 'shown' | 'interacted', token?: string, elapsedMs?: number) =>
