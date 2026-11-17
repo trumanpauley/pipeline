@@ -2,7 +2,7 @@
 // classification methods. If you add/rename a stored value, also update the
 // `method_options` row in public.experiment_settings (the server validates it).
 
-export type MethodKey = 'strength' | 'context' | 'comfort';
+export type MethodKey = 'strength' | 'context' | 'comfort' | 'circular';
 
 export interface MethodOption {
   value: string;
@@ -14,7 +14,7 @@ export interface MethodDef {
   key: MethodKey;
   /** Short name used in the admin dashboard. */
   adminName: string;
-  layout: 'stack' | 'grid' | 'scale';
+  layout: 'stack' | 'grid' | 'scale' | 'circular';
   question: (name: string) => string;
   options: MethodOption[];
   scaleLabels?: [string, string];
@@ -54,13 +54,37 @@ export const METHODS: Record<MethodKey, MethodDef> = {
     options: ['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v })),
     scaleLabels: ['Not at all', 'Completely'],
   },
+  circular: {
+    key: 'circular',
+    adminName: 'D · Circular',
+    layout: 'circular',
+    question: (name) => `How well do you know ${name}?`,
+    options: [], // any whole number 0–100 (see CircularSlider)
+  },
 };
+
+/**
+ * Experiment D — circular connection strength (0–100). The participant drags a
+ * node clockwise around a circle; a full turn is 100%. Bands shown inside the
+ * circle while dragging (also used to summarise results in the admin dashboard).
+ */
+export const CIRCULAR_BANDS: { min: number; max: number; label: string }[] = [
+  { min: 0, max: 0, label: 'Not well' },
+  { min: 1, max: 24, label: 'Not very well' },
+  { min: 25, max: 49, label: 'Somewhat' },
+  { min: 50, max: 74, label: 'Well' },
+  { min: 75, max: 100, label: 'Very well' },
+];
+export const circularLabel = (pct: number) =>
+  CIRCULAR_BANDS.find((b) => pct >= b.min && pct <= b.max)?.label ?? '';
 
 export const methodDef = (key: string): MethodDef =>
   METHODS[(key as MethodKey) in METHODS ? (key as MethodKey) : 'strength'];
 
 export const labelFor = (method: string, value: string) =>
-  methodDef(method).options.find((o) => o.value === value)?.label ?? value;
+  method === 'circular'
+    ? `${value}% · ${circularLabel(Number(value))}`
+    : methodDef(method).options.find((o) => o.value === value)?.label ?? value;
 
 /**
  * Branding. Before a participant's first unlock, the company name must not

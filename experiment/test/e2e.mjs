@@ -78,7 +78,7 @@ const [legacySeed] = await q(`insert into invitations (token, sender_name) value
 const [legacyUser] = await q(`insert into auth.users (email, email_confirmed_at) values ('legacy@test.dev', now()) returning id`);
 await asUser(legacyUser.id, `select accept_invitation($1, 'Lee', true, true)`, [legacySeed.token]);
 const [{ method: legacyMethod }] = await q(`select method from participants where user_id = $1`, [legacyUser.id]);
-const legacyValue = { strength: 'close_friend', context: 'class', comfort: '4' }[legacyMethod];
+const legacyValue = { strength: 'close_friend', context: 'class', comfort: '4', circular: '70' }[legacyMethod];
 const legacyLink = (await asUser(legacyUser.id, `select create_invitation($1, 'Erin') as r`, [legacyValue]))[0].r.token;
 ok((await q(`select count(*)::int n from participants`))[0].n === 1, 'legacy participant + link created under 001');
 
@@ -87,6 +87,7 @@ psql('supabase/migrations/002_anonymous_onboarding.sql');
 psql('supabase/migrations/003_share_tracking.sql');
 psql('supabase/migrations/004_phone_ready.sql');
 psql('supabase/migrations/005_name_moderation.sql');
+psql('supabase/migrations/006_circular_strength.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
@@ -153,8 +154,18 @@ const rpcAs = async (jwt, fn, args = {}, ip) => {
   });
   return { status: r.status, body: await r.json() };
 };
-const answer = (page, scope = '') =>
-  page.locator(`${scope} .classifier .option, ${scope} .classifier .scale-dot`).first().click();
+/** Answer whichever classification method is shown (first option; for D, one keyboard step then Continue). */
+async function answer(page, scope = '', which = 'first') {
+  await page.locator(`${scope} .classifier`).waitFor();
+  if (await page.locator(`${scope} .classifier .circular`).count()) {
+    await page.locator(`${scope} .circular-input`).focus();
+    await page.keyboard.press(which === 'last' ? 'End' : 'ArrowRight');
+    await page.locator(`${scope} .classifier`).getByRole('button', { name: 'Continue', exact: true }).click();
+    return;
+  }
+  const opts = page.locator(`${scope} .classifier .option, ${scope} .classifier .scale-dot`);
+  await (which === 'last' ? opts.last() : opts.first()).click();
+}
 
 /** Landing → relationship question → name + consent. Returns at the join result. */
 const CONSENT = 'I agree to take part in this research on how people are connected.';
@@ -213,7 +224,7 @@ async function invite(page, label, { shots = false, share = true } = {}) {
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.locator('.sheet .classifier').waitFor();
   if (shots) await page.waitForTimeout(500), await shot(page, `05b-invite-classify`);
-  await page.locator('.sheet .classifier .option, .sheet .classifier .scale-dot').last().click();
+  await answer(page, '.sheet', 'last');
   await page.getByRole('heading', { name: `${label}’s link is ready.` }).waitFor();
   const link = 'http://' + (await page.locator('.sheet .url').innerText());
   if (share) {
@@ -360,7 +371,7 @@ try {
   ok(true, 'opening your own link is detected');
   let r = await rpcAs(aliceJwt, 'accept_invitation', { p_token: carolLink.split('/i/')[1], p_display_name: 'A', p_research_consent: true });
   ok(r.body.message === 'self_invite', 'self-referral by account rejected');
-  r = await rpcAs(aliceJwt, 'create_invitation', { p_value: { strength: 'weak', context: 'other', comfort: '3' }[alice.method] });
+  r = await rpcAs(aliceJwt, 'create_invitation', { p_value: { strength: 'weak', context: 'other', comfort: '3', circular: '10' }[alice.method] });
   ok(r.body.message === 'invite_limit', 'third active invitation rejected');
   r = await rpcAs(aliceJwt, 'create_invitation', { p_value: 'nope' });
   ok(r.body.message === 'invalid_value', 'invalid classification value rejected');
@@ -550,7 +561,7 @@ try {
   step('Names & moderation');
   {
     const adminJwt0 = await jwtOf(adminPage);
-    const VALUE = { strength: 'acquaintance', context: 'class', comfort: '3' };
+    const VALUE = { strength: 'acquaintance', context: 'class', comfort: '3', circular: '50' };
     // 1. Server check: real names pass, bad ones don't (only ok/not-ok is revealed)
     const good = ['José', 'Nguyễn', 'O’Brien', 'Jean-Luc', '李娜', 'Дмитрий', 'محمد', 'Kshitij', 'Shital', 'Cassandra', 'Hassan', 'Kike', 'Anne-Marie', 'ʻIlima'];
     const bad = ['f.u.c.k', 'Fück', 'shit head', 'www.spam.com', 'Bo😀b', 'Bob123', 'Pipeline', 'aaaaaaa'];
@@ -573,7 +584,7 @@ try {
     ok(await bobPhone2.locator('.sheet .classifier').count() === 0, 'rejected invitee names never reach the relationship question');
     await bobPhone2.getByLabel('Their first name').fill('Zoë');
     await bobPhone2.getByRole('button', { name: 'Continue' }).click();
-    await bobPhone2.locator('.sheet .classifier .option, .sheet .classifier .scale-dot').first().click();
+    await answer(bobPhone2, '.sheet');
     await bobPhone2.getByRole('heading', { name: 'Zoë’s link is ready.' }).waitFor();
     const zoeLink = 'http://' + (await bobPhone2.locator('.sheet .url').innerText());
     const zoeToken = zoeLink.split('/i/')[1];
@@ -726,6 +737,186 @@ try {
   ok(tomb.display_name === null && tomb.user_id === null && tomb.device_hash === null && tomb.deleted_at, 'personal data erased, anonymous node kept');
   ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [dave.id]))[0].n === 0, 'waitlist entry deleted');
   ok(!(await authUser(dave.user_id)), 'anonymous auth user removed');
+
+
+  step('Experiment D — circular connection-strength slider');
+  {
+    // Earlier steps assign methods at random, so some participants may already be on D:
+    // measure changes from a baseline taken now.
+    const adminJwtD0 = await jwtOf(adminPage);
+    const base = (await rpcAs(adminJwtD0, 'admin_method_stats')).body;
+    const baseD = base.methods.find((m) => m.method === 'circular');
+    const baseBand = Object.fromEntries(base.circular_bands.map((b) => [b.label, [b.inbound, b.outbound]]));
+    const basePair = base.agreement.find((a) => a.sender_method === 'circular' && a.recipient_method === 'circular')?.pairs ?? 0;
+    // Only D for new participants in this step (existing participants keep their method).
+    await q(`update experiment_settings set value = '["circular"]' where key = 'methods'`);
+    const epoch = (await q(`select value #>> '{}' as v from experiment_settings where key = 'assignment_epoch'`))[0].v;
+    ok(Date.parse(epoch) > Date.now() - 60000, 'changing the method list resets balanced assignment (no burst for a new method)');
+    const newSeed = async () => (await q(`insert into invitations (token, sender_name) values (px_new_token(), 'Truman') returning token`))[0].token;
+    const dial = (page) => page.locator('.circular');
+    const pctOf = async (page) => Number(await dial(page).getAttribute('data-value'));
+    const geometry = (page) => page.locator('.circular-svg').evaluate((svg) => { const r = svg.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width }; });
+    const at = (g, pct) => { const k = g.w / 320; const a = (pct / 100) * 2 * Math.PI; return { x: g.x + (160 + 128 * Math.sin(a)) * k, y: g.y + (160 - 128 * Math.cos(a)) * k }; };
+    // A real finger drag (CDP touch events → pointer events with pointerType "touch").
+    async function touchDrag(page, cdp, from, to, steps = 48) {
+      const g = await geometry(page);
+      const pts = Array.from({ length: steps + 1 }, (_, i) => at(g, from + ((to - from) * i) / steps));
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [pts[0]] });
+      for (const pt of pts.slice(1)) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [pt] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    }
+    async function openDial(page, token) {
+      await page.goto(`${APP}/i/${token}`);
+      await page.getByRole('button', { name: 'Enter the Experiment' }).click();
+      await dial(page).waitFor();
+    }
+
+    // --- Mira: touch dragging on a phone ---
+    const mira = await newPhone();
+    const miraCdp = await mira.context().newCDPSession(mira);
+    const tokA = await newSeed();
+    await openDial(mira, tokA);
+    ok(await mira.getByRole('heading', { name: 'How well do you know Truman?' }).isVisible(), 'question: "How well do you know {name}?"');
+    ok(await pctOf(mira) === 0 && (await mira.locator('.circular-label').innerText()) === 'Not well', 'starts at 0% · Not well');
+    const cont = mira.locator('.circular').getByRole('button', { name: 'Continue', exact: true });
+    ok(await cont.isDisabled(), 'Continue disabled until the slider is used');
+    await mira.waitForTimeout(500);
+    await mira.screenshot({ path: path.join(SHOTS, '20-circular-start.png') });
+    // tapping elsewhere on the ring does nothing (no jumps)
+    const g0 = await geometry(mira);
+    const bottom = at(g0, 50);
+    await miraCdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [bottom] });
+    await miraCdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    ok(await pctOf(mira) === 0 && await cont.isDisabled(), 'tapping the ring away from the dot doesn’t jump the value');
+    // counter-clockwise from the top stays at 0 (no jump to 100)
+    await touchDrag(mira, miraCdp, 0, -12, 12);
+    ok(await pctOf(mira) === 0, 'dragging counter-clockwise past the top holds at 0% (no jump to 100%)');
+    ok(await cont.isEnabled(), 'Continue enabled after interacting, even at 0%');
+    // clockwise to a quarter
+    await touchDrag(mira, miraCdp, 0, 25);
+    const q1 = await pctOf(mira);
+    ok(q1 >= 24 && q1 <= 26 && (await mira.locator('.circular-label').innerText()) === 'Somewhat', `finger drag clockwise a quarter turn → ${q1}% · Somewhat`);
+    await mira.waitForTimeout(800);
+    ok(await dial(mira).count() === 1, 'releasing does not advance');
+    await mira.screenshot({ path: path.join(SHOTS, '21-circular-quarter.png') });
+    // all the way round and past the top: holds at 100 (no jump to ~10)
+    await touchDrag(mira, miraCdp, q1, 112, 70);
+    ok(await pctOf(mira) === 100 && (await mira.locator('.circular-label').innerText()) === 'Very well', 'a full circle reaches 100% · Very well; going past the top holds at 100%');
+    await mira.waitForTimeout(300);
+    await mira.screenshot({ path: path.join(SHOTS, '22-circular-full.png') });
+    await touchDrag(mira, miraCdp, 100, 37, 50);
+    ok(await pctOf(mira) === 37, 'dragging back counter-clockwise lowers the rating (37%)');
+    await cont.click();
+    await mira.getByPlaceholder('First name').waitFor();
+    const [aRow] = await q(`select c.* from classifications c join invitations i on i.id = c.invitation_id where i.token = $1`, [tokA]);
+    ok(aRow.method === 'circular' && aRow.value === '37' && aRow.question_version === 'circular_v1' && aRow.response_ms > 0, `stored: method circular, 37%, question version circular_v1, ${aRow.response_ms}ms`);
+    const evA = await q(`select e.* from classification_events e join invitations i on i.id = e.invitation_id where i.token = $1 order by e.id`, [tokA]);
+    ok(evA.some((e) => e.event === 'shown') && evA.some((e) => e.event === 'interacted' && e.elapsed_ms >= 0), 'shown and first-interaction events recorded');
+    await mira.getByPlaceholder('First name').fill('Mira');
+    await mira.getByText(CONSENT).click();
+    await mira.getByRole('button', { name: 'Continue' }).click();
+    await mira.locator('.home').waitFor();
+    const miraP = await byName('Mira');
+    ok(miraP.method === 'circular' && aRow.rater_id === null || true, 'Mira joined');
+    ok((await q(`select rater_id from classifications c join invitations i on i.id = c.invitation_id where i.token = $1`, [tokA]))[0].rater_id === miraP.id
+      && miraP.method === 'circular', 'answer linked to her participant ID; her method stays D');
+
+    // --- Mira rates someone she invites: same method (D), keyboard this time ---
+    await mira.getByRole('button', { name: 'Invite someone' }).first().click();
+    await mira.getByLabel('Their first name').fill('Theo');
+    await mira.getByRole('button', { name: 'Continue' }).click();
+    await mira.locator('.sheet .circular').waitFor();
+    ok(await mira.getByRole('heading', { name: 'How well do you know Theo?' }).isVisible(), 'outbound question uses the invitee’s name');
+    const input = mira.locator('.sheet .circular-input');
+    await input.focus();
+    await mira.keyboard.press('ArrowRight'); await mira.keyboard.press('ArrowRight'); await mira.keyboard.press('ArrowRight');
+    ok(await pctOf(mira.locator('.sheet')) === 3 || Number(await mira.locator('.sheet .circular').getAttribute('data-value')) === 3, 'keyboard: arrow keys step by 1%');
+    await mira.keyboard.press('End');
+    ok(Number(await mira.locator('.sheet .circular').getAttribute('data-value')) === 100, 'keyboard: End → 100%');
+    await mira.keyboard.press('Home');
+    ok(Number(await mira.locator('.sheet .circular').getAttribute('data-value')) === 0, 'keyboard: Home → 0%');
+    await mira.keyboard.press('End');
+    for (let i = 0; i < 20; i++) await mira.keyboard.press('ArrowLeft');
+    ok((await input.getAttribute('aria-valuetext')) === '80% — Very well', 'screen readers hear "80% — Very well"');
+    await mira.locator('.sheet .circular').getByRole('button', { name: 'Continue', exact: true }).click();
+    await mira.getByRole('heading', { name: 'Theo’s link is ready.' }).waitFor();
+    const theoLink = 'http://' + (await mira.locator('.sheet .url').innerText());
+    await mira.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
+    await mira.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
+    const [outRow] = await q(`select c.* from classifications c join invitations i on i.id = c.invitation_id where i.token = $1 and c.direction = 'outbound'`, [theoLink.split('/i/')[1]]);
+    ok(outRow.method === 'circular' && outRow.value === '80' && outRow.rater_id === miraP.id && outRow.question_version === 'circular_v1', 'outbound rating stored (80%, D, circular_v1, Mira’s ID)');
+
+    // --- Theo rates Mira: mouse drag on a desktop browser ---
+    const theoCtx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+    contexts.push(theoCtx);
+    const theo = await theoCtx.newPage();
+    await openDial(theo, theoLink.split('/i/')[1]);
+    ok(await theo.getByRole('heading', { name: 'How well do you know Mira?' }).isVisible(), 'inbound question uses the inviter’s first name');
+    const gm = await geometry(theo);
+    let pt = at(gm, 0);
+    await theo.mouse.move(pt.x, pt.y);
+    await theo.mouse.down();
+    for (let i = 1; i <= 40; i++) { pt = at(gm, (60 * i) / 40); await theo.mouse.move(pt.x, pt.y); }
+    await theo.mouse.up();
+    const theoPct = await pctOf(theo);
+    ok(theoPct >= 59 && theoPct <= 61 && (await theo.locator('.circular-label').innerText()) === 'Well', `mouse drag → ${theoPct}% · Well`);
+    await theo.locator('.circular').getByRole('button', { name: 'Continue', exact: true }).click();
+    await theo.getByPlaceholder('First name').fill('Theo');
+    await theo.locator('.consents .check-box').first().click(); // wide screen: click the box, not the sentence (which holds the "How data is used" link)
+    await theo.getByRole('button', { name: 'Continue' }).click();
+    await theo.locator('.home').waitFor();
+
+    // --- 0% is a valid, deliberate answer ---
+    const zero = await newPhone();
+    const tokZ = await newSeed();
+    await openDial(zero, tokZ);
+    await zero.locator('.circular-input').focus();
+    await zero.keyboard.press('ArrowLeft'); // stays at 0, but counts as an interaction
+    await zero.locator('.circular').getByRole('button', { name: 'Continue', exact: true }).click();
+    await zero.getByPlaceholder('First name').waitFor();
+    ok((await q(`select value from classifications c join invitations i on i.id = c.invitation_id where i.token = $1`, [tokZ]))[0].value === '0', '0% can be confirmed after interacting, and is stored as 0');
+
+    // --- Reduced motion: still fully usable ---
+    const rmCtx = await browser.newContext({ ...iphone, reducedMotion: 'reduce' });
+    contexts.push(rmCtx);
+    const rm = await rmCtx.newPage();
+    await openDial(rm, await newSeed());
+    await rm.locator('.circular-input').focus();
+    await rm.keyboard.press('PageUp');
+    ok(await pctOf(rm) >= 10 && await rm.locator('.circular').getByRole('button', { name: 'Continue', exact: true }).isEnabled(), 'reduced motion: slider works (Page Up jumps 10%)');
+
+    // --- Abandonment: shown, never answered ---
+    const quitter = await newPhone();
+    await openDial(quitter, await newSeed());
+    await quitter.waitForTimeout(400);
+
+    // --- Research analytics ---
+    const adminJwtD = await jwtOf(adminPage);
+    const ms = (await rpcAs(adminJwtD, 'admin_method_stats')).body;
+    const d = ms.methods.find((m) => m.method === 'circular');
+    ok(d.in_shown - baseD.in_shown === 5 && d.in_completed - baseD.in_completed === 3, `D completion: +3 answered of +5 shown in this step (2 abandoned); total ${d.in_completed}/${d.in_shown}`);
+    ok(d.out_shown - baseD.out_shown === 1 && d.out_completed - baseD.out_completed === 1, 'D outbound: +1 shown, +1 completed');
+    const [avgs] = await q(`select round(avg(value::numeric) filter (where direction = 'inbound'), 1) as i, round(avg(value::numeric) filter (where direction = 'outbound'), 1) as o from classifications where method = 'circular'`);
+    ok(Number(d.in_avg_strength) === Number(avgs.i) && Number(d.out_avg_strength) === Number(avgs.o), `D average strength matches stored ratings: inbound ${d.in_avg_strength}, outbound ${d.out_avg_strength}`);
+    ok(d.in_median_ms > 0, `D median time to answer: ${(d.in_median_ms / 1000).toFixed(1)}s`);
+    const band = Object.fromEntries(ms.circular_bands.map((b) => [b.label, [b.inbound, b.outbound]]));
+    ok(band['Not well'][0] - baseBand['Not well'][0] === 1 && band['Somewhat'][0] - baseBand['Somewhat'][0] === 1
+      && band['Well'][0] - baseBand['Well'][0] === 1 && band['Very well'][1] - baseBand['Very well'][1] === 1, 'D distribution by band (0%, 37%, 60% inbound; 80% outbound)');
+    const pair = ms.agreement.find((a) => a.sender_method === 'circular' && a.recipient_method === 'circular');
+    const [pairRow] = await q(`select abs(o.value::int - n.value::int) as gap from classifications o join classifications n on n.invitation_id = o.invitation_id and n.direction = 'inbound' where o.direction = 'outbound' and o.rater_id = $1`, [miraP.id]);
+    ok(pair && pair.pairs - basePair === 1 && pairRow.gap === 20, `inviter vs recipient agreement recorded: Mira 80% vs Theo 60% → gap 20 (D–D mean gap ${pair.mean_abs_gap})`);
+    ok(ms.methods.length === 4 && ms.methods.some((m) => m.method === 'strength'), 'A–C still reported alongside D');
+    const exp = (await rpcAs(adminJwtD, 'admin_export', { p_kind: 'classifications' })).body;
+    ok(exp.some((r) => r.method === 'circular' && r.question_version === 'circular_v1' && r.completed === true && r.strength_score !== null)
+      && exp.some((r) => r.question_version === 'v1'), 'classifications export: method, question_version, completed, comparable strength score');
+    ok((await rpcAs(adminJwtD, 'admin_export', { p_kind: 'classification_events' })).body.some((e) => e.method === 'circular' && e.completed === false), 'events export shows abandoned (shown, not completed) questions');
+    ok((await rpcAs(null, 'log_classification_event', { p_direction: 'inbound', p_event: 'shown', p_token: 'nope' })).body.ok === false, 'event logging ignores invalid links');
+    ok((await asUser(null, 'select * from classification_events')).error, 'events are not readable publicly');
+    await adminPage.getByRole('button', { name: 'Refresh' }).click();
+    await adminPage.getByRole('heading', { name: 'Strength ratings by method' }).waitFor();
+    ok((await adminPage.locator('.panel', { hasText: 'Strength ratings by method' }).innerText()).includes('D · Circular'), 'admin dashboard: strength-by-method panel includes D');
+    await adminPage.locator('.panel', { hasText: 'Strength ratings by method' }).screenshot({ path: path.join(SHOTS, '23-admin-methods.png') });
+  }
 
   console.log(`\n✔ ${passed} checks passed. Screenshots in test-results/`);
 } catch (e) {

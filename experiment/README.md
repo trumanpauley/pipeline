@@ -80,6 +80,29 @@ people genuinely share browsers.
   - A: strength (close friend / acquaintance / weak connection)
   - B: context (class / team / club / work / social / other)
   - C: comfort asking for an introduction (1–5)
+  - D: circular connection strength (0–100%). "How well do you know {name}?" The participant drags a
+    dot clockwise around a circle; a full turn is 100%.
+    - Bands: 0% Not well, 1–24% Not very well, 25–49% Somewhat, 50–74% Well, 75–100% Very well.
+    - Only the dot itself can be dragged, so higher ratings take more physical movement. Crossing
+      the top can't jump between 0% and 100%. Arrow keys and screen readers work through a native
+      slider underneath.
+    - Releasing never submits: Continue unlocks after the first interaction, so 0% is a deliberate
+      answer.
+    - Built as `src/components/CircularSlider.tsx`, used by `Classifier` for both rating the inviter
+      and rating someone being invited.
+- **Balanced assignment counts openings since the method list last changed**
+  (`assignment_epoch`, reset automatically when `methods` changes). A newly added method therefore
+  doesn't receive every new participant until it catches up. To stop assigning a method, remove it
+  from `methods`; people already on it keep it.
+- **Research data per answer:** participant ID, invitation, method, value (D: 0–100), question
+  version (`v1`, `circular_v1`), response time and timestamp.
+  - `classification_events` records when each question was shown and first touched, for every
+    method, so completion, abandonment and time-to-first-touch can be compared.
+  - Admin → **Strength ratings by method** compares A–D on a common 0–100 strength scale (B has
+    none): average, median time, completion, abandonment, D's distribution, and
+    inviter-versus-recipient agreement for every method pair.
+  - Exports: `classifications.csv` (with `question_version`, `completed`, `strength_score`) and
+    `classification_events.csv`.
 - **Two active links** per participant (`max_invites`). A revoked link, or one used by someone who
   was already a participant, frees its slot. There's a lifetime cap of `max_links_total`.
 - **No loops or double credit:** each participant has exactly one parent, set once when they join.
@@ -128,7 +151,7 @@ project still works if you have to.
 
 1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
-   `005_name_moderation.sql`. If you've already run some, run
+   `005_name_moderation.sql` and `006_circular_strength.sql`. If you've already run some, run
    only the ones after them.
 2. **Make yourself an admin:**
    ```sql

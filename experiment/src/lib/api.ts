@@ -4,6 +4,25 @@ import type { MethodKey } from '../config/experiment';
 
 export type InvitationStatus = 'created' | 'opened' | 'accepted' | 'duplicate' | 'revoked';
 
+export interface AdminMethodStats {
+  methods: {
+    method: string;
+    participants: number;
+    in_shown: number;
+    in_completed: number;
+    out_shown: number;
+    out_completed: number;
+    in_avg_strength: number | null;
+    out_avg_strength: number | null;
+    in_median_ms: number | null;
+    out_median_ms: number | null;
+    answers: number;
+  }[];
+  circular_bands: { ord: number; label: string; inbound: number; outbound: number }[];
+  circular_bins: { bin: number; n: number }[];
+  agreement: { sender_method: string; recipient_method: string; pairs: number; mean_abs_gap: number | null; mean_sender_minus_recipient: number | null }[];
+}
+
 export interface AdminNames {
   participants: {
     id: string;
@@ -175,6 +194,10 @@ export const api = {
   getMyAccount: () => rpc<MyAccount>('get_my_account'),
   /** Server-side name check (profanity, slurs, URLs, spam…). Returns ok only. */
   checkName: (name: string) => rpc<{ ok: boolean }>('check_name', { p_name: name }),
+  /** Research telemetry: a classification question was shown / first touched. Fire-and-forget. */
+  logClassificationEvent: (direction: 'inbound' | 'outbound', event: 'shown' | 'interacted', token?: string, elapsedMs?: number) =>
+    rpc('log_classification_event', { p_direction: direction, p_event: event, p_token: token ?? null, p_elapsed_ms: elapsedMs ?? null }),
+  adminMethodStats: () => rpc<AdminMethodStats>('admin_method_stats'),
   adminNames: () => rpc<AdminNames>('admin_names'),
   adminModerate: (target: 'participant' | 'invitation', id: string, action: string, value?: string, reason?: string) =>
     rpc('admin_moderate', { p_target: target, p_id: id, p_action: action, p_value: value ?? null, p_reason: reason ?? null }),

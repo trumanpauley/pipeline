@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, inviteUrl, type AdminAccountStats, type AdminOverview } from '../lib/api';
+import { api, inviteUrl, type AdminAccountStats, type AdminMethodStats, type AdminOverview } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { navigate } from '../lib/router';
 import { labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
@@ -15,6 +15,7 @@ const METHOD_COLOR: Record<string, string> = {
   strength: '#3987e5',
   context: '#d95926',
   comfort: '#199e70',
+  circular: '#c98500',
 };
 
 const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
@@ -23,14 +24,16 @@ const secs = (ms: number | null) => (ms == null ? '—' : `${(ms / 1000).toFixed
 export function AdminPage({ session }: { session: Session | null }) {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [acct, setAcct] = useState<AdminAccountStats | null>(null);
+  const [mstats, setMstats] = useState<AdminMethodStats | null>(null);
   const [version, setVersion] = useState(0); // bumps on every refresh so sub-panels reload too
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [o, a] = await Promise.all([api.adminOverview(), api.adminAccountStats()]);
+      const [o, a, m] = await Promise.all([api.adminOverview(), api.adminAccountStats(), api.adminMethodStats().catch(() => null)]);
       setData(o);
       setAcct(a);
+      setMstats(m);
       setVersion((n) => n + 1);
       setError(null);
     } catch (e) {
@@ -157,11 +160,13 @@ export function AdminPage({ session }: { session: Session | null }) {
 
       <Panel title="Relationship categories">
         <div className="dist-grid">
-          {(Object.keys(METHODS) as MethodKey[]).map((m) => (
+          {(Object.keys(METHODS) as MethodKey[]).filter((m) => m !== 'circular').map((m) => (
             <Distribution key={m} method={m} rows={data.distribution.filter((d) => d.method === m)} />
           ))}
         </div>
       </Panel>
+
+      {mstats && <MethodStatsPanel stats={mstats} />}
 
       <Panel title="Reciprocal responses" note="Pairs where both the sender and the invitee classified each other.">
         <ReciprocityView r={data.reciprocity} />
@@ -174,7 +179,7 @@ export function AdminPage({ session }: { session: Session | null }) {
 
       <Panel title="Research exports" note="CSV. Only the participants and waitlist files contain email addresses.">
         <div className="export-row">
-          {['participants', 'invitations', 'classifications', 'reciprocal', 'feedback', 'waitlist'].map((k) => (
+          {['participants', 'invitations', 'classifications', 'classification_events', 'reciprocal', 'feedback', 'waitlist'].map((k) => (
             <ExportButton key={k} kind={k} />
           ))}
         </div>
@@ -431,5 +436,77 @@ function ExportButton({ kind }: { kind: string }) {
     <button className="chip" onClick={run} disabled={busy}>
       {busy ? '…' : `${kind}.csv`}
     </button>
+  );
+}
+
+/**
+ * Experiment D alongside A–C on comparable measures. Strength is on a common
+ * 0–100 scale (A: weak 0 / acquaintance 50 / close 100; C: (n−1)/4; D: the
+ * percentage; B has none). Lower isn't automatically "more accurate": compare
+ * distributions, timing, completion and inviter–recipient agreement together.
+ */
+function MethodStatsPanel({ stats }: { stats: AdminMethodStats }) {
+  const rate = (done: number, shown: number) => (shown > 0 ? `${done}/${shown} · ${pct(done, shown)}` : '—');
+  const abandon = (done: number, shown: number) => (shown > 0 ? pct(Math.max(shown - done, 0), shown) : '—');
+  const bands = stats.circular_bands;
+  const maxBand = Math.max(1, ...bands.map((b) => Math.max(b.inbound, b.outbound)));
+  const bins = stats.circular_bins;
+  const maxBin = Math.max(1, ...bins.map((b) => b.n));
+  return (
+    <Panel
+      title="Strength ratings by method"
+      note="Strength on a common 0–100 scale (B has none). Completion = answered ÷ shown; abandonment = shown but not answered. Lower ratings aren't automatically more accurate."
+    >
+      <Table
+        head={['Method', 'Avg strength in / out', 'Median time in / out', 'Completed (inbound)', 'Completed (outbound)', 'Abandoned in / out']}
+        rows={stats.methods.map((m) => [
+          <MethodName key={m.method} method={m.method} />,
+          `${m.in_avg_strength ?? '—'} / ${m.out_avg_strength ?? '—'}`,
+          `${secs(m.in_median_ms)} / ${secs(m.out_median_ms)}`,
+          rate(m.in_completed, m.in_shown),
+          rate(m.out_completed, m.out_shown),
+          `${abandon(m.in_completed, m.in_shown)} / ${abandon(m.out_completed, m.out_shown)}`,
+        ])}
+      />
+      <div className="dist-grid">
+        <div className="dist">
+          <MethodName method="circular" />
+          <div className="dist-legend"><span className="sw in" />Inbound <span className="sw out" />Outbound</div>
+          {bands.map((b) => (
+            <div className="dist-row" key={b.label}>
+              <span className="dist-label">{b.label}</span>
+              <div className="dist-bars">
+                <div className="bar-track thin" title={`Inbound ${b.label}: ${b.inbound}`}><div className="bar in" style={{ width: `${(b.inbound / maxBand) * 100}%` }} /></div>
+                <div className="bar-track thin" title={`Outbound ${b.label}: ${b.outbound}`}><div className="bar out" style={{ width: `${(b.outbound / maxBand) * 100}%` }} /></div>
+              </div>
+              <span className="dist-n">{b.inbound} · {b.outbound}</span>
+            </div>
+          ))}
+        </div>
+        <div className="dist">
+          <span className="method-name">D · ratings in 10-point bins</span>
+          {Array.from({ length: 10 }, (_, i) => i * 10).map((bin) => {
+            const n = bins.find((b) => b.bin === bin)?.n ?? 0;
+            return (
+              <div className="dist-row" key={bin}>
+                <span className="dist-label">{bin}–{bin === 90 ? 100 : bin + 9}%</span>
+                <div className="bar-track thin" title={`${bin}–${bin + 9}%: ${n}`}><div className="bar in" style={{ width: `${(n / maxBin) * 100}%` }} /></div>
+                <span className="dist-n">{n}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <Table
+        head={['Inviter method', 'Recipient method', 'Pairs', 'Mean gap (0–100)', 'Inviter − recipient']}
+        rows={stats.agreement.map((a) => [
+          <MethodName key="s" method={a.sender_method} />,
+          <MethodName key="r" method={a.recipient_method} />,
+          a.pairs,
+          a.mean_abs_gap ?? '—',
+          a.mean_sender_minus_recipient ?? '—',
+        ])}
+      />
+    </Panel>
   );
 }

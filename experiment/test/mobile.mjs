@@ -102,7 +102,13 @@ async function keyboardCheck(browser) {
 
   await p.getByText('Fresh invite as a new visitor').click();
   await p.getByRole('button', { name: 'Enter the Experiment' }).click({ timeout: 60000 });
-  await p.locator('.classifier .option, .classifier .scale-dot').first().click();
+  if (await p.locator('.classifier .circular').count()) {
+    await p.locator('.circular-input').focus();
+    await p.keyboard.press('ArrowRight');
+    await p.locator('.classifier').getByRole('button', { name: 'Continue', exact: true }).click();
+  } else {
+    await p.locator('.classifier .option, .classifier .scale-dot').first().click();
+  }
   await p.getByPlaceholder('First name').waitFor();
   await p.getByText('I agree to take part in this research on how people are connected.').click();
   await check('join-name', p.getByPlaceholder('First name'), p.getByRole('button', { name: 'Continue' }));
