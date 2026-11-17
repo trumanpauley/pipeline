@@ -3,6 +3,7 @@ import { api, inviteUrl, type MyInvitation } from '../lib/api';
 import { COPY } from '../config/experiment';
 import { Classifier } from './Classifier';
 import { Button, ErrorText, Sheet } from './ui';
+import { NAME_REJECTED, nameAcceptable } from '../lib/names';
 
 // What each invitation unlocks, in order.
 const UNLOCKS = ['Our name', 'Our mission'];
@@ -225,9 +226,16 @@ export function InviteSheet({
     setShared(true);
   };
 
-  const submitName = (e: FormEvent) => {
+  const [checking, setChecking] = useState(false);
+  const submitName = async (e: FormEvent) => {
     e.preventDefault();
-    if (name.trim()) setStep('classify');
+    if (!name.trim()) return;
+    setError(null);
+    setChecking(true);
+    const ok = await nameAcceptable(name);
+    setChecking(false);
+    if (!ok) return setError(NAME_REJECTED);
+    setStep('classify');
   };
 
   return (
@@ -243,13 +251,13 @@ export function InviteSheet({
             maxLength={40}
             autoComplete="off"
             autoCapitalize="words"
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); setError(null); }}
             autoFocus
             aria-label="Their first name"
           />
           <p className="fine">Only you see this.</p>
           <ErrorText error={error} />
-          <Button type="submit" disabled={!name.trim()}>Continue</Button>
+          <Button type="submit" busy={checking} disabled={!name.trim()}>Continue</Button>
         </form>
       )}
       {step === 'classify' && <Classifier method={method} name={name.trim()} onSelect={create} />}

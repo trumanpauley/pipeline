@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { navigate } from '../lib/router';
 import { labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
 import { SignIn } from '../components/EmailAuth';
+import { ModerationPanel } from '../components/ModerationPanel';
 import { Tree, type TreeNode } from '../components/Tree';
 import { Button, ErrorText, Loading, Screen } from '../components/ui';
 import { DemoLinks } from './HomePage';
@@ -22,6 +23,7 @@ const secs = (ms: number | null) => (ms == null ? '—' : `${(ms / 1000).toFixed
 export function AdminPage({ session }: { session: Session | null }) {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [acct, setAcct] = useState<AdminAccountStats | null>(null);
+  const [version, setVersion] = useState(0); // bumps on every refresh so sub-panels reload too
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -29,6 +31,7 @@ export function AdminPage({ session }: { session: Session | null }) {
       const [o, a] = await Promise.all([api.adminOverview(), api.adminAccountStats()]);
       setData(o);
       setAcct(a);
+      setVersion((n) => n + 1);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -115,6 +118,13 @@ export function AdminPage({ session }: { session: Session | null }) {
       </Panel>
 
       <SeedPanel seeds={data.seeds} onChanged={load} />
+
+      <Panel
+        title="Names & moderation"
+        note="Names are checked automatically for profanity, slurs, explicit terms, links and spam. Review them here; every action is logged."
+      >
+        <ModerationPanel refreshKey={version} />
+      </Panel>
 
       <Panel title="By generation">
         <Table

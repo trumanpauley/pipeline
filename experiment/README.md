@@ -127,7 +127,8 @@ Pipeline profiles for experiment participants. Table and function names don't co
 project still works if you have to.
 
 1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
-   `002_anonymous_onboarding.sql`, `003_share_tracking.sql` and `004_phone_ready.sql`. If you've already run some, run
+   `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
+   `005_name_moderation.sql`. If you've already run some, run
    only the ones after them.
 2. **Make yourself an admin:**
    ```sql
@@ -198,6 +199,47 @@ isn't visible to participants.
 The JavaScript bundle still contains the word (for example the post-unlock header), so someone
 reading the page source could find it. Reveal texts themselves are served by the database only
 after unlocking.
+
+### Names: validation, privacy and moderation
+
+Participants type their own first name and the names of people they invite.
+
+**Validation (in the database, `px_name_problem`).** It applies to joining, creating an invitation,
+admin seed links and admin replacements. Every write goes through these database functions (tables
+can't be written directly), so requests sent straight to the Supabase API are checked the same way
+as the app.
+- **Allowed:** letters from any script, with spaces, apostrophes (' ’ ʻ), hyphens and periods; up to
+  40 characters. José, Nguyễn, O'Brien, Jean-Luc, 李娜, Дмитрий and محمد all pass.
+- **Rejected:**
+  - digits, symbols, emoji and invisible characters;
+  - links (`www.`, `http`, `word.word`);
+  - spam (5+ repeated letters, more than 6 words);
+  - names matching `moderation_terms`.
+- **Matching terms.** Accents are folded and spaces/dots are removed before matching, so "Fück",
+  "f u c k" and "f.u.c.k" are caught. Most terms match **whole words only** to avoid false positives
+  (Kshitij, Shital, Cassandra, Hassan, Analisa, "Kike" for Enrique all pass). Edit the list in
+  Table editor → `moderation_terms`. It's never sent to the browser.
+- **What people see.** The app checks names before creating anything and shows "Please enter a
+  different name." The server never says which rule matched.
+- **Rate limits.** Name checks are limited per IP (`name_checks_per_ip_hour`), and rejected names
+  per IP (`name_rejects_per_ip_hour`).
+
+**Privacy.**
+- **Invitation pages** show the sender's **first name only**, and only when it's approved and the
+  sender isn't suspended. Otherwise they say "You've been invited."
+- **Participants' own dashboards** show their own name and the names they typed for their invitees.
+- **Network views** contain no other names and no relationship answers. The admin tree uses IDs only.
+
+**Moderation (admin dashboard → Names & moderation).**
+- Review participant names and invitee names, with items that need review first.
+- **Flag** hides a name from invitation pages until approved; **Hide** removes it from view;
+  **Replace** sets a new, validated name.
+- **Suspend** pauses a participant and revokes their unused links (they see "Your participation is
+  paused.").
+- Every action goes to `moderation_actions` with the admin's email and the before/after name.
+  "Delete my data" scrubs the names from that log too.
+- Set `name_review` to `"before"` to keep new names off invitation pages until you approve them.
+  The default `"after"` shows them right away.
 
 ### Optional phone verification ("Save your network")
 

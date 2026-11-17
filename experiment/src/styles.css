@@ -455,3 +455,13 @@ tr:last-child td { border-bottom: 0; }
   0%, 100% { opacity: 0.55; box-shadow: 0 0 0 0 rgba(138, 180, 255, 0.35); }
   50% { opacity: 1; box-shadow: 0 0 0 5px rgba(138, 180, 255, 0); }
 }
+
+/* ---------- admin: names & moderation ---------- */
+.moderation { display: flex; flex-direction: column; gap: 12px; }
+.moderation-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.is-active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.review-only { display: inline-flex; gap: 6px; align-items: center; }
+.moderation td.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.moderation tr.is-suspended td:first-child { text-decoration: line-through; color: var(--text-3); }
+.suspended-pill { margin-left: 8px; }

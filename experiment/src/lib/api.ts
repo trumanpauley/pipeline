@@ -4,6 +4,40 @@ import type { MethodKey } from '../config/experiment';
 
 export type InvitationStatus = 'created' | 'opened' | 'accepted' | 'duplicate' | 'revoked';
 
+export interface AdminNames {
+  participants: {
+    id: string;
+    display_name: string | null;
+    name_status: 'ok' | 'pending' | 'flagged' | 'hidden';
+    suspended_at: string | null;
+    suspended_reason: string | null;
+    depth: number;
+    created_at: string;
+    links: number;
+  }[];
+  labels: {
+    id: string;
+    recipient_label: string | null;
+    label_status: 'ok' | 'flagged' | 'hidden';
+    status: string;
+    created_at: string;
+    sender_id: string;
+    sender_name: string | null;
+  }[];
+  log: {
+    id: number;
+    admin_email: string;
+    target_type: string;
+    target_id: string;
+    action: string;
+    old_value: string | null;
+    new_value: string | null;
+    reason: string | null;
+    created_at: string;
+  }[];
+  name_review: 'after' | 'before';
+}
+
 export interface MyAccount {
   is_anonymous: boolean;
   linked_email: string | null;
@@ -59,6 +93,8 @@ export interface MyState {
     depth: number;
     reveal_level: number;
     revealed_via: 'invite' | 'feedback' | null;
+    name_status?: 'ok' | 'pending' | 'flagged' | 'hidden';
+    suspended?: boolean;
     marketing_consent: boolean;
     created_at: string;
   };
@@ -75,7 +111,8 @@ const MESSAGES: Record<string, string> = {
   invitation_used: 'This invitation has already been used.',
   self_invite: 'You can’t accept your own invitation.',
   consent_required: 'Please agree to take part in the research to continue.',
-  invalid_name: 'Please enter your first name.',
+  invalid_name: 'Please enter a different name.',
+  suspended: 'Your participation is paused.',
   invite_limit: 'You’ve used both invitations.',
   link_limit: 'You’ve reached the limit for new links.',
   invalid_value: 'Please choose an answer.',
@@ -102,6 +139,11 @@ export class ApiError extends Error {
 export async function rpc<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args);
   if (error) throw new ApiError(error.message);
+  // Some checks (e.g. a rejected name) return { error } so the server can record
+  // the attempt for rate limiting instead of aborting the request.
+  if (data && typeof data === 'object' && !Array.isArray(data) && typeof (data as { error?: unknown }).error === 'string') {
+    throw new ApiError((data as { error: string }).error);
+  }
   return data as T;
 }
 
@@ -131,6 +173,11 @@ export const api = {
   setMarketingConsent: (consent: boolean) => rpc('set_marketing_consent', { p_consent: consent }),
   getMyState: () => rpc<MyState>('get_my_state'),
   getMyAccount: () => rpc<MyAccount>('get_my_account'),
+  /** Server-side name check (profanity, slurs, URLs, spam…). Returns ok only. */
+  checkName: (name: string) => rpc<{ ok: boolean }>('check_name', { p_name: name }),
+  adminNames: () => rpc<AdminNames>('admin_names'),
+  adminModerate: (target: 'participant' | 'invitation', id: string, action: string, value?: string, reason?: string) =>
+    rpc('admin_moderate', { p_target: target, p_id: id, p_action: action, p_value: value ?? null, p_reason: reason ?? null }),
   joinWaitlist: (email: string, source: string) => rpc('join_waitlist', { p_email: email, p_source: source }),
   leaveWaitlist: () => rpc('leave_waitlist'),
   adminAccountStats: () => rpc<AdminAccountStats>('admin_account_stats'),
