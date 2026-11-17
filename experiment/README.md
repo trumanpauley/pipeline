@@ -85,9 +85,19 @@ people genuinely share browsers.
 - **No loops or double credit:** each participant has exactly one parent, set once when they join.
   Existing participants are never re-parented; their visit to another link is recorded as
   `duplicate`. Accepting your own link is rejected (`self_invite`).
-- **Reveals** unlock when a link is generated (`unlock_on = "created"`) or, if you set
-  `unlock_on = "accepted"`, when an invitee actually joins. Answering the feedback question unlocks
-  both reveals. Reveal text is served by the database, so it isn't visible in the JS bundle.
+- **Reveals** unlock when a participant **shares or copies** a link (`unlock_on = "shared"`, the
+  default): the first share reveals the name, the second the mission. The second invitation card
+  stays locked until the first link has been shared.
+  - Set `unlock_on` to `"created"` to unlock on link creation, or `"accepted"` to wait until an
+    invitee joins.
+  - Answering the feedback question unlocks both reveals.
+  - Reveal text is served by the database, so it isn't visible in the JS bundle.
+- **Invitation lifecycle** is recorded as four separate facts: created, **shared** (`shared_at`,
+  `share_method` `share`/`copy`, `share_count`), opened and accepted.
+  - "Shared" means the participant *tapped* Share or Copy. It is not proof the link was received;
+    only "opened" and "accepted" show that.
+  - Links created before migration `003` are marked `share_method = 'legacy'`, so no existing
+    participant gets re-locked. The admin "Shared" count excludes them.
 - **Privacy:** participants see only their own invitations, the nicknames they gave them, and an
   anonymous shape of their branch. Nobody else's classifications, names or emails are shown.
 - **Deletion:** "Delete my data" erases name, email, answers, feedback, waitlist entry, browser and
@@ -116,8 +126,9 @@ trigger that creates a `profiles` row for every new auth user, so sharing a proj
 Pipeline profiles for experiment participants. Table and function names don't collide, so sharing a
 project still works if you have to.
 
-1. **SQL Editor:** paste and run `supabase/migrations/001_experiment_schema.sql`, then
-   `supabase/migrations/002_anonymous_onboarding.sql`. If you already ran 001, just run 002.
+1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
+   `002_anonymous_onboarding.sql` and `003_share_tracking.sql`. If you've already run some, run
+   only the ones after them.
 2. **Make yourself an admin:**
    ```sql
    insert into public.admins (email) values ('you@example.com');
@@ -277,6 +288,11 @@ It covers:
   deletion (including the anonymous auth user).
 
 It saves screenshots to `test-results/`.
+
+`npm run test:mobile` checks the phone experience on the browser-only demo build, with no database
+needed. On every text-entry screen, the field and its button must stay above a simulated iPhone
+keyboard. On the landing page, typing must advance one letter at a time with the caret always
+visible, even through a 300ms freeze. Screenshots go to `test-results/mobile/`.
 
 It needs PostgreSQL 14+ and Playwright's Chromium:
 

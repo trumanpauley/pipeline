@@ -72,7 +72,9 @@ export function Tree({ nodes, height }: { nodes: TreeNode[]; height?: number }) 
             return (
               <path
                 key={`l-${n.id}`}
-                className={`tree-link ${n.kind === 'pending' ? 'is-pending' : ''}`}
+                // pathLength=1 lets CSS draw any link in from its parent, whatever its length.
+                pathLength={n.kind === 'pending' ? undefined : 1}
+                className={`tree-link ${n.kind === 'pending' ? 'is-pending' : 'is-drawn'}`}
                 d={`M${b.x},${b.y} C${b.x},${midY} ${a.x},${midY} ${a.x},${a.y}`}
                 style={{ animationDelay: `${a.depth * 0.18}s` }}
               />

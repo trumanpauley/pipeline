@@ -21,6 +21,7 @@ for (const f of [
   'test/local-supabase-shim.sql',
   'supabase/migrations/001_experiment_schema.sql',
   'supabase/migrations/002_anonymous_onboarding.sql',
+  'supabase/migrations/003_share_tracking.sql',
 ]) {
   execSync(`psql "${DB}" -v ON_ERROR_STOP=1 -q -f ${path.join(root, f)}`);
 }

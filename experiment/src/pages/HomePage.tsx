@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, inviteUrl, type MyAccount, type MyInvitation, type MyState } from '../lib/api';
+import { api, type MyAccount, type MyState } from '../lib/api';
 import { currentQuery, navigate } from '../lib/router';
 import { demoNewInvite, demoReset, isLocalDemo } from '../lib/demo';
 import { pending } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import { COPY } from '../config/experiment';
-import { Classifier } from '../components/Classifier';
+import { InviteSheet, InviteSlots } from '../components/Invitations';
 import { SignIn } from '../components/EmailAuth';
 import { RevealOverlay } from '../components/Reveal';
 import { Tree, type TreeNode } from '../components/Tree';
@@ -150,9 +150,10 @@ function Home({ session }: { session: Session }) {
   const max = state.max_invites ?? 2;
   const reveals = state.reveals ?? [];
   const level = p.reveal_level;
-  const slots: (MyInvitation | null)[] = Array.from({ length: max }, (_, i) => invites[i] ?? null);
-  const nextSlot = slots.findIndex((s) => s === null);
   const joined = (state.branch?.length ?? 1) - 1;
+  const firstName = p.display_name?.trim().split(/\s+/)[0] ?? '';
+  // The network appears once there's something in it: a link or a joined person.
+  const showNetwork = invites.length > 0 || joined > 0;
 
   return (
     <main className="home">
@@ -173,8 +174,8 @@ function Home({ session }: { session: Session }) {
         </div>
         {level === 0 && (
           <>
-            <h1 className="display small">Two invitations.<br />Two answers.</h1>
-            <p className="muted">Each person you invite reveals something.</p>
+            <h1 className="display small">Now it’s your turn{firstName ? `, ${firstName}` : ''}.</h1>
+            <p className="muted">Invite two people to discover what we’re building.</p>
           </>
         )}
         {level >= 1 && <h1 className="display small reveal-static">{reveals[0]?.title}</h1>}
@@ -182,24 +183,18 @@ function Home({ session }: { session: Session }) {
         {level >= 2 && <p className="mission reveal-static">{reveals[1]?.title}</p>}
       </section>
 
-      <section className="slots">
-        {slots.map((inv, i) =>
-          inv ? (
-            <InviteRow key={inv.id} inv={inv} index={i} onChanged={refresh} />
-          ) : (
-            <button key={`empty-${i}`} className="slot slot-empty" onClick={() => setSheet('invite')} disabled={i !== nextSlot}>
-              <span className="slot-num">{i + 1}</span>
-              <span className="slot-main">Invite someone</span>
-              <span className="slot-plus" aria-hidden="true">+</span>
-            </button>
-          ),
-        )}
-        {level < 2 && (
-          <button className="link center-link" onClick={() => setSheet('feedback')}>
-            Rather not invite anyone? Answer one question instead.
-          </button>
-        )}
-      </section>
+      <InviteSlots
+        invitations={invites}
+        max={max}
+        level={level}
+        onInvite={() => setSheet('invite')}
+        onChanged={refresh}
+      />
+      {level < 2 && (
+        <button className="link center-link" onClick={() => setSheet('feedback')}>
+          Rather not invite anyone? Answer one question instead.
+        </button>
+      )}
 
       {level >= 2 && !account?.waitlist_email && (
         <button className="early-card fade-up" onClick={() => setOverlay('waitlist')}>
@@ -211,10 +206,11 @@ function Home({ session }: { session: Session }) {
         </button>
       )}
 
-      <section className="card">
+      {showNetwork && (
+      <section className="card network-card">
         <div className="card-head">
-          <h2>Your branch</h2>
-          <span className="muted small">{joined} joined through you</span>
+          <h2>Your network</h2>
+          <span className="muted small">{joined === 0 ? 'No one has joined yet' : `${joined} joined through you`}</span>
         </div>
         <BranchTree state={state} />
         <div className="stats">
@@ -223,6 +219,7 @@ function Home({ session }: { session: Session }) {
           <div><strong>{p.depth}</strong><span>your generation</span></div>
         </div>
       </section>
+      )}
 
       {state.is_admin && (
         <button className="link center-link" onClick={() => navigate('/admin')}>Admin dashboard</button>
@@ -232,6 +229,7 @@ function Home({ session }: { session: Session }) {
       {sheet === 'invite' && (
         <InviteSheet
           method={p.method}
+          first={invites.length === 0}
           onClose={() => {
             setSheet(null);
             void refresh();
@@ -283,130 +281,6 @@ function Home({ session }: { session: Session }) {
         />
       )}
     </main>
-  );
-}
-
-const STATUS: Record<string, { label: string; tone: string }> = {
-  created: { label: 'Link ready', tone: 'idle' },
-  opened: { label: 'Opened', tone: 'warm' },
-  accepted: { label: 'Joined', tone: 'done' },
-};
-
-function InviteRow({ inv, index, onChanged }: { inv: MyInvitation; index: number; onChanged: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const url = inviteUrl(inv.token);
-  const st = STATUS[inv.status] ?? STATUS.created;
-  const copy = async () => {
-    await copyText(url);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
-  };
-  const remove = async () => {
-    if (!window.confirm('Remove this link? It will stop working and frees the slot.')) return;
-    await api.revokeInvitation(inv.id);
-    onChanged();
-  };
-  return (
-    <div className={`slot slot-${inv.status}`}>
-      <span className="slot-num">{index + 1}</span>
-      <div className="slot-main">
-        <span>{inv.recipient_label || 'Invitation'}</span>
-        <span className={`pill tone-${st.tone}`}><i />{st.label}</span>
-      </div>
-      {inv.status !== 'accepted' && (
-        <div className="slot-actions">
-          <button className="chip" onClick={() => share(url)}>Share</button>
-          <button className="chip" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
-          <button className="chip ghost" onClick={remove} aria-label="Remove link">×</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const el = document.createElement('textarea');
-    el.value = text;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    el.remove();
-  }
-}
-
-async function share(url: string) {
-  if (navigator.share) {
-    try {
-      await navigator.share({ text: COPY.shareText, url });
-      return 'shared';
-    } catch {
-      return 'cancelled';
-    }
-  }
-  await copyText(url);
-  return 'copied';
-}
-
-function InviteSheet({ method, onClose }: { method: string; onClose: () => void }) {
-  const [step, setStep] = useState<'who' | 'classify' | 'ready'>('who');
-  const [label, setLabel] = useState('');
-  const [url, setUrl] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const create = async (value: string, ms: number) => {
-    try {
-      const r = await api.createInvitation(value, label.trim() || null, ms);
-      setUrl(inviteUrl(r.token));
-      setStep('ready');
-    } catch (e) {
-      setError((e as Error).message);
-      setStep('who');
-    }
-  };
-
-  return (
-    <Sheet onClose={onClose}>
-      {step === 'who' && (
-        <form className="stack fade-up" onSubmit={(e) => { e.preventDefault(); setStep('classify'); }}>
-          <p className="eyebrow">New invitation</p>
-          <h2 className="title">Who are you inviting?</h2>
-          <input
-            className="input"
-            placeholder="First name or nickname"
-            value={label}
-            maxLength={40}
-            onChange={(e) => setLabel(e.target.value)}
-            autoFocus
-            aria-label="Who are you inviting"
-          />
-          <p className="fine">Only you see this. It helps you keep track of your links.</p>
-          <ErrorText error={error} />
-          <Button type="submit">Continue</Button>
-        </form>
-      )}
-      {step === 'classify' && (
-        <Classifier method={method} name={label.trim() || 'them'} onSelect={create} />
-      )}
-      {step === 'ready' && (
-        <div className="stack fade-up text-center">
-          <div className="ready-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
-          <h2 className="title">Your link is ready.</h2>
-          <p className="muted">It works once, for one person.</p>
-          <code className="url">{url.replace(/^https?:\/\//, '')}</code>
-          <Button onClick={async () => { const r = await share(url); if (r === 'copied') setCopied(true); }}>
-            {copied ? 'Link copied' : 'Share invitation'}
-          </Button>
-          <Button variant="secondary" onClick={async () => { await copyText(url); setCopied(true); }}>
-            {copied ? 'Copied' : 'Copy link'}
-          </Button>
-          <button className="link" onClick={onClose}>Done</button>
-        </div>
-      )}
-    </Sheet>
   );
 }
 

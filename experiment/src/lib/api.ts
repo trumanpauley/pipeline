@@ -15,6 +15,9 @@ export interface AdminAccountStats {
   linked_emails: number;
   waitlist: number;
   flagged_same_network: number;
+  shared?: number;
+  shared_by_share?: number;
+  shared_by_copy?: number;
 }
 
 export interface OpenResult {
@@ -31,6 +34,7 @@ export interface MyInvitation {
   recipient_label: string | null;
   status: InvitationStatus;
   created_at: string;
+  shared_at: string | null;
   opened_at: string | null;
   accepted_at: string | null;
 }
@@ -115,6 +119,9 @@ export const api = {
       p_response_ms: ms,
     }),
   revokeInvitation: (id: string) => rpc('revoke_invitation', { p_invitation_id: id }),
+  /** Records a Share/Copy tap (intent to share, not proof of delivery). May unlock a reveal. */
+  markShared: (id: string, method: 'share' | 'copy') =>
+    rpc<{ ok: boolean; reveal_level: number }>('mark_invitation_shared', { p_invitation_id: id, p_method: method }),
   submitFeedback: (answer: string) => rpc('submit_feedback', { p_answer: answer }),
   setMarketingConsent: (consent: boolean) => rpc('set_marketing_consent', { p_consent: consent }),
   getMyState: () => rpc<MyState>('get_my_state'),
