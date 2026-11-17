@@ -11,10 +11,11 @@ import m004 from '../../supabase/migrations/004_phone_ready.sql?raw';
 import m005 from '../../supabase/migrations/005_name_moderation.sql?raw';
 import m006 from '../../supabase/migrations/006_circular_strength.sql?raw';
 import m007 from '../../supabase/migrations/007_invited_names.sql?raw';
+import m008 from '../../supabase/migrations/008_live_invitation_tracking.sql?raw';
 
 const CODE = '123456';
 const ADMIN = 'admin@demo.dev';
-const SQL = [shimSql, m001, m002, m003, m004, m005, m006, m007];
+const SQL = [shimSql, m001, m002, m003, m004, m005, m006, m007, m008];
 // A new schema gets a new database, so an old demo can't break a newer build.
 const DB_KEY = `pipeline-demo-${SQL.reduce((n, s) => n + s.length, 0)}`;
 
@@ -196,7 +197,7 @@ export async function localFetch(input: RequestInfo | URL, init?: RequestInit): 
         const result = await db.transaction(async (tx) => {
           await tx.query(`set local role ${role}`);
           await tx.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)]);
-          await tx.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-forwarded-for': '127.0.0.1' })]);
+          await tx.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-forwarded-for': '127.0.0.1', 'user-agent': navigator.userAgent })]);
           const args = keys.map((k, i) => `${k} => $${i + 1}`).join(', ');
           return (await tx.query<{ result: unknown }>(`select public.${m[1]}(${args}) as result`, keys.map((k) => body[k]))).rows[0].result;
         });

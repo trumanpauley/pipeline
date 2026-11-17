@@ -151,8 +151,8 @@ project still works if you have to.
 
 1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
-   `005_name_moderation.sql`, `006_circular_strength.sql` and `007_invited_names.sql`. If you've
-   already run some, run
+   `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
+   `008_live_invitation_tracking.sql`. If you've already run some, run
    only the ones after them.
 2. **Make yourself an admin:**
    ```sql
@@ -223,6 +223,36 @@ isn't visible to participants.
 The JavaScript bundle still contains the word (for example the post-unlock header), so someone
 reading the page source could find it. Reveal texts themselves are served by the database only
 after unlocking.
+
+### Live invitation statuses
+
+Each invitation card shows its status, which updates live and persists after a refresh:
+
+| Status | Means |
+|---|---|
+| **Ready** | Link generated, not shared yet |
+| **Pending** | The inviter tapped Share or Copy. A website can't confirm a text or iMessage was delivered, so this only means sharing started. |
+| **Opened** | A person opened the link |
+| **Connected** | They finished joining. Their node lights up in the network. |
+
+Reveals still unlock when sharing starts (first share → the name, second → the mission). They never
+wait for the recipient.
+
+**How "Opened" stays honest.**
+- Opens only count when the invitation page's code actually runs in a browser. Link-preview fetchers
+  (iMessage, Slack, WhatsApp…) that just read the page never count.
+- Crawlers that do run code are excluded by user agent (`px_is_bot_ua`) and get a neutral page with
+  no names.
+- The sender's own browser never counts, signed in or not; it's recognised by its browser ID.
+- Repeat visits from the same browser count once (`unique_open_count`).
+- Every step is logged in `invitation_events` (created, share_initiated, opened, bot_preview,
+  sender_open, connected). Admin-only; exportable as `invitation_events.csv`.
+
+**Live updates.** The home page subscribes with Supabase Realtime to changes on *its own*
+invitations. Row-level security means Realtime only streams rows the participant sent. Migration
+`008` adds `invitations` to the `supabase_realtime` publication; Realtime is on by default in
+Supabase. If Realtime is unavailable, the page polls every 20s while visible, and it always
+refreshes when the app returns to the foreground.
 
 ### Inviter-provided names
 

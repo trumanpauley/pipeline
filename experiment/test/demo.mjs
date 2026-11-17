@@ -26,6 +26,7 @@ for (const f of [
   'supabase/migrations/005_name_moderation.sql',
   'supabase/migrations/006_circular_strength.sql',
   'supabase/migrations/007_invited_names.sql',
+  'supabase/migrations/008_live_invitation_tracking.sql',
 ]) {
   execSync(`psql "${DB}" -v ON_ERROR_STOP=1 -q -f ${path.join(root, f)}`);
 }
@@ -56,6 +57,7 @@ const vite = await createServer({ root, server: {
       '/auth/v1': 'http://localhost:54321',
       '/rest/v1': 'http://localhost:54321',
       '/__test': 'http://localhost:54321',
+      '/realtime/v1': { target: 'ws://localhost:54321', ws: true },
     },
   },
 });

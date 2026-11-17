@@ -14,6 +14,7 @@ import { WaitlistOverlay } from '../components/Waitlist';
 import { SaveNetworkOverlay } from '../components/SaveNetwork';
 import { formatPhone, phoneEnabled } from '../lib/phone';
 import { resetDeviceId } from '../lib/device';
+import { useLiveInvitations } from '../lib/live';
 import { Button, Constellation, ErrorText, Loading, Screen, Sheet } from '../components/ui';
 
 export function HomePage({ session }: { session: Session | null }) {
@@ -120,6 +121,10 @@ function Home({ session }: { session: Session }) {
     const after = s?.participant?.reveal_level ?? 0;
     if (after > before) setReveal(before + 1);
   };
+
+  // Live statuses: when someone opens or accepts one of my invitations, the
+  // card (and the network) update without a refresh.
+  useLiveInvitations(state?.participant?.id, () => void load());
 
   if (error) {
     return (

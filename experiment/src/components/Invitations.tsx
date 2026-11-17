@@ -46,14 +46,21 @@ async function shareOrCopy(inv: { id: string; url: string }, how: 'share' | 'cop
 
 // ---------- the two invitation cards ----------
 
-const STATUS = (inv: MyInvitation) =>
+/**
+ * Ready → Pending → Opened → Connected.
+ *  Pending: the inviter tapped Share/Copy. A website can't confirm a text or
+ *  iMessage was delivered, so this only means sharing was started.
+ *  Opened: a person (not a link preview, not the sender) opened the link.
+ *  Connected: they finished joining.
+ */
+export const STATUS = (inv: MyInvitation) =>
   inv.status === 'accepted'
-    ? { label: 'Joined', tone: 'done' }
+    ? { key: 'connected', label: 'Connected', tone: 'done' }
     : inv.status === 'opened'
-      ? { label: 'Opened', tone: 'warm' }
+      ? { key: 'opened', label: 'Opened', tone: 'warm' }
       : inv.shared_at
-        ? { label: 'Shared', tone: 'idle' }
-        : { label: 'Ready to share', tone: 'quiet' };
+        ? { key: 'pending', label: 'Pending', tone: 'idle' }
+        : { key: 'ready', label: 'Ready', tone: 'quiet' };
 
 export function InviteSlots({
   invitations,
@@ -155,6 +162,16 @@ function FilledSlot({
   const [copied, setCopied] = useState(false);
   const url = inviteUrl(inv.token);
   const st = STATUS(inv);
+  // A soft pulse on the status dot when it changes while the card is on screen.
+  const lastStatus = useRef(st.key);
+  const [changed, setChanged] = useState(false);
+  useEffect(() => {
+    if (lastStatus.current === st.key) return;
+    lastStatus.current = st.key;
+    setChanged(true);
+    const t = window.setTimeout(() => setChanged(false), 1600);
+    return () => window.clearTimeout(t);
+  }, [st.key]);
   const act = async (how: 'share' | 'copy') => {
     const r = await shareOrCopy({ id: inv.id, url }, how);
     if (r === 'copied') {
@@ -176,7 +193,7 @@ function FilledSlot({
       </span>
       <span className="invite-text">
         <strong>{inv.recipient_label || 'Invitation'}</strong>
-        <span className={`pill tone-${st.tone}`}><i />{st.label}</span>
+        <span className={`pill tone-${st.tone} ${changed ? 'is-changed' : ''}`} data-status={st.key} aria-live="polite"><i />{st.label}</span>
       </span>
       {inv.status !== 'accepted' && (
         <div className="invite-actions">

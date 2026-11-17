@@ -505,3 +505,13 @@ tr:last-child td { border-bottom: 0; }
 .circular .btn { max-width: 420px; }
 /* Keyboard focus on the hidden range input shows as a ring around the dial. */
 .circular-dial:has(.circular-input:focus-visible) .circular-track { stroke: var(--accent); stroke-width: 3.5; }
+
+/* ---------- live invitation statuses ---------- */
+.pill i { transition: background 0.5s var(--ease), box-shadow 0.5s var(--ease); }
+.pill.tone-idle i { background: var(--text-2); }
+.pill.is-changed i { animation: statusPulse 1.4s var(--ease) 1; }
+@keyframes statusPulse {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.9); box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.12); }
+  100% { transform: scale(1); }
+}

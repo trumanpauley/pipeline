@@ -89,11 +89,12 @@ psql('supabase/migrations/004_phone_ready.sql');
 psql('supabase/migrations/005_name_moderation.sql');
 psql('supabase/migrations/006_circular_strength.sql');
 psql('supabase/migrations/007_invited_names.sql');
+psql('supabase/migrations/008_live_invitation_tracking.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
 ok(legacyInv.share_method === 'legacy' && legacyInv.shared_at, 'pre-003 links count as shared (no participant is re-locked)');
-ok((await asUser(null, `select open_invitation($1) as r`, [legacyLink]))[0].r.state === 'ok', 'legacy invitation link still opens');
+ok((await asUser(null, `select open_invitation($1) as r`, [legacyLink], { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/604.1' }))[0].r.state === 'ok', 'legacy invitation link still opens');
 await q(`insert into public.admins (email) values ('admin@test.dev')`);
 
 // ---------- servers ----------
@@ -333,7 +334,7 @@ try {
   ok(bobInv0.shared_at === null && bobInv0.status === 'created', 'backend: created, not shared');
   ok((await byName('Alice')).reveal_level === 0, 'reveal level still 0');
   ok(await alicePage.getByRole('button', { name: /Second invitation/ }).isDisabled(), 'second invitation still locked');
-  ok((await alicePage.locator('.invite-card.is-filled').innerText()).includes('Bob') && (await alicePage.locator('.invite-card.is-filled .pill').innerText()).includes('Ready to share'), 'slot shows Bob · Ready to share');
+  ok((await alicePage.locator('.invite-card.is-filled').innerText()).includes('Bob') && (await alicePage.locator('.invite-card.is-filled .pill').innerText()).includes('Ready'), 'slot shows Bob · Ready');
   ok(await alicePage.getByText('Share to unlock our name').isVisible(), 'hint to share');
   await alicePage.locator('.network-card').waitFor();
   ok(await alicePage.locator('.network-card .tree-node.kind-pending').count() === 1, 'network appears with Bob as a dim pending node');
@@ -357,7 +358,7 @@ try {
   await alicePage.locator('.home').waitFor();
   ok((await alicePage.locator('.wordmark').innerText()) === 'Pipeline' && !(await alicePage.locator('.wordmark').getAttribute('class')).includes('is-revealing'), 'returning participant keeps "Pipeline" (no replayed animation)');
   ok(await alicePage.getByRole('button', { name: /Invite someone.*Unlock 2/ }).isEnabled(), 'second invitation unlocked');
-  ok((await alicePage.locator('.invite-card.is-filled .pill').innerText()).includes('Shared'), 'slot shows Shared');
+  ok((await alicePage.locator('.invite-card.is-filled .pill').innerText()).includes('Pending'), 'slot shows Pending (sharing started; delivery unknown)');
   await alicePage.waitForTimeout(300);
   await shot(alicePage, '05d-home-second-unlocked');
 
@@ -461,7 +462,7 @@ try {
   await alicePage.goto(APP);
   await alicePage.locator('.invite-card.status-accepted').waitFor();
   const pills = await alicePage.locator('.invite-card .pill').allInnerTexts();
-  ok(pills.some((t) => t.includes('Joined')) && pills.some((t) => t.includes('Opened')), `Alice sees ${pills.join(' / ')}`);
+  ok(pills.some((t) => t.includes('Connected')) && pills.some((t) => t.includes('Opened')), `Alice sees ${pills.join(' / ')}`);
   ok(await alicePage.locator('.network-card .tree-node.kind-member').count() === 1
     && await alicePage.locator('.network-card .tree-node.kind-pending').count() === 1, 'network: Bob lit up (joined), Carol still pending');
   await alicePage.waitForTimeout(1300);
@@ -504,9 +505,16 @@ try {
   await bobPage.getByLabel('Your data').click();
   await bobPage.getByRole('button', { name: 'Sign out' }).click();
   await bobPage.waitForTimeout(400);
-  await startJoin(bobPage, daveLink, 'NotBob');
-  await bobPage.getByText('You can’t accept your own invitation.').waitFor();
-  ok(true, 'signed out + own link from the same browser → self-referral blocked');
+  await bobPage.goto(daveLink);
+  await bobPage.getByRole('heading', { name: 'This is your invitation.' }).waitFor();
+  ok(true, 'signed out + own link from the same browser → recognised as the sender before anything else');
+  {
+    // ...and the server still refuses a join from the sender's browser if the page is bypassed
+    const bobDevice = await bobPage.evaluate(() => localStorage.getItem('px.device'));
+    const anonTok = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
+    const r = await rpcAs(anonTok, 'accept_invitation', { p_token: daveLink.split('/i/')[1], p_display_name: 'NotBob', p_research_consent: true, p_device: bobDevice });
+    ok(r.body.message === 'self_invite', 'direct API join from the sender’s browser → self-referral blocked');
+  }
   await startJoin(bobPage, `${APP}/i/${seeds[1].token}`, 'BobAgain');
   await bobPage.getByText('This browser is already part of the experiment').waitFor();
   ok(true, 'second participant from the same browser blocked');
@@ -872,7 +880,11 @@ try {
     ok(outRow.method === 'circular' && outRow.value === '80' && outRow.rater_id === miraP.id && outRow.question_version === 'circular_v1', 'outbound rating stored (80%, D, circular_v1, Mira’s ID)');
 
     // --- Theo rates Mira: mouse drag on a desktop browser ---
-    const theoCtx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+    const theoCtx = await browser.newContext({
+      viewport: { width: 1200, height: 900 },
+      // an ordinary desktop browser (the default headless user agent is treated as a bot)
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    });
     contexts.push(theoCtx);
     const theo = await theoCtx.newPage();
     await openDial(theo, theoLink.split('/i/')[1]);
@@ -1092,6 +1104,112 @@ try {
     ok(acctN.names_corrected >= 1 && acctN.names_confirmed >= 2 && Number(acctN.misdirected_reports) === 1, `admin stats: ${acctN.names_confirmed} confirmed, ${acctN.names_corrected} corrected, ${acctN.misdirected_reports} forwarded-link report`);
     const pexp = (await rpcAs(adminJwtN, 'admin_export', { p_kind: 'participants' })).body.find((r) => r.participant_id === jonP.id);
     ok(pexp.invited_name === 'Jon' && pexp.confirmed_name === 'Jonathan' && pexp.name_was_corrected === true && pexp.invitation_id === jonInv1.id && pexp.user_id === jonP.user_id, 'participants export: invited_name, confirmed_name, name_was_corrected, invitation_id, user_id');
+  }
+
+  step('Live invitation tracking — two browsers (inviter and recipient)');
+  {
+    // Browser 1: the inviter
+    const lena = await newPhone();
+    const seedL = (await q(`insert into invitations (token, sender_name) values (px_new_token(), 'Truman') returning token`))[0].token;
+    await joinViaLink(lena, `${APP}/i/${seedL}`, 'Lena');
+    const lenaP = await byName('Lena');
+    await lena.getByRole('button', { name: 'Invite someone' }).first().click();
+    await lena.getByLabel('Their first name').fill('Omar');
+    await lena.getByRole('button', { name: 'Continue' }).click();
+    await answer(lena, '.sheet', 'last');
+    await lena.getByRole('heading', { name: 'Omar’s link is ready.' }).waitFor();
+    const omarLink = 'http://' + (await lena.locator('.sheet .url').innerText());
+    const omarTok = omarLink.split('/i/')[1];
+    await lena.locator('.sheet').getByRole('button', { name: 'Later' }).click();
+    const pill = lena.locator('.invite-card.is-filled .pill');
+    await pill.waitFor();
+    ok((await pill.getAttribute('data-status')) === 'ready' && (await pill.innerText()).includes('Ready'), 'status: Ready (link generated, not shared)');
+    const [omarInv] = await q(`select * from invitations where token = $1`, [omarTok]);
+    const evs = async () => (await q(`select event, detail from invitation_events where invitation_id = $1 order by id`, [omarInv.id])).map((e) => e.event + (e.detail ? `:${e.detail}` : ''));
+    ok((await evs()).join() === 'created', 'event recorded: created');
+
+    // Share initiated → Pending + immediate unlock (no recipient action needed)
+    await lena.locator('.invite-card.is-filled').getByRole('button', { name: 'Copy link' }).click();
+    await lena.locator('.reveal-overlay').waitFor();
+    ok((await lena.locator('.reveal-title').innerText()).includes('part of Pipeline'), 'sharing the first invitation unlocks the name immediately');
+    await lena.waitForTimeout(1800);
+    await lena.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
+    await lena.locator('.invite-card.is-filled .pill[data-status="pending"]').waitFor();
+    ok(true, 'status: Pending (sharing started)');
+    const [omarInv1] = await q(`select * from invitations where id = $1`, [omarInv.id]);
+    ok(omarInv1.shared_at && omarInv1.share_method === 'copy' && omarInv1.opened_at === null && omarInv1.status === 'created', 'backend: shared (copy) — not treated as delivered or opened');
+    ok((await evs()).join() === 'created,share_initiated:copy', 'event recorded: share_initiated (copy)');
+
+    // Link previews and bots don't count
+    const previewHtml = await fetch(omarLink.replace(/^http:\/\/[^/]+/, APP), { headers: { 'user-agent': 'Slackbot-LinkExpanding 1.0' } });
+    ok(previewHtml.status === 200 && (await evs()).length === 2, 'a link-preview fetch of the page (no code run) records nothing');
+    const bot = await (await fetch(`${API}/rest/v1/rpc/open_invitation`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'facebookexternalhit/1.1', 'x-forwarded-for': '3.3.3.3' },
+      body: JSON.stringify({ p_token: omarTok }),
+    })).json();
+    const [omarInv2] = await q(`select * from invitations where id = $1`, [omarInv.id]);
+    ok(bot.state === 'preview' && !JSON.stringify(bot).includes('Omar') && !JSON.stringify(bot).includes('Lena') && omarInv2.opened_at === null && omarInv2.assigned_method === null,
+      'a crawler that runs code gets "preview": no names, no open, no method assigned');
+    ok((await evs()).some((e) => e.startsWith('bot_preview')), 'event recorded: bot_preview (with the crawler’s user agent)');
+
+    // The sender's own browser doesn't count, signed in or not
+    const lenaDevice = await lena.evaluate(() => localStorage.getItem('px.device'));
+    const own = (await rpcAs(null, 'open_invitation', { p_token: omarTok, p_device: lenaDevice }, '3.3.3.4')).body;
+    ok(own.state === 'own', 'opening the link from the sender’s browser (signed out) → recognised as the sender');
+    const ownPage = await lena.context().newPage();
+    await ownPage.goto(omarLink);
+    await ownPage.getByRole('heading', { name: 'This is your invitation.' }).waitFor();
+    await ownPage.close();
+    const [omarInv3] = await q(`select * from invitations where id = $1`, [omarInv.id]);
+    ok(omarInv3.opened_at === null && omarInv3.unique_open_count === 0 && (await evs()).filter((e) => e === 'sender_open').length === 2, 'sender opens never count');
+    await lena.waitForTimeout(500);
+    ok((await pill.getAttribute('data-status')) === 'pending', 'still Pending after bot and sender visits');
+
+    // Browser 2: the recipient opens it → Opened on Lena's screen, no refresh
+    const omar = await newPhone();
+    const t0 = Date.now();
+    await omar.goto(omarLink);
+    await omar.getByRole('heading', { name: 'Lena invited you.' }).waitFor();
+    await lena.locator('.invite-card.is-filled .pill[data-status="opened"]').waitFor({ timeout: 8000 });
+    const openedMs = Date.now() - t0;
+    ok(openedMs < 6000, `Lena’s card switched to Opened live, without a refresh (${(openedMs / 1000).toFixed(1)}s; the fallback poll is 20s)`);
+    ok((await pill.getAttribute('class')).includes('is-changed'), 'the status dot pulses once when it changes');
+    await lena.screenshot({ path: path.join(SHOTS, '40-live-opened.png') });
+
+    // Repeat visits don't inflate opens
+    await omar.reload(); await omar.getByRole('heading', { name: 'Lena invited you.' }).waitFor();
+    await omar.reload(); await omar.getByRole('heading', { name: 'Lena invited you.' }).waitFor();
+    const [omarInv4] = await q(`select * from invitations where id = $1`, [omarInv.id]);
+    const opens = (await evs()).filter((e) => e.startsWith('opened'));
+    ok(omarInv4.unique_open_count === 1 && opens.length === 3 && opens.filter((e) => e === 'opened:repeat').length === 2, 'three visits from Omar’s browser → 1 unique open (2 marked repeat)');
+
+    // Omar joins → Connected + his node lights up on Lena's screen, live
+    const t1 = Date.now();
+    await omar.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await answer(omar);
+    await completeJoin(omar, 'Omar');
+    await omar.locator('.home').waitFor();
+    await lena.locator('.invite-card.is-filled .pill[data-status="connected"]').waitFor({ timeout: 8000 });
+    await lena.locator('.network-card .tree-node.kind-member').waitFor({ timeout: 4000 });
+    ok(Date.now() - t1 < 15000, 'Lena’s card switched to Connected and Omar’s node lit up, without a refresh');
+    await lena.waitForTimeout(1300);
+    await lena.locator('.network-card').scrollIntoViewIfNeeded();
+    await lena.screenshot({ path: path.join(SHOTS, '41-live-connected.png') });
+    ok((await evs()).at(-1) === 'connected', 'event recorded: connected');
+
+    // Persists after refresh / reopening
+    await lena.reload();
+    await lena.locator('.invite-card.is-filled .pill[data-status="connected"]').waitFor();
+    ok(await lena.locator('.network-card .tree-node.kind-member').count() === 1, 'statuses and the lit node persist after a refresh');
+
+    // Privacy: no ratings in what the inviter's app receives; invitations readable only by their sender
+    const lenaState = JSON.stringify((await rpcAs(await jwtOf(lena), 'get_my_state')).body);
+    ok(!lenaState.includes('"value"') && !lenaState.includes('classification'), 'the inviter’s live data contains no relationship ratings');
+    const omarP = await byName('Omar');
+    ok((await asUser(omarP.user_id, `select * from invitations where sender_id = '${lenaP.id}'`)).length === 0, 'RLS: others can’t read Lena’s invitations (Realtime is filtered by the same rule)');
+    ok((await asUser(omarP.user_id, 'select * from invitation_events')).length === 0 && (await asUser(null, 'select * from invitation_events')).error, 'invitation events are admin-only');
+    const acctL = (await rpcAs(await jwtOf(adminPage), 'admin_account_stats')).body;
+    ok(acctL.human_opens >= 1 && acctL.repeat_opens >= 2 && acctL.bot_previews >= 1 && acctL.sender_opens >= 2, `admin: ${acctL.human_opens} human opens, ${acctL.repeat_opens} repeats, ${acctL.bot_previews} bot previews, ${acctL.sender_opens} sender opens`);
   }
 
   console.log(`\n✔ ${passed} checks passed. Screenshots in test-results/`);

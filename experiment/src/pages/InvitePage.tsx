@@ -46,6 +46,9 @@ export function InvitePage({ token, session }: { token: string; session: Session
   const [showData, setShowData] = useState(false);
   const [busy, setBusy] = useState(false);
   const accepting = useRef(false);
+  // One open per visit (and per session change): React's dev mode runs effects
+  // twice, which would otherwise log two opens.
+  const opening = useRef<{ key: string; result: Promise<OpenResult> } | null>(null);
 
   const senderName = info?.sender_name || 'the person who invited you';
 
@@ -85,13 +88,17 @@ export function InvitePage({ token, session }: { token: string; session: Session
     (async () => {
       let r: OpenResult;
       try {
-        r = await api.openInvitation(token);
+        const key = `${token}:${session?.user?.id ?? ''}`;
+        if (opening.current?.key !== key) opening.current = { key, result: api.openInvitation(token, deviceId()) };
+        r = await opening.current.result;
       } catch (e) {
         if (alive) show('Something went wrong.', (e as Error).message);
         return;
       }
       if (!alive) return;
       setInfo(r);
+      // Treated as a link preview / automated visitor: nothing personal is shown.
+      if (r.state === 'preview') return show('You’ve been invited.', 'Open this link in your browser to begin.');
       if (r.state === 'rate_limited') return show('Give it a moment.', 'Too many visits from this network. Try again shortly.');
       if (r.state === 'invalid') return show('This link isn’t active.', 'Ask the person who sent it for a new one.');
       if (r.state === 'used')
