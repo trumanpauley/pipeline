@@ -127,7 +127,7 @@ Pipeline profiles for experiment participants. Table and function names don't co
 project still works if you have to.
 
 1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
-   `002_anonymous_onboarding.sql` and `003_share_tracking.sql`. If you've already run some, run
+   `002_anonymous_onboarding.sql`, `003_share_tracking.sql` and `004_phone_ready.sql`. If you've already run some, run
    only the ones after them.
 2. **Make yourself an admin:**
    ```sql
@@ -147,7 +147,8 @@ project still works if you have to.
    <h2>Your code: {{ .Token }}</h2>
    <p>Or <a href="{{ .ConfirmationURL }}">tap here to continue</a>.</p>
    ```
-   Subject suggestion: `Your Pipeline Experiment code`.
+   Subject suggestion: `Your sign-in code`. Keep "Pipeline" out of these emails; a participant
+   who hasn't unlocked the name yet may receive one.
 6. **Custom SMTP (recommended):** email is now optional, so launch doesn't depend on it, but
    Supabase's built-in sender only allows a few emails per hour. Under **Authentication → Emails →
    SMTP Settings**, connect a provider such as Resend, Postmark or SES (all have free tiers), then
@@ -181,6 +182,60 @@ npm run dev
 ```
 
 Open http://localhost:5173/admin, sign in with your admin email, and generate a seed link.
+
+### Keeping the name hidden
+
+Before a participant's first unlock, the app never shows "Pipeline": the header and browser tab say
+"The Experiment", and the sharing preview says "You've been invited." The name appears once they
+share their first link, and stays for returning visits. The admin dashboard always says Pipeline.
+
+**Watch the web address.** Invite links use whatever domain the site is on, so a `pipeline-…`
+address gives the name away in every link. Use a neutral domain for the real launch: either add one
+in Vercel → **Domains** (a free `something.vercel.app` name if available, or your own) and make
+it the primary domain, or create the Vercel project under a neutral name. The Supabase project URL
+isn't visible to participants.
+
+The JavaScript bundle still contains the word (for example the post-unlock header), so someone
+reading the page source could find it. Reveal texts themselves are served by the database only
+after unlocking.
+
+### Optional phone verification ("Save your network")
+
+The app is ready for it, but it's **off** until you set `VITE_PHONE_AUTH=1`. Today participants save
+their network with an email code, which keeps working until you switch.
+
+How it works:
+- A participant who has discovered Pipeline sees **Save your network** and enters their number.
+- `supabase.auth.updateUser({ phone })` texts a code, and `verifyOtp({ type: 'phone_change' })`
+  attaches the verified number to their **existing anonymous account**. Same user id, so participant
+  row, links and answers are unchanged, and no second account is created. A number already linked
+  to another participant is refused.
+- Returning visitors choose **Use phone number instead** on the start page.
+  `signInWithOtp({ phone, shouldCreateUser: false })` means only numbers already linked can sign in,
+  so nobody can create accounts or SMS charges by guessing numbers.
+- Pipeline updates are a separate email signup with its own unticked consent checkbox.
+
+To switch it on:
+1. **Pick an SMS provider.** Supabase doesn't send texts itself or charge for them; the provider
+   does. Supported: Twilio, Twilio Verify, MessageBird, Vonage, Textlocal, or your own via a Send
+   SMS hook.
+   - **Twilio Verify is the simplest for US numbers.** It handles the sending number and carrier
+     rules, and charges per successful verification (on the order of a few cents).
+   - Plain Twilio Programmable SMS costs around a cent per text plus a monthly number fee. To text
+     US phones you must first register for **A2P 10DLC** (or verify a toll-free number), which takes
+     days and has small fees.
+   - Prices change, so check the provider's current pricing.
+2. **In Supabase → Authentication → Sign In / Providers → Phone:**
+   - Enable it, choose the provider, and paste its credentials (for Twilio Verify: Account SID,
+     Auth Token and Verify Service SID).
+   - Keep "Enable phone confirmations" on.
+   - Set the SMS message, for example `Your code is {{ .Code }}`.
+   - To try it for free, add a test phone number with a fixed code under the phone provider's test
+     settings: no text is sent for those numbers.
+3. **Authentication → Rate Limits:** set "SMS messages per hour" to what you're willing to pay for;
+   this caps cost if someone abuses the form. Turnstile CAPTCHA (step 7 above) also protects it.
+4. **In Vercel**, add `VITE_PHONE_AUTH` = `1` to the real project and redeploy. From then on, Your
+   data → Save and the home card use phone instead of email.
 
 ### 3. Deploy to Vercel
 

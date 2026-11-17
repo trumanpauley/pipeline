@@ -39,10 +39,15 @@ export function AdminPage({ session }: { session: Session | null }) {
     if (session) void load();
   }, [session, load]);
 
+  // Admin screens always use the real name.
+  useEffect(() => {
+    document.title = 'Pipeline · Admin';
+  }, []);
+
   if (!session) {
     return (
       <Screen className="center">
-        <SignIn heading="Admin" sub="Sign in with an admin email." />
+        <SignIn heading="Admin" sub="Sign in with an admin email." allowPhone={false} />
       </Screen>
     );
   }
@@ -78,7 +83,11 @@ export function AdminPage({ session }: { session: Session | null }) {
 
       <section className="tiles">
         <Tile label="Participants" value={t.participants} sub={`${t.seed_participants} seeds`} />
-        <Tile label="Linked emails" value={acct?.linked_emails ?? t.verified_emails} sub={`${acct?.anonymous ?? 0} anonymous`} />
+        <Tile
+          label="Saved networks"
+          value={(acct?.linked_emails ?? t.verified_emails) + (acct?.linked_phones ?? 0)}
+          sub={`${acct?.linked_emails ?? 0} email · ${acct?.linked_phones ?? 0} phone · ${acct?.anonymous ?? 0} anonymous`}
+        />
         <Tile label="Tree depth" value={t.max_depth} sub="generations" />
         <Tile label="Referral conversion" value={pct(inv.accepted, inv.generated)} sub={`${inv.accepted} of ${inv.generated} links`} />
         <Tile label="Waitlist" value={acct?.waitlist ?? 0} sub={pct(acct?.waitlist ?? 0, t.participants)} />

@@ -6,7 +6,7 @@ import { pending, pendingFromSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import { deviceId } from '../lib/device';
 import { captchaToken } from '../lib/captcha';
-import { COPY } from '../config/experiment';
+import { BRAND, COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
 import { LandingIntro } from '../components/LandingIntro';
 import { DemoLinks } from './HomePage';
@@ -27,6 +27,11 @@ export function InvitePage({ token, session }: { token: string; session: Session
   const accepting = useRef(false);
 
   const senderName = info?.sender_name || 'the person who invited you';
+
+  // Invitees haven't unlocked anything: never show the company name here.
+  useEffect(() => {
+    document.title = BRAND.hidden;
+  }, []);
   const signedIn = Boolean(session);
 
   const show = (title: string, body?: string, cta?: string) => {

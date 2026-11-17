@@ -22,6 +22,7 @@ for (const f of [
   'supabase/migrations/001_experiment_schema.sql',
   'supabase/migrations/002_anonymous_onboarding.sql',
   'supabase/migrations/003_share_tracking.sql',
+  'supabase/migrations/004_phone_ready.sql',
 ]) {
   execSync(`psql "${DB}" -v ON_ERROR_STOP=1 -q -f ${path.join(root, f)}`);
 }
@@ -42,6 +43,7 @@ await startMockSupabase({ port: 54321, connectionString: DB, fixedCode: '123456'
 process.env.VITE_SUPABASE_URL = '/';
 process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'anon-key';
 process.env.VITE_DEMO = '1';
+process.env.VITE_PHONE_AUTH = '1'; // demo only: no SMS is sent, every code is 123456
 const vite = await createServer({ root, server: {
     port: PORT,
     strictPort: true,

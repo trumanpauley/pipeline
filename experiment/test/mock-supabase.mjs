@@ -42,7 +42,9 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
     role: 'authenticated',
     email: u.email ?? '',
     email_confirmed_at: u.email_confirmed_at,
-    is_anonymous: !u.email,
+    phone: u.phone ?? '',
+    phone_confirmed_at: u.phone_confirmed_at,
+    is_anonymous: !u.email && !u.phone,
     app_metadata: u.email ? { provider: 'email', providers: ['email'] } : { provider: 'anonymous', providers: ['anonymous'] },
     user_metadata: u.raw_user_meta_data,
     created_at: u.created_at,
@@ -53,7 +55,7 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
     const now = Math.floor(Date.now() / 1000);
     const access_token = signJwt({
       sub: u.id, role: 'authenticated', aud: 'authenticated', email: u.email ?? '', exp: now + 3600, iat: now,
-      is_anonymous: !u.email,
+      is_anonymous: !u.email && !u.phone,
     });
     const refresh_token = crypto.randomBytes(16).toString('hex');
     refreshTokens.set(refresh_token, u.id);
@@ -85,6 +87,41 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
 
     try {
       // ---------------- auth ----------------
+      // ----- phone (SMS) — no messages are ever sent; codes are readable via /__test/code?phone= -----
+      const newCode = () => fixedCode ?? String(crypto.randomInt(100000, 999999));
+      if (url.pathname === '/auth/v1/otp' && req.method === 'POST' && body.phone) {
+        // signInWithOtp({ phone }) — returning participant
+        const u = await userRow('phone', body.phone);
+        if (!u && body.create_user === false) {
+          return send(422, { code: 422, error_code: 'otp_disabled', msg: 'Signups not allowed for otp' });
+        }
+        codes.set(`phone:${body.phone}`, { code: newCode() });
+        return send(200, {});
+      }
+      if (url.pathname === '/auth/v1/user' && req.method === 'PUT' && body.phone) {
+        // updateUser({ phone }) — link a phone to this (anonymous) user
+        const claims = verifyJwt(bearer);
+        const u = claims && (await userRow('id', claims.sub));
+        if (!u) return send(401, { code: 401, msg: 'invalid JWT' });
+        const taken = await userRow('phone', body.phone);
+        if (taken && taken.id !== u.id) {
+          return send(422, { code: 422, error_code: 'phone_exists', msg: 'A user with this phone number has already been registered' });
+        }
+        codes.set(`phone:${body.phone}`, { code: newCode(), userId: u.id });
+        return send(200, { ...userJson(u), new_phone: body.phone });
+      }
+      if (url.pathname === '/auth/v1/verify' && req.method === 'POST' && body.phone) {
+        const entry = codes.get(`phone:${body.phone}`);
+        if (!entry || entry.code !== String(body.token)) {
+          return send(403, { code: 403, error_code: 'otp_expired', msg: 'Token has expired or is invalid' });
+        }
+        codes.delete(`phone:${body.phone}`);
+        const u = body.type === 'phone_change' && entry.userId
+          ? (await pool.query(`update auth.users set phone = $1, phone_confirmed_at = now() where id = $2 returning *`, [body.phone, entry.userId])).rows[0]
+          : (await pool.query(`update auth.users set phone_confirmed_at = coalesce(phone_confirmed_at, now()) where phone = $1 returning *`, [body.phone])).rows[0];
+        return send(200, session(u));
+      }
+
       if (url.pathname === '/auth/v1/otp' && req.method === 'POST') {
         const email = String(body.email).toLowerCase();
         let u = await userRow('email', email);
@@ -184,7 +221,8 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
         return send(200, { token: r.rows[0].token });
       }
       if (url.pathname === '/__test/code') {
-        return send(200, codes.get(url.searchParams.get('email')) ?? null);
+        const phone = url.searchParams.get('phone');
+        return send(200, codes.get(phone ? `phone:${phone}` : url.searchParams.get('email')) ?? null);
       }
       if (url.pathname === '/__test/magic-link') {
         // What the real email's link resolves to after GoTrue verifies it.
