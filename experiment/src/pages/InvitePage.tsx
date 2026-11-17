@@ -6,6 +6,7 @@ import { pending, pendingFromSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import { deviceId } from '../lib/device';
 import { captchaToken } from '../lib/captcha';
+import { NAME_REJECTED, nameAcceptable } from '../lib/names';
 import { BRAND, COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
 import { LandingIntro } from '../components/LandingIntro';
@@ -118,6 +119,11 @@ export function InvitePage({ token, session }: { token: string; session: Session
     const n = name.trim();
     if (!n) return setError('Please enter your first name.');
     if (!research) return setError('Please agree to take part in the research to continue.');
+    // Check the name before creating anything; the server checks it again on join.
+    setBusy(true);
+    const nameOk = await nameAcceptable(n);
+    setBusy(false);
+    if (!nameOk) return setError(NAME_REJECTED);
     const p = { token, name: n, research, marketing: false };
     pending.set(p);
     if (signedIn) return void accept(p);

@@ -86,6 +86,7 @@ step('Apply migration 002 on top');
 psql('supabase/migrations/002_anonymous_onboarding.sql');
 psql('supabase/migrations/003_share_tracking.sql');
 psql('supabase/migrations/004_phone_ready.sql');
+psql('supabase/migrations/005_name_moderation.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
@@ -242,7 +243,10 @@ try {
   await adminPage.getByLabel('Number of links').fill('3');
   await adminPage.getByLabel('Sender name').fill('Truman');
   await adminPage.getByRole('button', { name: 'Generate' }).click();
-  await adminPage.getByText('/i/').first().waitFor();
+  // Wait until the three new seed links are saved (the legacy seed link is already listed).
+  for (let i = 0; i < 50 && (await q(`select count(*)::int n from invitations where sender_id is null and status = 'created'`))[0].n < 3; i++) {
+    await adminPage.waitForTimeout(100);
+  }
   const seeds = await q(`select token from invitations where sender_id is null and admin_note is null and sender_name = 'Truman' and status = 'created' order by created_at`);
   ok(seeds.length === 3, 'three seed links created');
 
@@ -543,6 +547,127 @@ try {
   await q(`update experiment_settings set value = jsonb_set(value, '{opens_per_ip_hour}', '300') where key = 'rate_limits'`);
   ok((await q(`select count(*)::int n from rate_events where key_hash like '%.%'`))[0].n === 0, 'IPs are stored only as hashes');
 
+  step('Names & moderation');
+  {
+    const adminJwt0 = await jwtOf(adminPage);
+    const VALUE = { strength: 'acquaintance', context: 'class', comfort: '3' };
+    // 1. Server check: real names pass, bad ones don't (only ok/not-ok is revealed)
+    const good = ['José', 'Nguyễn', 'O’Brien', 'Jean-Luc', '李娜', 'Дмитрий', 'محمد', 'Kshitij', 'Shital', 'Cassandra', 'Hassan', 'Kike', 'Anne-Marie', 'ʻIlima'];
+    const bad = ['f.u.c.k', 'Fück', 'shit head', 'www.spam.com', 'Bo😀b', 'Bob123', 'Pipeline', 'aaaaaaa'];
+    const goodRes = await Promise.all(good.map((n) => rpcAs(null, 'check_name', { p_name: n }, '5.5.5.5')));
+    ok(goodRes.every((r) => r.body.ok === true), `server accepts real names: ${good.join(', ')}`);
+    const badRes = [];
+    for (const n of bad) badRes.push(await rpcAs(null, 'check_name', { p_name: n }, '5.5.5.6'));
+    ok(badRes.every((r) => r.body.ok === false), `server rejects: ${bad.join(' | ')}`);
+    ok(badRes.every((r) => !JSON.stringify(r.body).match(/blocked|url|characters|repeat/)), 'rejections don’t reveal which rule matched');
+
+    // 2. UI: invitee name rejected before the relationship question
+    const bobJwt = await jwtOf(bobPhone2);
+    await bobPhone2.reload();
+    await bobPhone2.getByRole('button', { name: 'Invite someone' }).first().click();
+    for (const n of ['f u c k', 'www.spam.com']) {
+      await bobPhone2.getByLabel('Their first name').fill(n);
+      await bobPhone2.getByRole('button', { name: 'Continue' }).click();
+      await bobPhone2.getByText('Please enter a different name.').waitFor();
+    }
+    ok(await bobPhone2.locator('.sheet .classifier').count() === 0, 'rejected invitee names never reach the relationship question');
+    await bobPhone2.getByLabel('Their first name').fill('Zoë');
+    await bobPhone2.getByRole('button', { name: 'Continue' }).click();
+    await bobPhone2.locator('.sheet .classifier .option, .sheet .classifier .scale-dot').first().click();
+    await bobPhone2.getByRole('heading', { name: 'Zoë’s link is ready.' }).waitFor();
+    const zoeLink = 'http://' + (await bobPhone2.locator('.sheet .url').innerText());
+    const zoeToken = zoeLink.split('/i/')[1];
+    await bobPhone2.locator('.sheet').getByRole('button', { name: 'Later' }).click();
+    ok(true, 'an accented invitee name (Zoë) is accepted');
+
+    // 3. UI: participant name rejected on the join page, before any account exists
+    const usersBefore = (await q(`select count(*)::int n from auth.users`))[0].n;
+    const v = await newPhone();
+    await v.goto(zoeLink);
+    await v.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await answer(v);
+    await v.getByText(CONSENT).click();
+    for (const n of ['Fück', 'Bob123']) {
+      await v.getByPlaceholder('First name').fill(n);
+      await v.getByRole('button', { name: 'Continue' }).click();
+      await v.getByText('Please enter a different name.').waitFor();
+    }
+    ok((await q(`select count(*)::int n from auth.users`))[0].n === usersBefore, 'a rejected name creates no account');
+
+    // 4. Bypassing the app: straight to the Supabase API
+    const anonTok = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
+    let r = await rpcAs(anonTok, 'accept_invitation', { p_token: zoeToken, p_display_name: 'f u c k', p_research_consent: true, p_device: 'bypass-1' }, '8.8.8.1');
+    ok(r.body.error === 'invalid_name', 'direct API join with a bad name is refused');
+    r = await rpcAs(anonTok, 'accept_invitation', { p_token: zoeToken, p_display_name: 'www.evil.com', p_research_consent: true, p_marketing_consent: false }, '8.8.8.1');
+    ok(r.body.error === 'invalid_name', 'old 4-argument join call is validated too');
+    ok((await q(`select count(*)::int n from participants where invitation_id = (select id from invitations where token = $1)`, [zoeToken]))[0].n === 0, 'no participant was created');
+    r = await rpcAs(bobJwt, 'create_invitation', { p_value: VALUE[bob.method], p_recipient_label: 'Sexy' });
+    ok(r.body.error === 'invalid_name', 'direct API invitation with a bad invitee name is refused');
+    ok((await asUser(bob.user_id, `update participants set display_name = 'fuck' where user_id = auth.uid()`)).error, 'participants cannot write names to tables directly');
+    ok((await rpcAs(bobJwt, 'admin_moderate', { p_target: 'participant', p_id: bob.id, p_action: 'approve' })).body.message === 'forbidden', 'participants cannot moderate');
+    await q(`update experiment_settings set value = value || '{"name_rejects_per_ip_hour": 3}' where key = 'rate_limits'`);
+    const rl = [];
+    for (let i = 0; i < 4; i++) rl.push((await rpcAs(null, 'check_name', { p_name: 'fuck' }, '6.6.6.6')).body);
+    ok(rl.slice(0, 3).every((b) => b.ok === false) && rl[3].message === 'rate_limited', 'repeated rejected names from one IP are rate-limited');
+    await q(`update experiment_settings set value = value || '{"name_rejects_per_ip_hour": 30}' where key = 'rate_limits'`);
+
+    // 5. What invitees see: only an approved first name
+    const sender = async () => (await rpcAs(null, 'open_invitation', { p_token: zoeToken }, '8.8.8.2')).body.sender_name ?? null;
+    ok((await sender()) === 'Bob', 'landing shows the sender’s approved first name');
+    const mod = (action, value, target = 'participant', id = bob.id) => rpcAs(adminJwt0, 'admin_moderate', { p_target: target, p_id: id, p_action: action, p_value: value ?? null, p_reason: 'test' });
+    await mod('hide');
+    ok((await sender()) === null, 'hidden name → landing shows no name');
+    const landing = await newPhone();
+    await landing.goto(zoeLink);
+    await landing.getByRole('heading', { name: 'You’ve been invited.' }).waitFor();
+    ok(!(await landing.locator('body').innerText()).includes('Bob'), 'landing page UI shows "You’ve been invited." with no name');
+    ok((await mod('replace', 'f u c k')).body.message === 'invalid_name', 'admin replacements are validated too');
+    await mod('replace', 'Robert Smith');
+    ok((await sender()) === 'Robert', 'replaced name → first name only');
+    await mod('flag');
+    ok((await sender()) === null, 'flagged name → hidden from invitees until approved');
+    await mod('approve');
+    ok((await sender()) === 'Robert', 'approved → shown again');
+    await mod('replace', 'Bob');
+
+    // 6. Invitee names (private to the sender) can be hidden too
+    const [zoeInv] = await q(`select id from invitations where token = $1`, [zoeToken]);
+    await mod('hide', null, 'invitation', zoeInv.id);
+    const bobState = (await rpcAs(bobJwt, 'get_my_state')).body;
+    ok(bobState.invitations.find((i) => i.token === zoeToken).recipient_label === null, 'hidden invitee name is gone from the sender’s dashboard');
+
+    // 7. Suspension
+    await mod('suspend');
+    ok((await rpcAs(null, 'open_invitation', { p_token: zoeToken }, '8.8.8.2')).body.state === 'invalid', 'suspending revokes their unused links');
+    ok((await rpcAs(bobJwt, 'create_invitation', { p_value: VALUE[bob.method], p_recipient_label: 'Kai' })).body.message === 'suspended', 'suspended participants cannot invite');
+    await bobPhone2.reload();
+    await bobPhone2.getByRole('heading', { name: 'Your participation is paused.' }).waitFor();
+    ok(true, 'suspended participant sees a calm paused screen');
+    await mod('unsuspend');
+    await bobPhone2.reload();
+    await bobPhone2.locator('.invite-slots').waitFor();
+    ok(true, 'unsuspended participant is back');
+
+    // 8. "Approve names first" mode
+    await q(`update experiment_settings set value = '"before"' where key = 'name_review'`);
+    const priyaTok = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
+    r = await rpcAs(priyaTok, 'accept_invitation', { p_token: seeds[2].token, p_display_name: 'Priya', p_research_consent: true, p_device: 'priya-1' }, '9.9.9.1');
+    const [priya] = await q(`select * from participants where display_name = 'Priya'`);
+    ok(r.body.state === 'joined' && priya.name_status === 'pending', 'review-first mode: new names start pending');
+    const pLink = (await rpcAs(priyaTok, 'create_invitation', { p_value: VALUE[priya.method], p_recipient_label: 'Sam' })).body.token;
+    const pSender = async () => (await rpcAs(null, 'open_invitation', { p_token: pLink }, '8.8.8.3')).body.sender_name ?? null;
+    ok((await pSender()) === null, 'pending (unapproved) name never appears on the invitation page');
+    await mod('approve', null, 'participant', priya.id);
+    ok((await pSender()) === 'Priya', 'after approval it does');
+    await q(`update experiment_settings set value = '"after"' where key = 'name_review'`);
+
+    // 9. Log
+    const log = await q(`select * from moderation_actions order by id`);
+    ok(log.length === 9 && log.every((a) => a.admin_email === 'admin@test.dev'), `${log.length} moderation actions logged with the admin’s email`);
+    ok(log.some((a) => a.action === 'replace' && a.old_value === 'Bob' && a.new_value === 'Robert Smith'), 'log keeps before → after for replacements');
+    ok((await asUser(bob.user_id, 'select * from moderation_actions')).length === 0 && (await asUser(null, 'select * from moderation_actions')).error, 'moderation log is admin-only');
+  }
+
   step('Branch visualization shows only permitted data');
   await alicePage.reload();
   await alicePage.locator('.tree svg').waitFor();
@@ -567,13 +692,24 @@ try {
   const adminJwt = await jwtOf(adminPage);
   const ov = (await rpcAs(adminJwt, 'admin_overview')).body;
   const acct = (await rpcAs(adminJwt, 'admin_account_stats')).body;
-  ok(ov.totals.participants === 5 && ov.totals.max_depth === 3, 'totals: 5 participants, depth 3');
-  ok(acct.linked_emails === 1 && acct.linked_phones === 1 && acct.anonymous === 3, `accounts: 1 email, 1 phone, 3 anonymous`);
+  ok(ov.totals.participants === 6 && ov.totals.max_depth === 3, 'totals: 6 participants, depth 3');
+  ok(acct.linked_emails === 1 && acct.linked_phones === 1 && acct.anonymous === 4, `accounts: 1 email, 1 phone, 4 anonymous`);
   ok(acct.waitlist === 2, 'waitlist count (Alice, Dave via API)');
   ok(acct.shared === 3 && acct.shared_by_copy === 3, `admin: ${acct.shared} links shared since tracking began (legacy excluded)`);
   ok((await adminPage.locator('.funnel').innerText()).includes('Shared'), 'funnel shows the Shared step');
   ok((await adminPage.locator('.tiles').first().innerText()).includes('Waitlist'), 'dashboard shows the waitlist tile');
   ok(!JSON.stringify(await adminPage.locator('.settings').innerText()).includes('hash_salt'), 'salt hidden from the settings panel');
+  ok(await adminPage.getByRole('heading', { name: 'Names & moderation' }).isVisible(), 'admin: Names & moderation section');
+  const peopleTable = adminPage.locator('.moderation table');
+  ok((await peopleTable.innerText()).includes('Alice'), 'admin: participant names listed for review');
+  await peopleTable.locator('tr', { hasText: 'Alice' }).getByRole('button', { name: 'Flag' }).click();
+  await peopleTable.locator('tr', { hasText: 'Alice' }).getByText('flagged').waitFor();
+  ok(true, 'admin: Flag works from the dashboard');
+  await peopleTable.locator('tr', { hasText: 'Alice' }).getByRole('button', { name: 'Approve' }).click();
+  await adminPage.locator('.moderation').getByRole('tab', { name: 'Log' }).click();
+  ok((await adminPage.locator('.moderation table').innerText()).includes('flag'), 'admin: actions appear in the log');
+  await adminPage.locator('.moderation').scrollIntoViewIfNeeded();
+  await adminPage.screenshot({ path: path.join(SHOTS, '12b-admin-moderation.png') });
   const [download] = await Promise.all([
     adminPage.waitForEvent('download'),
     adminPage.getByRole('button', { name: 'waitlist.csv' }).click(),

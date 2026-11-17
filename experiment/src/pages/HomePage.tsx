@@ -151,6 +151,29 @@ function Home({ session }: { session: Session }) {
     );
   }
 
+  if (p.suspended) {
+    return (
+      <Screen className="center">
+        <div className="stack text-center fade-up">
+          <Constellation small />
+          <h1 className="title">Your participation is paused.</h1>
+          <p className="muted">Your invitation links are no longer active.</p>
+          <button className="link center-link" onClick={() => setSheet('privacy')}>Your data</button>
+        </div>
+        {sheet === 'privacy' && (
+          <PrivacySheet
+            state={state}
+            account={account}
+            onClose={() => setSheet(null)}
+            onLink={() => setSheet(null)}
+            onWaitlist={() => setSheet(null)}
+            onChanged={load}
+          />
+        )}
+      </Screen>
+    );
+  }
+
   const invites = state.invitations ?? [];
   const max = state.max_invites ?? 2;
   const reveals = state.reveals ?? [];
