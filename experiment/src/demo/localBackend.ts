@@ -12,10 +12,11 @@ import m005 from '../../supabase/migrations/005_name_moderation.sql?raw';
 import m006 from '../../supabase/migrations/006_circular_strength.sql?raw';
 import m007 from '../../supabase/migrations/007_invited_names.sql?raw';
 import m008 from '../../supabase/migrations/008_live_invitation_tracking.sql?raw';
+import m009 from '../../supabase/migrations/009_pipeline_community.sql?raw';
 
 const CODE = '123456';
 const ADMIN = 'admin@demo.dev';
-const SQL = [shimSql, m001, m002, m003, m004, m005, m006, m007, m008];
+const SQL = [shimSql, m001, m002, m003, m004, m005, m006, m007, m008, m009];
 // A new schema gets a new database, so an old demo can't break a newer build.
 const DB_KEY = `pipeline-demo-${SQL.reduce((n, s) => n + s.length, 0)}`;
 

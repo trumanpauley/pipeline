@@ -11,6 +11,7 @@ import { SignIn } from '../components/EmailAuth';
 import { RevealOverlay } from '../components/Reveal';
 import { Tree, type TreeNode } from '../components/Tree';
 import { WaitlistOverlay } from '../components/Waitlist';
+import { CommunityOverlay } from '../components/Community';
 import { SaveNetworkOverlay } from '../components/SaveNetwork';
 import { formatPhone, phoneEnabled } from '../lib/phone';
 import { resetDeviceId } from '../lib/device';
@@ -75,7 +76,7 @@ export function DemoLinks() {
 function Home({ session }: { session: Session }) {
   const [state, setState] = useState<MyState | null>(null);
   const [account, setAccount] = useState<MyAccount | null>(null);
-  const [overlay, setOverlay] = useState<null | 'waitlist' | 'link' | 'phone'>(null);
+  const [overlay, setOverlay] = useState<null | 'community' | 'link' | 'phone'>(null);
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | 'invite' | 'feedback' | 'privacy'>(null);
   const [reveal, setReveal] = useState<number | null>(null);
@@ -171,8 +172,7 @@ function Home({ session }: { session: Session }) {
             account={account}
             onClose={() => setSheet(null)}
             onLink={() => setSheet(null)}
-            onWaitlist={() => setSheet(null)}
-            onChanged={load}
+            onCommunity={() => setSheet(null)}
           />
         )}
       </Screen>
@@ -241,11 +241,11 @@ function Home({ session }: { session: Session }) {
         </button>
       )}
 
-      {level >= 2 && !account?.waitlist_email && (
-        <button className="early-card fade-up" onClick={() => setOverlay('waitlist')}>
+      {level >= 2 && account && !account.community?.subscribed && (
+        <button className="early-card fade-up" onClick={() => setOverlay('community')}>
           <div>
-            <strong>Early access</strong>
-            <span>Join the Pipeline waitlist.</span>
+            <strong>Pipeline Community</strong>
+            <span>Early access and future experiments.</span>
           </div>
           <span className="arrow" aria-hidden="true">→</span>
         </button>
@@ -296,8 +296,7 @@ function Home({ session }: { session: Session }) {
           account={account}
           onClose={() => setSheet(null)}
           onLink={() => { setSheet(null); saveNetwork(); }}
-          onWaitlist={() => { setSheet(null); setOverlay('waitlist'); }}
-          onChanged={load}
+          onCommunity={() => { setSheet(null); setOverlay('community'); }}
         />
       )}
       {reveal !== null && reveals[reveal - 1] && (
@@ -307,10 +306,10 @@ function Home({ session }: { session: Session }) {
           onDone={() => {
             if (reveal < level) return setReveal(reveal + 1);
             setReveal(null);
-            // After the final reveal, invite them (once) to the early-access waitlist.
-            if (reveal >= 2 && !account?.waitlist_email && !waitlistPrompted.get()) {
-              waitlistPrompted.set();
-              setOverlay('waitlist');
+            // After the mission reveal, invite them to the Pipeline Community —
+            // unless they already joined or chose "Maybe later" (kept on the server).
+            if (reveal >= 2 && account && !account.community && !account.community_prompt_dismissed) {
+              setOverlay('community');
             }
           }}
         />
@@ -323,9 +322,23 @@ function Home({ session }: { session: Session }) {
           }}
         />
       )}
-      {(overlay === 'waitlist' || overlay === 'link') && (
+      {overlay === 'community' && (
+        <CommunityOverlay
+          account={account}
+          onSkip={() => {
+            setOverlay(null);
+            // Skipping changes nothing else; it only stops the screen reappearing.
+            void api.dismissCommunityPrompt().catch(() => undefined).then(() => load());
+          }}
+          onClose={(changed) => {
+            setOverlay(null);
+            if (changed) void load();
+          }}
+        />
+      )}
+      {overlay === 'link' && (
         <WaitlistOverlay
-          mode={overlay}
+          mode="link"
           account={account}
           onClose={(changed) => {
             setOverlay(null);
@@ -396,37 +409,27 @@ function Wordmark({ brand, revealed }: { brand: string; revealed: boolean }) {
   );
 }
 
-const waitlistPrompted = {
-  get: () => { try { return localStorage.getItem('px.waitlistPrompted') === '1'; } catch { return false; } },
-  set: () => { try { localStorage.setItem('px.waitlistPrompted', '1'); } catch { /* ignore */ } },
-};
-
 function PrivacySheet({
   state,
   account,
   onClose,
   onLink,
-  onWaitlist,
-  onChanged,
+  onCommunity,
 }: {
   state: MyState;
   account: MyAccount | null;
   onClose: () => void;
   onLink: () => void;
-  onWaitlist: () => void;
-  onChanged: () => Promise<unknown>;
+  onCommunity: () => void;
 }) {
   const p = state.participant!;
   const [confirming, setConfirming] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [busy, setBusy] = useState(false);
   const anonymous = !account?.linked_email && !account?.linked_phone;
+  const community = account?.community;
   const savedAs = account?.linked_phone ? formatPhone(account.linked_phone) : account?.linked_email;
 
-  const leave = async () => {
-    await api.leaveWaitlist();
-    await onChanged();
-  };
   const signOut = async () => {
     if (anonymous && !confirmSignOut) return setConfirmSignOut(true);
     await supabase.auth.signOut();
@@ -457,17 +460,15 @@ function PrivacySheet({
           </div>
           {anonymous && <button className="chip" onClick={onLink}>Save</button>}
         </div>
-        {p.reveal_level >= 1 && (
-        <div className="account-row">
+        {p.reveal_level >= 2 && (
+        <div className="account-row" data-testid="community-row">
           <div>
-            <div>Early-access waitlist</div>
-            <div className="muted">{account?.waitlist_email ?? 'Not joined'}</div>
+            <div>Pipeline Community</div>
+            <div className="muted">{community?.subscribed ? community.email : 'Not joined'}</div>
           </div>
-          {account?.waitlist_email ? (
-            <button className="chip ghost" onClick={leave}>Leave</button>
-          ) : (
-            <button className="chip" onClick={onWaitlist}>Join</button>
-          )}
+          <button className={`chip ${community?.subscribed ? 'ghost' : ''}`} onClick={onCommunity}>
+            {community?.subscribed ? 'Manage' : 'Join'}
+          </button>
         </div>
         )}
 
@@ -485,7 +486,7 @@ function PrivacySheet({
         ) : (
           <div className="stack confirm">
             <p className="muted small">
-              This erases your name, email, waitlist entry and answers, and closes any unused links.
+              This erases your name, email, Pipeline Community signup and answers, and closes any unused links.
               People who joined through you stay in the experiment anonymously.
             </p>
             <Button onClick={del} busy={busy}>Delete permanently</Button>

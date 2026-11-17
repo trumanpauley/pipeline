@@ -275,6 +275,7 @@ button { font: inherit; color: inherit; }
 .admin-header-actions { display: flex; gap: 8px; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
 .tiles.compact { margin-bottom: 12px; }
+.community-tiles { margin-bottom: 12px; }
 .tile-stat { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 2px; }
 .tile-label { font-size: 13px; color: var(--text-2); }
 .tile-stat strong { font-size: 30px; font-weight: 640; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }

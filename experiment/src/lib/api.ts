@@ -64,6 +64,34 @@ export interface MyAccount {
   waitlist_email: string | null;
   /** Exact consent text shown on the waitlist checkbox (and stored with the signup). */
   waitlist_consent_text?: string;
+  /** This participant's own Pipeline Community signup (null if never joined). */
+  community?: CommunityStatus | null;
+  /** "Maybe later" was chosen (or the signup completed): don't show the screen again. */
+  community_prompt_dismissed?: boolean;
+  /** Exact checkbox wording, stored with each consent. */
+  community_consent_texts?: { research_invites?: string; updates?: string };
+}
+
+export interface CommunityStatus {
+  email: string;
+  research_invites: boolean;
+  updates: boolean;
+  /** False once both preferences are withdrawn. */
+  subscribed: boolean;
+  signed_up_at: string;
+}
+
+export interface AdminCommunityStats {
+  total: number;
+  research_invites: number;
+  updates: number;
+  both: number;
+  unsubscribed: number;
+  dismissed: number;
+  /** Participants who reached the mission reveal (saw the signup). */
+  eligible: number;
+  participants: number;
+  by_generation: { depth: number; eligible: number; signups: number }[];
 }
 
 export interface AdminAccountStats {
@@ -145,6 +173,8 @@ const MESSAGES: Record<string, string> = {
   cannot_revoke: 'That link can’t be removed anymore.',
   invalid_answer: 'Please write a short answer.',
   invalid_email: 'Enter a valid email.',
+  no_preference: 'Choose at least one option to join.',
+  not_subscribed: 'You haven’t joined the Pipeline Community yet.',
   rate_limited: 'Too many attempts from this network. Try again in a little while.',
   invalid_phone: 'Enter a valid phone number.',
   device_already_joined: 'This browser is already part of the experiment. Open the link on your own phone.',
@@ -209,6 +239,12 @@ export const api = {
     rpc('admin_moderate', { p_target: target, p_id: id, p_action: action, p_value: value ?? null, p_reason: reason ?? null }),
   joinWaitlist: (email: string, source: string) => rpc('join_waitlist', { p_email: email, p_source: source }),
   leaveWaitlist: () => rpc('leave_waitlist'),
+  joinCommunity: (email: string, researchInvites: boolean, updates: boolean) =>
+    rpc('join_community', { p_email: email, p_research_invites: researchInvites, p_updates: updates }),
+  updateCommunityPreferences: (researchInvites: boolean, updates: boolean) =>
+    rpc('update_community_preferences', { p_research_invites: researchInvites, p_updates: updates }),
+  dismissCommunityPrompt: () => rpc('dismiss_community_prompt'),
+  adminCommunityStats: () => rpc<AdminCommunityStats>('admin_community_stats'),
   adminAccountStats: () => rpc<AdminAccountStats>('admin_account_stats'),
   deleteMyData: () => rpc('delete_my_data'),
   // admin
