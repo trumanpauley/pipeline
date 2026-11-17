@@ -88,6 +88,7 @@ psql('supabase/migrations/003_share_tracking.sql');
 psql('supabase/migrations/004_phone_ready.sql');
 psql('supabase/migrations/005_name_moderation.sql');
 psql('supabase/migrations/006_circular_strength.sql');
+psql('supabase/migrations/007_invited_names.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
@@ -182,7 +183,7 @@ async function startJoin(page, link, name, { shots = false, checks = false } = {
     // First-name + consent page ("stealth mode")
     await page.getByText('We’re in stealth mode.').waitFor();
     if (shots) await page.waitForTimeout(1500), await shot(page, `03-name-consent-empty`);
-    ok(await page.getByRole('heading', { name: 'The more you connect, the more we reveal.' }).isVisible(), 'join page: new headline');
+    ok(await page.getByRole('heading', { name: 'And you are?' }).isVisible(), 'seed link (no invited name): "And you are?"');
     ok(await page.getByText('Participate in our experiment to discover our name and what we’re building.').isVisible(), 'join page: supporting text');
     ok(await page.getByText('No account needed.', { exact: true }).isVisible(), 'join page: "No account needed." footer');
     ok(await page.getByText('Invite two people. Find out what this is.').count() === 0, 'old headline removed');
@@ -199,12 +200,36 @@ async function startJoin(page, link, name, { shots = false, checks = false } = {
     await page.getByPlaceholder('First name').fill(name);
     ok(await cont.isEnabled(), 'Continue enabled with a name and consent');
     if (shots) await shot(page, `03-name-consent`);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    return method;
+  }
+  await completeJoin(page, name);
+  return method;
+}
+
+/**
+ * Finish the join screen as `name`: confirm the invited name if it matches,
+ * otherwise correct it; on seed links (no invited name) type it.
+ */
+async function completeJoin(page, name, { consentBox = false } = {}) {
+  const form = page.locator('form.join-form');
+  await form.waitFor();
+  const mode = await form.getAttribute('data-mode');
+  const tick = () => (consentBox ? page.locator('.consents .check-box').first() : page.getByText(CONSENT)).click();
+  if (mode === 'confirm') {
+    const invited = (await page.locator('.join-title').innerText()).replace(/^Are you /, '').replace(/\?$/, '');
+    await tick();
+    if (invited.toLowerCase() === name.toLowerCase()) {
+      await page.getByRole('button', { name: 'Yes, that’s me' }).click();
+      return;
+    }
+    await page.getByRole('button', { name: 'That’s not my name' }).click();
+    await page.getByPlaceholder('Your first name').fill(name);
   } else {
     await page.getByPlaceholder('First name').fill(name);
-    await page.getByText(CONSENT).click();
+    await tick();
   }
   await page.getByRole('button', { name: 'Continue' }).click();
-  return method;
 }
 
 /** The full new-participant journey: no email anywhere. */
@@ -598,8 +623,9 @@ try {
     await v.getByRole('button', { name: 'Enter the Experiment' }).click();
     await answer(v);
     await v.getByText(CONSENT).click();
+    await v.getByRole('button', { name: 'That’s not my name' }).click();
     for (const n of ['Fück', 'Bob123']) {
-      await v.getByPlaceholder('First name').fill(n);
+      await v.getByPlaceholder('Your first name').fill(n);
       await v.getByRole('button', { name: 'Continue' }).click();
       await v.getByText('Please enter a different name.').waitFor();
     }
@@ -735,6 +761,7 @@ try {
   await davePage.getByText('Your data has been deleted.').waitFor();
   const [tomb] = await q(`select * from participants where id = $1`, [dave.id]);
   ok(tomb.display_name === null && tomb.user_id === null && tomb.device_hash === null && tomb.deleted_at, 'personal data erased, anonymous node kept');
+  ok(tomb.invited_name === null && tomb.confirmed_name === null, 'invited and confirmed names erased too');
   ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [dave.id]))[0].n === 0, 'waitlist entry deleted');
   ok(!(await authUser(dave.user_id)), 'anonymous auth user removed');
 
@@ -812,9 +839,7 @@ try {
     ok(aRow.method === 'circular' && aRow.value === '37' && aRow.question_version === 'circular_v1' && aRow.response_ms > 0, `stored: method circular, 37%, question version circular_v1, ${aRow.response_ms}ms`);
     const evA = await q(`select e.* from classification_events e join invitations i on i.id = e.invitation_id where i.token = $1 order by e.id`, [tokA]);
     ok(evA.some((e) => e.event === 'shown') && evA.some((e) => e.event === 'interacted' && e.elapsed_ms >= 0), 'shown and first-interaction events recorded');
-    await mira.getByPlaceholder('First name').fill('Mira');
-    await mira.getByText(CONSENT).click();
-    await mira.getByRole('button', { name: 'Continue' }).click();
+    await completeJoin(mira, 'Mira');
     await mira.locator('.home').waitFor();
     const miraP = await byName('Mira');
     ok(miraP.method === 'circular' && aRow.rater_id === null || true, 'Mira joined');
@@ -861,9 +886,7 @@ try {
     const theoPct = await pctOf(theo);
     ok(theoPct >= 59 && theoPct <= 61 && (await theo.locator('.circular-label').innerText()) === 'Well', `mouse drag → ${theoPct}% · Well`);
     await theo.locator('.circular').getByRole('button', { name: 'Continue', exact: true }).click();
-    await theo.getByPlaceholder('First name').fill('Theo');
-    await theo.locator('.consents .check-box').first().click(); // wide screen: click the box, not the sentence (which holds the "How data is used" link)
-    await theo.getByRole('button', { name: 'Continue' }).click();
+    await completeJoin(theo, 'Theo', { consentBox: true }); // wide screen: click the box, not the sentence (it holds the "How data is used" link)
     await theo.locator('.home').waitFor();
 
     // --- 0% is a valid, deliberate answer ---
@@ -916,6 +939,159 @@ try {
     await adminPage.getByRole('heading', { name: 'Strength ratings by method' }).waitFor();
     ok((await adminPage.locator('.panel', { hasText: 'Strength ratings by method' }).innerText()).includes('D · Circular'), 'admin dashboard: strength-by-method panel includes D');
     await adminPage.locator('.panel', { hasText: 'Strength ratings by method' }).screenshot({ path: path.join(SHOTS, '23-admin-methods.png') });
+  }
+
+  step('Inviter-provided names: confirm, correct, forwarded links, refresh');
+  {
+    const VALUE_D = (pct) => async (page, scope = '') => {
+      // keyboard to an exact percentage on the circular slider
+      await page.locator(`${scope} .circular-input`).focus();
+      await page.keyboard.press('Home');
+      for (let i = 0; i < pct; i++) await page.keyboard.press('ArrowRight');
+      await page.locator(`${scope} .classifier`).getByRole('button', { name: 'Continue', exact: true }).click();
+    };
+    // 3. Seed participant: no invited name → "And you are?"
+    const nadia = await newPhone();
+    const seedTok = (await q(`insert into invitations (token, sender_name) values (px_new_token(), 'Truman') returning token`))[0].token;
+    await nadia.goto(`${APP}/i/${seedTok}`);
+    await nadia.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await answer(nadia);
+    await nadia.getByRole('heading', { name: 'And you are?' }).waitFor();
+    ok(await nadia.getByRole('button', { name: 'Yes, that’s me' }).count() === 0, 'seed participant: no confirmation screen, just "And you are?"');
+    await completeJoin(nadia, 'Nadia');
+    await nadia.locator('.home').waitFor();
+    const nadiaP = await byName('Nadia');
+    ok(nadiaP.invited_name === null && nadiaP.confirmed_name === 'Nadia' && nadiaP.name_was_corrected === null, 'seed participant stored: invited_name null, confirmed_name Nadia');
+
+    // Nadia invites Sarah and rates her 75% (her assigned method is D in this phase)
+    await nadia.getByRole('button', { name: 'Invite someone' }).first().click();
+    await nadia.getByLabel('Their first name').fill('Sarah');
+    await nadia.getByRole('button', { name: 'Continue' }).click();
+    await nadia.locator('.sheet .circular').waitFor();
+    await VALUE_D(75)(nadia, '.sheet');
+    await nadia.getByRole('heading', { name: 'Sarah’s link is ready.' }).waitFor();
+    const sarahLink = 'http://' + (await nadia.locator('.sheet .url').innerText());
+    const sarahTok = sarahLink.split('/i/')[1];
+    await nadia.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
+    await nadia.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
+    await nadia.locator('.reveal-overlay').waitFor();
+    await nadia.waitForTimeout(1800);
+    await nadia.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
+    const [sarahInv] = await q(`select * from invitations where token = $1`, [sarahTok]);
+    ok(sarahInv.invited_name === 'Sarah' && sarahInv.sender_id === nadiaP.id, 'invitation stores invited_name = Sarah');
+    ok((await q(`select count(*)::int n from participants where display_name = 'Sarah'`))[0].n === 0, 'no participant profile exists for Sarah before she joins');
+    ok(!sarahLink.includes('Sarah') && !sarahLink.includes('75') && /\/i\/[A-Za-z0-9_-]{22}$/.test(sarahLink), 'the link carries only an unguessable token (no name, no rating)');
+    const landingData = (await rpcAs(null, 'open_invitation', { p_token: sarahTok }, '4.4.4.4')).body;
+    ok(landingData.invited_name === 'Sarah' && landingData.sender_name === 'Nadia' && !JSON.stringify(landingData).includes('75'), 'invitation page data: first names only, no ratings');
+
+    // 1. Correct name: Sarah confirms; she rates Nadia 40% independently
+    const sarah = await newPhone();
+    await sarah.goto(sarahLink);
+    await sarah.getByRole('heading', { name: 'Nadia invited you.' }).waitFor();
+    await sarah.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await sarah.locator('.circular').waitFor();
+    ok(!(await sarah.locator('body').innerText()).includes('75'), 'Sarah never sees Nadia’s rating');
+    await VALUE_D(40)(sarah);
+    await sarah.getByRole('heading', { name: 'Are you Sarah?' }).waitFor();
+    ok(await sarah.getByText('That’s who Nadia invited.').isVisible() && await sarah.getByText('We’re in stealth mode.').isVisible(), 'confirmation screen: "Are you Sarah?" / "That’s who Nadia invited."');
+    const yes = sarah.getByRole('button', { name: 'Yes, that’s me' });
+    ok(await yes.isDisabled() && await sarah.getByRole('button', { name: 'That’s not my name' }).isVisible(), 'two options; "Yes, that’s me" needs consent first');
+    await sarah.waitForTimeout(1200);
+    await sarah.screenshot({ path: path.join(SHOTS, '30-confirm-name.png') });
+    await sarah.getByText(CONSENT).click();
+    ok(await yes.isEnabled(), 'consent ticked → "Yes, that’s me" enabled');
+    await yes.click();
+    await sarah.locator('.home').waitFor();
+    const sarahP = await byName('Sarah');
+    const sarahUser = await authUser(sarahP.user_id);
+    ok(sarahP.invited_name === 'Sarah' && sarahP.confirmed_name === 'Sarah' && sarahP.name_was_corrected === false
+      && sarahP.invitation_id === sarahInv.id && sarahUser && sarahP.parent_id === nadiaP.id, 'stored: invited_name Sarah, confirmed_name Sarah, not corrected, invitation_id, user id, parent Nadia');
+    // 6. Ratings stored independently, in both directions, on the same invitation
+    const ratings = await q(`select direction, value, rater_id, method from classifications where invitation_id = $1 order by direction`, [sarahInv.id]);
+    ok(ratings.length === 2 && ratings.find((r) => r.direction === 'outbound').value === '75' && ratings.find((r) => r.direction === 'outbound').rater_id === nadiaP.id
+      && ratings.find((r) => r.direction === 'inbound').value === '40' && ratings.find((r) => r.direction === 'inbound').rater_id === sarahP.id,
+      'Nadia → Sarah 75% and Sarah → Nadia 40% stored as separate directional ratings');
+    const sarahState = JSON.stringify((await rpcAs(await jwtOf(sarah), 'get_my_state')).body);
+    const nadiaState = JSON.stringify((await rpcAs(await jwtOf(nadia), 'get_my_state')).body);
+    ok(!/"(value|75|40)"/.test(sarahState) && !nadiaState.includes('"40"') && !sarahState.includes('"value"') && !nadiaState.includes('"value"'), 'neither dashboard exposes either rating');
+    // duplicate redemption
+    const again = await newPhone();
+    await again.goto(sarahLink);
+    await again.getByRole('heading', { name: 'This invitation has already been used.' }).waitFor();
+    ok(true, 'the accepted link can’t be redeemed again');
+
+    // Nadia's second invitation: Jon
+    await nadia.getByRole('button', { name: 'Invite someone' }).first().click();
+    await nadia.getByLabel('Their first name').fill('Jon');
+    await nadia.getByRole('button', { name: 'Continue' }).click();
+    await VALUE_D(55)(nadia, '.sheet');
+    await nadia.getByRole('heading', { name: 'Jon’s link is ready.' }).waitFor();
+    const jonLink = 'http://' + (await nadia.locator('.sheet .url').innerText());
+    const jonTok = jonLink.split('/i/')[1];
+    await nadia.locator('.sheet').getByRole('button', { name: 'Later' }).click();
+
+    // 4. Forwarded link: someone else opens it and says it wasn't meant for them
+    const usersBefore = (await q(`select count(*)::int n from auth.users`))[0].n;
+    const stranger = await newPhone();
+    await stranger.goto(jonLink);
+    await stranger.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await VALUE_D(5)(stranger);
+    await stranger.getByRole('heading', { name: 'Are you Jon?' }).waitFor();
+    await stranger.waitForTimeout(1600); // let the entrance animation settle
+    await stranger.getByRole('button', { name: 'That’s not my name' }).click();
+    await stranger.getByPlaceholder('Your first name').waitFor();
+    await stranger.waitForTimeout(800);
+    await stranger.screenshot({ path: path.join(SHOTS, '31-not-my-name.png') });
+    await stranger.getByRole('button', { name: 'This invite wasn’t meant for me' }).click();
+    await stranger.getByRole('heading', { name: 'This invitation is for Jon.' }).waitFor();
+    ok(await stranger.getByText('Ask Nadia for an invitation of your own.').isVisible(), 'forwarded link: "This invitation is for Jon." / "Ask Nadia…"');
+    const [jonInv1] = await q(`select * from invitations where token = $1`, [jonTok]);
+    ok(jonInv1.status === 'opened' && jonInv1.accepted_at === null && jonInv1.misdirected_count === 1, 'not accepted; recorded as misdirected; link stays open for Jon');
+    ok((await q(`select count(*)::int n from classifications where invitation_id = $1 and direction = 'inbound'`, [jonInv1.id]))[0].n === 0, 'the stranger’s rating of Nadia is discarded');
+    ok((await q(`select count(*)::int n from auth.users`))[0].n === usersBefore, 'no account or participant created for the stranger');
+
+    // 2 + 5. The real Jon corrects his name, refreshing midway
+    const jon = await newPhone();
+    await jon.goto(jonLink);
+    await jon.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await VALUE_D(30)(jon);
+    await jon.getByRole('heading', { name: 'Are you Jon?' }).waitFor();
+    await jon.getByRole('button', { name: 'That’s not my name' }).click();
+    await jon.getByPlaceholder('Your first name').fill('F u c k');
+    await jon.getByText(CONSENT).click();
+    await jon.getByRole('button', { name: 'Continue' }).click();
+    await jon.getByText('Please enter a different name.').waitFor();
+    ok(true, 'corrected names go through name moderation');
+    await jon.getByPlaceholder('Your first name').fill('Jonathan');
+    await jon.reload();
+    await jon.getByPlaceholder('Your first name').waitFor();
+    ok((await jon.getByPlaceholder('Your first name').inputValue()) === 'Jonathan'
+      && await jon.locator('.consents .check').evaluate((el) => el.classList.contains('is-checked'))
+      && await jon.locator('.classifier').count() === 0, 'refresh keeps the step, the typed name and the consent (no re-answering)');
+    await jon.getByRole('button', { name: 'Continue' }).click();
+    await jon.locator('.home').waitFor();
+    const jonP = await byName('Jonathan');
+    ok(jonP.invited_name === 'Jon' && jonP.confirmed_name === 'Jonathan' && jonP.name_was_corrected === true && jonP.parent_id === nadiaP.id,
+      'corrected: invited_name Jon, confirmed_name Jonathan, name_was_corrected true');
+    ok((await q(`select value from classifications where invitation_id = $1 and direction = 'inbound'`, [jonInv1.id]))[0].value === '30', 'Jon’s own rating (30%) is the one kept');
+    ok((await rpcAs(null, 'open_invitation', { p_token: jonTok }, '4.4.4.5')).body.state === 'used', 'once accepted, the invitation page reveals nothing more');
+
+    // Moderation still applies: a hidden invited name isn't shown; the screen falls back to "And you are?"
+    const adminJwtN = await jwtOf(adminPage);
+    const t3 = (await rpcAs(await jwtOf(sarah), 'create_invitation', { p_value: { strength: 'weak', context: 'other', comfort: '3', circular: '20' }[sarahP.method], p_recipient_label: 'Kai' })).body.token;
+    const [kaiInv] = await q(`select id from invitations where token = $1`, [t3]);
+    await rpcAs(adminJwtN, 'admin_moderate', { p_target: 'invitation', p_id: kaiInv.id, p_action: 'hide', p_reason: 'test' });
+    ok((await rpcAs(null, 'open_invitation', { p_token: t3 }, '4.4.4.6')).body.invited_name === null, 'a hidden invited name never reaches the invitation page');
+
+    // 7. Links and people from before this change
+    const [leeNow] = await q(`select * from participants where display_name = 'Lee'`);
+    ok(leeNow.confirmed_name === 'Lee', 'existing participants backfilled: confirmed_name = their name');
+    const erinP = (await q(`select * from participants where display_name = 'Erin'`))[0];
+    ok(erinP && erinP.invited_name === 'Erin' && erinP.name_was_corrected === false, 'a link created before this feature (legacy) still works, with the name confirmation');
+    const acctN = (await rpcAs(adminJwtN, 'admin_account_stats')).body;
+    ok(acctN.names_corrected >= 1 && acctN.names_confirmed >= 2 && Number(acctN.misdirected_reports) === 1, `admin stats: ${acctN.names_confirmed} confirmed, ${acctN.names_corrected} corrected, ${acctN.misdirected_reports} forwarded-link report`);
+    const pexp = (await rpcAs(adminJwtN, 'admin_export', { p_kind: 'participants' })).body.find((r) => r.participant_id === jonP.id);
+    ok(pexp.invited_name === 'Jon' && pexp.confirmed_name === 'Jonathan' && pexp.name_was_corrected === true && pexp.invitation_id === jonInv1.id && pexp.user_id === jonP.user_id, 'participants export: invited_name, confirmed_name, name_was_corrected, invitation_id, user_id');
   }
 
   console.log(`\n✔ ${passed} checks passed. Screenshots in test-results/`);

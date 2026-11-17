@@ -110,6 +110,14 @@ export const COPY = {
   joinBody: 'Participate in our experiment to discover our name and what we’re building.',
   joinConsent: 'I agree to take part in this research on how people are connected.',
   joinFooter: 'No account needed.',
+  // When the inviter gave a name: the recipient confirms or corrects it.
+  joinConfirmTitle: (invited: string) => `Are you ${invited}?`,
+  joinConfirmBody: (sender: string | null) => (sender ? `That’s who ${sender} invited.` : 'That’s who this invitation is for.'),
+  joinConfirmYes: 'Yes, that’s me',
+  joinConfirmNo: 'That’s not my name',
+  joinWrongPerson: 'This invite wasn’t meant for me',
+  // Seed links (no inviter-provided name).
+  joinSeedTitle: 'And you are?',
   research: [
     'We record how people describe their connections and how invitations spread.',
     'Analysis is aggregate. Nobody sees how you described them.',
