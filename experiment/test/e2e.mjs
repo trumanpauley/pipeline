@@ -465,6 +465,20 @@ try {
   ok((await rpcAs(null, 'get_my_state')).status >= 400, 'anonymous visitors cannot read participant state');
   ok((await rpcAs(aliceJwt, 'admin_overview')).body.message === 'forbidden', 'participants cannot read admin data');
   ok((await rpcAs(null, 'open_invitation', { p_token: 'AAAAAAAAAAAAAAAAAAAAAA' })).body.state === 'invalid', 'guessed token is invalid');
+  {
+    // Signed-out visitors with bad links get a clear message, never the sign-in screen.
+    const visitor = await newPhone();
+    await visitor.goto(`${APP}/i/AAAAAAAAAAAAAAAAAAAAAA`);
+    await visitor.getByRole('heading', { name: 'This link isn’t active.' }).waitFor();
+    ok(await visitor.getByLabel('Email', { exact: true }).count() === 0, 'unknown token (signed out): "This link isn’t active.", no sign-in prompt');
+    await visitor.goto(`${APP}/i/abc`);
+    await visitor.getByRole('heading', { name: 'This link isn’t active.' }).waitFor();
+    ok(await visitor.getByLabel('Email', { exact: true }).count() === 0, 'truncated link: "This link isn’t active.", no sign-in prompt');
+    await visitor.close();
+    await alicePage.goto(`${carolLink}.`);
+    await alicePage.getByRole('heading', { name: 'This is your invitation.' }).waitFor();
+    ok(true, 'a link with trailing punctuation (pasted from a message) still resolves');
+  }
 
   step('Invitation landing');
   {

@@ -373,6 +373,27 @@ To switch it on:
    `VITE_TURNSTILE_SITE_KEY` if you enabled CAPTCHA).
 4. Deploy, then put the production URL into Supabase's Site URL and Redirect URLs (step 1.4).
 
+#### Invitation links and Vercel Deployment Protection
+
+Every deployment gets its own URL (`pipeline-experiment-<hash>-<team>.vercel.app`). By default
+Vercel protects those deployment URLs with **Vercel Authentication**, so anyone without access to
+your Vercel team is sent to a Vercel sign-in page. Only the production domain
+(`pipeline-experiment.vercel.app`, or your custom domain) is public.
+
+- **Links always use the production domain.** `scripts/vercel-build.sh` sets
+  `VITE_PUBLIC_APP_URL` from Vercel's `VERCEL_PROJECT_PRODUCTION_URL`, so a link created from any
+  deployment URL still points at the public address. To use a custom domain, set
+  `VITE_PUBLIC_APP_URL` (e.g. `https://pipeline.example.com`, no trailing slash) in Vercel →
+  Settings → Environment Variables, then redeploy.
+- **Share and open the production domain,** not the URL of a single deployment.
+- **Keep Deployment Protection off the production domain.** In Vercel → your project →
+  Settings → Deployment Protection, *Vercel Authentication* should be set to **Standard
+  Protection** (protects previews only) or turned off. *All Deployments* and *Password
+  Protection* on production would put every invitation behind a sign-in.
+- **No sign-in is needed to open an invitation.** The link opens straight to the landing page,
+  and `open_invitation` runs for signed-out visitors. Unknown, used, revoked or damaged links show
+  "This link isn't active." (or the matching message); they never show a sign-in screen.
+
 ### 4. Launch
 
 1. Open `/admin` → **Seed invitations** → generate 10 links. Set "Your name, as invitees see it"
@@ -415,7 +436,8 @@ WebAssembly. Host it anywhere and open it on a phone.
 **Easiest: a free Vercel project for the demo**
 1. In Vercel, **Add New → Project**, import this repo, and set **Root Directory** to `experiment`.
 2. Under **Environment Variables**, add `PIPELINE_DEMO` = `1`. No Supabase variables are needed.
-3. Deploy, then open the `*.vercel.app` URL on your phone.
+3. Deploy, then open the production `*.vercel.app` URL on your phone (see
+   [Invitation links and Vercel Deployment Protection](#invitation-links-and-vercel-deployment-protection)).
 
 The same repo can also have your real project. That one simply doesn't set `PIPELINE_DEMO`.
 

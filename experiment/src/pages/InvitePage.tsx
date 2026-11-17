@@ -101,10 +101,13 @@ export function InvitePage({ token, session }: { token: string; session: Session
       if (r.state === 'preview') return show('You’ve been invited.', 'Open this link in your browser to begin.');
       if (r.state === 'rate_limited') return show('Give it a moment.', 'Too many visits from this network. Try again shortly.');
       if (r.state === 'invalid') return show('This link isn’t active.', 'Ask the person who sent it for a new one.');
+      if (r.state === 'expired') return show('This invitation has expired.', 'Ask the person who sent it for a new one.');
       if (r.state === 'used')
         return show('This invitation has already been used.', 'Each link works once. Ask for a new one, or sign in if it was yours.', 'Sign in');
       if (r.state === 'own') return show('This is your invitation.', 'Send it to someone else — it works once.', 'Back to the experiment');
       if (r.state === 'joined') return navigate('/', true);
+      // Anything unrecognised is treated as not valid: never start onboarding on it.
+      if (r.state !== 'ok') return show('This link isn’t active.', 'Ask the person who sent it for a new one.');
 
       if (session) {
         if (r.already_participant) return setStep(r.answered ? 'joining' : 'intro');

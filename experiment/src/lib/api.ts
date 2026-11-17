@@ -106,7 +106,7 @@ export interface AdminAccountStats {
 }
 
 export interface OpenResult {
-  state: 'ok' | 'invalid' | 'used' | 'own' | 'joined' | 'rate_limited' | 'preview';
+  state: 'ok' | 'invalid' | 'expired' | 'used' | 'own' | 'joined' | 'rate_limited' | 'preview';
   sender_name?: string | null;
   /** First name the inviter gave for this invitation (seed links have none). */
   invited_name?: string | null;

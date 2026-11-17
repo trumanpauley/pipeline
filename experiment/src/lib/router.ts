@@ -15,8 +15,28 @@ export function currentQuery(): URLSearchParams {
   return new URLSearchParams(current().split('?')[1] ?? '');
 }
 
+/**
+ * The stable public address of the app (e.g. https://pipeline-experiment.vercel.app),
+ * from VITE_PUBLIC_APP_URL. On Vercel the build sets it from the project's
+ * production domain automatically (scripts/vercel-build.sh). Shared links use it
+ * so they never point at a deployment-specific URL, which Vercel may protect
+ * behind a Vercel sign-in. Unset (local dev, tests): the current address.
+ */
+const PUBLIC_URL = (() => {
+  const raw = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw.includes('://') ? raw : `https://${raw}`);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    return `${u.origin}${u.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return null;
+  }
+})();
+
 /** Absolute URL for an in-app path, e.g. an invitation link to share. */
 export function appUrl(path: string): string {
+  if (PUBLIC_URL) return HASH ? `${PUBLIC_URL}/#${path}` : `${PUBLIC_URL}${path}`;
   if (HASH) return `${window.location.href.split('#')[0]}#${path}`;
   return `${window.location.origin}${path}`;
 }
