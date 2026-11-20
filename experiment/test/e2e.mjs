@@ -91,6 +91,7 @@ psql('supabase/migrations/006_circular_strength.sql');
 psql('supabase/migrations/007_invited_names.sql');
 psql('supabase/migrations/008_live_invitation_tracking.sql');
 psql('supabase/migrations/009_pipeline_community.sql');
+psql('supabase/migrations/010_multi_experiment.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
@@ -139,7 +140,10 @@ const visibleBrand = (page) => page.evaluate(() => [
   ...[...document.querySelectorAll('meta[property^="og:"], meta[name^="twitter:"], meta[name="description"], meta[name="apple-mobile-web-app-title"]')].map((m) => m.content),
 ].join(' | '));
 const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
-const byName = async (name) => (await q(`select * from participants where display_name = $1 and deleted_at is null`, [name]))[0];
+/** "Alice" → "Alice A." (participants now give a first name and last initial). */
+const full = (n) => (/ \S\.?$/u.test(n) ? n : `${n} ${[...n][0].toUpperCase()}.`);
+const NAME_PH = 'First name and last initial';
+const byName = async (name) => (await q(`select * from participants where display_name in ($1, $2) and deleted_at is null order by created_at`, [name, full(name)]))[0];
 const authUser = async (id) => (await q(`select * from auth.users where id = $1`, [id]))[0];
 const jwtOf = (page) => page.evaluate(() => {
   const k = Object.keys(localStorage).find((x) => x.includes('auth-token'));
@@ -190,16 +194,43 @@ async function startJoin(page, link, name, { shots = false, checks = false } = {
     ok(await page.getByText('No account needed.', { exact: true }).isVisible(), 'join page: "No account needed." footer');
     ok(await page.getByText('Invite two people. Find out what this is.').count() === 0, 'old headline removed');
     const cont = page.getByRole('button', { name: 'Continue' });
+    const field = page.getByPlaceholder(NAME_PH);
+    const hint = page.locator('.type-hint');
     ok(await cont.isDisabled(), 'Continue disabled with no name and no consent');
-    await page.getByPlaceholder('First name').fill(name);
+    // Typed instruction: waits for the first focus, types once, then stays.
+    ok(!(await hint.getAttribute('class')).includes('is-started') && (await hint.locator('[aria-hidden]').innerText()).trim() === '', 'name instruction hidden until the field is focused');
+    ok(await page.getByText('We use your first name and last initial to identify you within this networking experiment. Your name may be visible to people participating in your invitation chain.').isVisible(), 'name disclosure shown');
+    const boxBefore = await field.boundingBox();
+    await field.click();
+    await page.waitForTimeout(350);
+    const partial = (await hint.locator('[aria-hidden]').innerText()).trim();
+    ok(partial.length > 0 && partial.length < 'Enter your first name and last initial.'.length, `instruction types itself in ("${partial}")`);
+    await field.pressSequentially('Al', { delay: 30 });
+    ok((await field.inputValue()) === 'Al', 'typing works while the instruction animates');
+    await page.waitForFunction(() => document.querySelector('.type-hint')?.getAttribute('data-done') === 'true', null, { timeout: 2500 });
+    ok((await hint.locator('[aria-hidden]').innerText()).trim() === 'Enter your first name and last initial.', 'instruction complete and stays visible');
+    ok(Math.abs((await field.boundingBox()).y - boxBefore.y) < 1, 'the field does not move while the instruction types');
+    await page.locator('.join-title').click();
+    await field.click();
+    ok((await hint.getAttribute('data-done')) === 'true' && (await hint.locator('.type-hint-caret').count()) === 0, 'refocusing does not restart the animation');
+    await page.getByRole('button', { name: 'More about privacy' }).click();
+    ok(await page.getByText('Other participants don’t see your name. The network view shows people as anonymous dots.').isVisible(), 'longer privacy explanation available');
+    await field.fill(name);
     ok(await cont.isDisabled(), 'Continue still disabled with a name but no consent');
-    await page.getByPlaceholder('First name').fill('   ');
+    await field.fill('   ');
     await page.getByText(CONSENT).click();
     ok(await cont.isDisabled(), 'Continue disabled with consent but a blank name');
     await page.getByRole('button', { name: 'How data is used' }).click();
     ok(await page.getByText('We record how people describe their connections and how invitations spread.').isVisible(), 'consent details still accessible');
     ok(!(await visibleBrand(page)).includes('Pipeline'), 'join page: no "Pipeline" anywhere (page, tab, share tags)');
-    await page.getByPlaceholder('First name').fill(name);
+    // First name + last initial only.
+    for (const bad of [name, `${name} Anderson`]) {
+      await field.fill(bad);
+      await cont.click();
+      ok(await page.getByText('Enter your first name and last initial, like “James P.”').isVisible(), `"${bad}" refused: needs a first name and one last initial`);
+      ok(!(await q(`select 1 from participants where display_name ilike $1`, [`${name}%`])).length, 'nothing saved');
+    }
+    await field.fill(`  ${name.toLowerCase()}   ${name[0].toLowerCase()} `);
     ok(await cont.isEnabled(), 'Continue enabled with a name and consent');
     if (shots) await shot(page, `03-name-consent`);
     await page.getByRole('button', { name: 'Continue' }).click();
@@ -221,14 +252,14 @@ async function completeJoin(page, name, { consentBox = false } = {}) {
   if (mode === 'confirm') {
     const invited = (await page.locator('.join-title').innerText()).replace(/^Are you /, '').replace(/\?$/, '');
     await tick();
-    if (invited.toLowerCase() === name.toLowerCase()) {
+    if (invited.toLowerCase() === full(name).toLowerCase()) {
       await page.getByRole('button', { name: 'Yes, that’s me' }).click();
       return;
     }
     await page.getByRole('button', { name: 'That’s not my name' }).click();
-    await page.getByPlaceholder('Your first name').fill(name);
+    await page.getByPlaceholder(NAME_PH).fill(full(name));
   } else {
-    await page.getByPlaceholder('First name').fill(name);
+    await page.getByPlaceholder(NAME_PH).fill(full(name));
     await tick();
   }
   await page.getByRole('button', { name: 'Continue' }).click();
@@ -246,13 +277,13 @@ async function joinViaLink(page, link, name, opts) {
 /** Create an invitation. By default the link is copied (which counts as sharing). */
 async function invite(page, label, { shots = false, share = true } = {}) {
   await page.getByRole('button', { name: 'Invite someone' }).first().click();
-  await page.getByLabel('Their first name').fill(label);
+  await page.getByLabel('Their first name and last initial').fill(full(label));
   if (shots) await page.waitForTimeout(400), await shot(page, `05-invite-who`);
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.locator('.sheet .classifier').waitFor();
   if (shots) await page.waitForTimeout(500), await shot(page, `05b-invite-classify`);
   await answer(page, '.sheet', 'last');
-  await page.getByRole('heading', { name: `${label}’s link is ready.` }).waitFor();
+  await page.getByRole('heading', { name: `${full(label)}’s link is ready.` }).waitFor();
   const link = 'http://' + (await page.locator('.sheet .url').innerText());
   if (share) {
     await page.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
@@ -278,6 +309,8 @@ try {
   await adminPage.getByLabel('Verification code').fill(await getCode('admin@test.dev'));
   await adminPage.getByRole('button', { name: 'Verify', exact: true }).click();
   await adminPage.getByRole('heading', { name: 'Dashboard' }).waitFor();
+  // Seed links are made per experiment; existing data lives in the original one.
+  await adminPage.locator('.experiment-card', { hasText: 'The Pipeline Experiment' }).getByRole('button', { name: 'Seed links & tree' }).click();
   await adminPage.getByLabel('Number of links').fill('3');
   await adminPage.getByLabel('Sender name').fill('Truman');
   await adminPage.getByRole('button', { name: 'Generate' }).click();
@@ -331,7 +364,7 @@ try {
   const bobLink = await invite(alicePage, 'Bob', { shots: true, share: false });
   await alicePage.waitForTimeout(800);
   ok(await alicePage.locator('.reveal-overlay').count() === 0, 'no reveal for an unshared link');
-  const [bobInv0] = await q(`select * from invitations where token = $1`, [bobLink.split('/i/')[1]]);
+  const [bobInv0] = await q(`select * from invitations where token = $1`, [bobLink.split(/\/(?:join|i)\//)[1]]);
   ok(bobInv0.shared_at === null && bobInv0.status === 'created', 'backend: created, not shared');
   ok((await byName('Alice')).reveal_level === 0, 'reveal level still 0');
   ok(await alicePage.getByRole('button', { name: /Second invitation/ }).isDisabled(), 'second invitation still locked');
@@ -348,7 +381,7 @@ try {
   await alicePage.waitForTimeout(1800);
   ok((await alicePage.locator('.reveal-title').innerText()).includes('part of Pipeline'), 'reveal 1: the name');
   await alicePage.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
-  const [bobInv1] = await q(`select * from invitations where token = $1`, [bobLink.split('/i/')[1]]);
+  const [bobInv1] = await q(`select * from invitations where token = $1`, [bobLink.split(/\/(?:join|i)\//)[1]]);
   ok(bobInv1.shared_at && bobInv1.share_method === 'copy' && bobInv1.status === 'created' && bobInv1.opened_at === null, 'backend: shared (copy), not opened, not accepted');
   await alicePage.getByRole('button', { name: /Invite someone.*Unlock 2/ }).waitFor();
   ok((await alicePage.locator('.wordmark').innerText()) === 'Pipeline' && (await alicePage.title()) === 'Pipeline', 'after the first unlock the header and tab say "Pipeline"');
@@ -456,7 +489,7 @@ try {
   await alicePage.goto(carolLink);
   await alicePage.getByRole('heading', { name: 'This is your invitation.' }).waitFor();
   ok(true, 'opening your own link is detected');
-  let r = await rpcAs(aliceJwt, 'accept_invitation', { p_token: carolLink.split('/i/')[1], p_display_name: 'A', p_research_consent: true });
+  let r = await rpcAs(aliceJwt, 'accept_invitation', { p_token: carolLink.split(/\/(?:join|i)\//)[1], p_display_name: 'A', p_research_consent: true });
   ok(r.body.message === 'self_invite', 'self-referral by account rejected');
   r = await rpcAs(aliceJwt, 'create_invitation', { p_value: { strength: 'weak', context: 'other', comfort: '3', circular: '10' }[alice.method] });
   ok(r.body.message === 'invite_limit', 'third active invitation rejected');
@@ -465,13 +498,27 @@ try {
   ok((await rpcAs(null, 'get_my_state')).status >= 400, 'anonymous visitors cannot read participant state');
   ok((await rpcAs(aliceJwt, 'admin_overview')).body.message === 'forbidden', 'participants cannot read admin data');
   ok((await rpcAs(null, 'open_invitation', { p_token: 'AAAAAAAAAAAAAAAAAAAAAA' })).body.state === 'invalid', 'guessed token is invalid');
+  {
+    // Signed-out visitors with bad links get a clear message, never the sign-in screen.
+    const visitor = await newPhone();
+    await visitor.goto(`${APP}/i/AAAAAAAAAAAAAAAAAAAAAA`);
+    await visitor.getByRole('heading', { name: 'This link isn’t active.' }).waitFor();
+    ok(await visitor.getByLabel('Email', { exact: true }).count() === 0, 'unknown token (signed out): "This link isn’t active.", no sign-in prompt');
+    await visitor.goto(`${APP}/i/abc`);
+    await visitor.getByRole('heading', { name: 'This link isn’t active.' }).waitFor();
+    ok(await visitor.getByLabel('Email', { exact: true }).count() === 0, 'truncated link: "This link isn’t active.", no sign-in prompt');
+    await visitor.close();
+    await alicePage.goto(`${carolLink}.`);
+    await alicePage.getByRole('heading', { name: 'This is your invitation.' }).waitFor();
+    ok(true, 'a link with trailing punctuation (pasted from a message) still resolves');
+  }
 
   step('Invitation landing');
   {
     const p = await newPhone();
     await p.goto(bobLink);
     await p.getByRole('heading', { name: 'Alice invited you.' }).waitFor({ timeout: 5000 });
-    ok((await byName('Alice')).display_name === 'Alice', 'the name on the landing is the sender’s own first name');
+    ok((await byName('Alice')).display_name === 'Alice A.', 'the participant’s name is stored as “Alice A.”; the landing shows only the first name');
     ok(!(await visibleBrand(p)).includes('Pipeline') && (await p.title()) === 'The Experiment', 'invitation landing: no "Pipeline" in page, tab title or share tags');
     ok(true, 'headline uses the inviter’s first name');
     const t0 = Date.now();
@@ -532,7 +579,7 @@ try {
   await bobPage.getByRole('button', { name: 'Enter the Experiment' }).click();
   await answer(bobPage);
   await bobPage.getByText('already part of the experiment').waitFor();
-  ok((await q(`select status from invitations where token = $1`, [carolLink.split('/i/')[1]]))[0].status === 'duplicate', 'existing participant gets no new node or credit');
+  ok((await q(`select status from invitations where token = $1`, [carolLink.split(/\/(?:join|i)\//)[1]]))[0].status === 'duplicate', 'existing participant gets no new node or credit');
 
   step('Bob invites Dave, then saves his network to a verified email');
   const daveLink = await invite(bobPage, 'Dave');
@@ -573,7 +620,7 @@ try {
     // ...and the server still refuses a join from the sender's browser if the page is bypassed
     const bobDevice = await bobPage.evaluate(() => localStorage.getItem('px.device'));
     const anonTok = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
-    const r = await rpcAs(anonTok, 'accept_invitation', { p_token: daveLink.split('/i/')[1], p_display_name: 'NotBob', p_research_consent: true, p_device: bobDevice });
+    const r = await rpcAs(anonTok, 'accept_invitation', { p_token: daveLink.split(/\/(?:join|i)\//)[1], p_display_name: 'Not B.', p_research_consent: true, p_device: bobDevice });
     ok(r.body.message === 'self_invite', 'direct API join from the sender’s browser → self-referral blocked');
   }
   await startJoin(bobPage, `${APP}/i/${seeds[1].token}`, 'BobAgain');
@@ -670,7 +717,7 @@ try {
   ok(results.slice(0, 20).every((b) => b.ok) && results[20].message === 'rate_limited', 'community: 21st signup from one IP within an hour is refused');
   await q(`update experiment_settings set value = jsonb_set(value, '{joins_per_ip_hour}', '0') where key = 'rate_limits'`);
   const anon = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
-  r = await rpcAs(anon, 'accept_invitation', { p_token: seeds[2].token, p_display_name: 'Bot', p_research_consent: true, p_device: 'bot-1' }, '7.7.7.7');
+  r = await rpcAs(anon, 'accept_invitation', { p_token: seeds[2].token, p_display_name: 'Bot B.', p_research_consent: true, p_device: 'bot-1' }, '7.7.7.7');
   ok(r.body.message === 'rate_limited', 'joins: per-IP limit refuses new participants');
   await q(`update experiment_settings set value = jsonb_set(value, '{joins_per_ip_hour}', '20') where key = 'rate_limits'`);
   await q(`update experiment_settings set value = jsonb_set(value, '{opens_per_ip_hour}', '0') where key = 'rate_limits'`);
@@ -696,18 +743,24 @@ try {
     const bobJwt = await jwtOf(bobPhone2);
     await bobPhone2.reload();
     await bobPhone2.getByRole('button', { name: 'Invite someone' }).first().click();
-    for (const n of ['f u c k', 'www.spam.com']) {
-      await bobPhone2.getByLabel('Their first name').fill(n);
+    for (const n of ['Fuck M.', 'Fück J.']) {
+      await bobPhone2.getByLabel('Their first name and last initial').fill(n);
       await bobPhone2.getByRole('button', { name: 'Continue' }).click();
       await bobPhone2.getByText('Please enter a different name.').waitFor();
     }
+    for (const n of ['Zoë', 'www.spam.com', 'Zoë Zimmerman']) {
+      await bobPhone2.getByLabel('Their first name and last initial').fill(n);
+      await bobPhone2.getByRole('button', { name: 'Continue' }).click();
+      await bobPhone2.getByText('Enter their first name and last initial, like “Sarah M.”').waitFor();
+    }
+    ok(true, 'invitee names need a first name and last initial (no full surname)');
     ok(await bobPhone2.locator('.sheet .classifier').count() === 0, 'rejected invitee names never reach the relationship question');
-    await bobPhone2.getByLabel('Their first name').fill('Zoë');
+    await bobPhone2.getByLabel('Their first name and last initial').fill('Zoë Z.');
     await bobPhone2.getByRole('button', { name: 'Continue' }).click();
     await answer(bobPhone2, '.sheet');
-    await bobPhone2.getByRole('heading', { name: 'Zoë’s link is ready.' }).waitFor();
+    await bobPhone2.getByRole('heading', { name: 'Zoë Z.’s link is ready.' }).waitFor();
     const zoeLink = 'http://' + (await bobPhone2.locator('.sheet .url').innerText());
-    const zoeToken = zoeLink.split('/i/')[1];
+    const zoeToken = zoeLink.split(/\/(?:join|i)\//)[1];
     await bobPhone2.locator('.sheet').getByRole('button', { name: 'Later' }).click();
     ok(true, 'an accented invitee name (Zoë) is accepted');
 
@@ -719,8 +772,8 @@ try {
     await answer(v);
     await v.getByText(CONSENT).click();
     await v.getByRole('button', { name: 'That’s not my name' }).click();
-    for (const n of ['Fück', 'Bob123']) {
-      await v.getByPlaceholder('Your first name').fill(n);
+    for (const n of ['Fück B.', 'Bob123 B.']) {
+      await v.getByPlaceholder(NAME_PH).fill(n);
       await v.getByRole('button', { name: 'Continue' }).click();
       await v.getByText('Please enter a different name.').waitFor();
     }
@@ -728,12 +781,14 @@ try {
 
     // 4. Bypassing the app: straight to the Supabase API
     const anonTok = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
-    let r = await rpcAs(anonTok, 'accept_invitation', { p_token: zoeToken, p_display_name: 'f u c k', p_research_consent: true, p_device: 'bypass-1' }, '8.8.8.1');
+    let r = await rpcAs(anonTok, 'accept_invitation', { p_token: zoeToken, p_display_name: 'Fuck M.', p_research_consent: true, p_device: 'bypass-1' }, '8.8.8.1');
     ok(r.body.error === 'invalid_name', 'direct API join with a bad name is refused');
     r = await rpcAs(anonTok, 'accept_invitation', { p_token: zoeToken, p_display_name: 'www.evil.com', p_research_consent: true, p_marketing_consent: false }, '8.8.8.1');
-    ok(r.body.error === 'invalid_name', 'old 4-argument join call is validated too');
+    ok(r.body.error === 'invalid_name_format', 'old 4-argument join call is validated too');
+    r = await rpcAs(anonTok, 'accept_invitation', { p_token: zoeToken, p_display_name: 'Zoe Zimmerman', p_research_consent: true, p_device: 'bypass-2' }, '8.8.8.1');
+    ok(r.body.error === 'invalid_name_format', 'direct API join with a full surname is refused (not stored)');
     ok((await q(`select count(*)::int n from participants where invitation_id = (select id from invitations where token = $1)`, [zoeToken]))[0].n === 0, 'no participant was created');
-    r = await rpcAs(bobJwt, 'create_invitation', { p_value: VALUE[bob.method], p_recipient_label: 'Sexy' });
+    r = await rpcAs(bobJwt, 'create_invitation', { p_value: VALUE[bob.method], p_recipient_label: 'Sexy S.' });
     ok(r.body.error === 'invalid_name', 'direct API invitation with a bad invitee name is refused');
     ok((await asUser(bob.user_id, `update participants set display_name = 'fuck' where user_id = auth.uid()`)).error, 'participants cannot write names to tables directly');
     ok((await rpcAs(bobJwt, 'admin_moderate', { p_target: 'participant', p_id: bob.id, p_action: 'approve' })).body.message === 'forbidden', 'participants cannot moderate');
@@ -771,7 +826,7 @@ try {
     // 7. Suspension
     await mod('suspend');
     ok((await rpcAs(null, 'open_invitation', { p_token: zoeToken }, '8.8.8.2')).body.state === 'invalid', 'suspending revokes their unused links');
-    ok((await rpcAs(bobJwt, 'create_invitation', { p_value: VALUE[bob.method], p_recipient_label: 'Kai' })).body.message === 'suspended', 'suspended participants cannot invite');
+    ok((await rpcAs(bobJwt, 'create_invitation', { p_value: VALUE[bob.method], p_recipient_label: 'Kai K.' })).body.message === 'suspended', 'suspended participants cannot invite');
     await bobPhone2.reload();
     await bobPhone2.getByRole('heading', { name: 'Your participation is paused.' }).waitFor();
     ok(true, 'suspended participant sees a calm paused screen');
@@ -783,10 +838,10 @@ try {
     // 8. "Approve names first" mode
     await q(`update experiment_settings set value = '"before"' where key = 'name_review'`);
     const priyaTok = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
-    r = await rpcAs(priyaTok, 'accept_invitation', { p_token: seeds[2].token, p_display_name: 'Priya', p_research_consent: true, p_device: 'priya-1' }, '9.9.9.1');
-    const [priya] = await q(`select * from participants where display_name = 'Priya'`);
+    r = await rpcAs(priyaTok, 'accept_invitation', { p_token: seeds[2].token, p_display_name: 'Priya P.', p_research_consent: true, p_device: 'priya-1' }, '9.9.9.1');
+    const [priya] = await q(`select * from participants where display_name = 'Priya P.'`);
     ok(r.body.state === 'joined' && priya.name_status === 'pending', 'review-first mode: new names start pending');
-    const pLink = (await rpcAs(priyaTok, 'create_invitation', { p_value: VALUE[priya.method], p_recipient_label: 'Sam' })).body.token;
+    const pLink = (await rpcAs(priyaTok, 'create_invitation', { p_value: VALUE[priya.method], p_recipient_label: 'Sam S.' })).body.token;
     const pSender = async () => (await rpcAs(null, 'open_invitation', { p_token: pLink }, '8.8.8.3')).body.sender_name ?? null;
     ok((await pSender()) === null, 'pending (unapproved) name never appears on the invitation page');
     await mod('approve', null, 'participant', priya.id);
@@ -796,7 +851,7 @@ try {
     // 9. Log
     const log = await q(`select * from moderation_actions order by id`);
     ok(log.length === 9 && log.every((a) => a.admin_email === 'admin@test.dev'), `${log.length} moderation actions logged with the admin’s email`);
-    ok(log.some((a) => a.action === 'replace' && a.old_value === 'Bob' && a.new_value === 'Robert Smith'), 'log keeps before → after for replacements');
+    ok(log.some((a) => a.action === 'replace' && a.old_value === 'Bob B.' && a.new_value === 'Robert Smith'), 'log keeps before → after for replacements');
     ok((await asUser(bob.user_id, 'select * from moderation_actions')).length === 0 && (await asUser(null, 'select * from moderation_actions')).error, 'moderation log is admin-only');
   }
 
@@ -952,7 +1007,7 @@ try {
     await touchDrag(mira, miraCdp, 100, 37, 50);
     ok(await pctOf(mira) === 37, 'dragging back counter-clockwise lowers the rating (37%)');
     await cont.click();
-    await mira.getByPlaceholder('First name').waitFor();
+    await mira.getByPlaceholder(NAME_PH).waitFor();
     const [aRow] = await q(`select c.* from classifications c join invitations i on i.id = c.invitation_id where i.token = $1`, [tokA]);
     ok(aRow.method === 'circular' && aRow.value === '37' && aRow.question_version === 'circular_v1' && aRow.response_ms > 0, `stored: method circular, 37%, question version circular_v1, ${aRow.response_ms}ms`);
     const evA = await q(`select e.* from classification_events e join invitations i on i.id = e.invitation_id where i.token = $1 order by e.id`, [tokA]);
@@ -966,7 +1021,7 @@ try {
 
     // --- Mira rates someone she invites: same method (D), keyboard this time ---
     await mira.getByRole('button', { name: 'Invite someone' }).first().click();
-    await mira.getByLabel('Their first name').fill('Theo');
+    await mira.getByLabel('Their first name and last initial').fill('Theo T.');
     await mira.getByRole('button', { name: 'Continue' }).click();
     await mira.locator('.sheet .circular').waitFor();
     ok(await mira.getByRole('heading', { name: 'How well do you know Theo?' }).isVisible(), 'outbound question uses the invitee’s name');
@@ -982,11 +1037,11 @@ try {
     for (let i = 0; i < 20; i++) await mira.keyboard.press('ArrowLeft');
     ok((await input.getAttribute('aria-valuetext')) === '80% — Very well', 'screen readers hear "80% — Very well"');
     await mira.locator('.sheet .circular').getByRole('button', { name: 'Continue', exact: true }).click();
-    await mira.getByRole('heading', { name: 'Theo’s link is ready.' }).waitFor();
+    await mira.getByRole('heading', { name: 'Theo T.’s link is ready.' }).waitFor();
     const theoLink = 'http://' + (await mira.locator('.sheet .url').innerText());
     await mira.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
     await mira.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
-    const [outRow] = await q(`select c.* from classifications c join invitations i on i.id = c.invitation_id where i.token = $1 and c.direction = 'outbound'`, [theoLink.split('/i/')[1]]);
+    const [outRow] = await q(`select c.* from classifications c join invitations i on i.id = c.invitation_id where i.token = $1 and c.direction = 'outbound'`, [theoLink.split(/\/(?:join|i)\//)[1]]);
     ok(outRow.method === 'circular' && outRow.value === '80' && outRow.rater_id === miraP.id && outRow.question_version === 'circular_v1', 'outbound rating stored (80%, D, circular_v1, Mira’s ID)');
 
     // --- Theo rates Mira: mouse drag on a desktop browser ---
@@ -997,7 +1052,7 @@ try {
     });
     contexts.push(theoCtx);
     const theo = await theoCtx.newPage();
-    await openDial(theo, theoLink.split('/i/')[1]);
+    await openDial(theo, theoLink.split(/\/(?:join|i)\//)[1]);
     ok(await theo.getByRole('heading', { name: 'How well do you know Mira?' }).isVisible(), 'inbound question uses the inviter’s first name');
     const gm = await geometry(theo);
     let pt = at(gm, 0);
@@ -1018,7 +1073,7 @@ try {
     await zero.locator('.circular-input').focus();
     await zero.keyboard.press('ArrowLeft'); // stays at 0, but counts as an interaction
     await zero.locator('.circular').getByRole('button', { name: 'Continue', exact: true }).click();
-    await zero.getByPlaceholder('First name').waitFor();
+    await zero.getByPlaceholder(NAME_PH).waitFor();
     ok((await q(`select value from classifications c join invitations i on i.id = c.invitation_id where i.token = $1`, [tokZ]))[0].value === '0', '0% can be confirmed after interacting, and is stored as 0');
 
     // --- Reduced motion: still fully usable ---
@@ -1083,28 +1138,28 @@ try {
     await completeJoin(nadia, 'Nadia');
     await nadia.locator('.home').waitFor();
     const nadiaP = await byName('Nadia');
-    ok(nadiaP.invited_name === null && nadiaP.confirmed_name === 'Nadia' && nadiaP.name_was_corrected === null, 'seed participant stored: invited_name null, confirmed_name Nadia');
+    ok(nadiaP.invited_name === null && nadiaP.confirmed_name === 'Nadia N.' && nadiaP.name_was_corrected === null, 'seed participant stored: invited_name null, confirmed_name Nadia');
 
     // Nadia invites Sarah and rates her 75% (her assigned method is D in this phase)
     await nadia.getByRole('button', { name: 'Invite someone' }).first().click();
-    await nadia.getByLabel('Their first name').fill('Sarah');
+    await nadia.getByLabel('Their first name and last initial').fill('Sarah S.');
     await nadia.getByRole('button', { name: 'Continue' }).click();
     await nadia.locator('.sheet .circular').waitFor();
     await VALUE_D(75)(nadia, '.sheet');
-    await nadia.getByRole('heading', { name: 'Sarah’s link is ready.' }).waitFor();
+    await nadia.getByRole('heading', { name: 'Sarah S.’s link is ready.' }).waitFor();
     const sarahLink = 'http://' + (await nadia.locator('.sheet .url').innerText());
-    const sarahTok = sarahLink.split('/i/')[1];
+    const sarahTok = sarahLink.split(/\/(?:join|i)\//)[1];
     await nadia.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
     await nadia.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
     await nadia.locator('.reveal-overlay').waitFor();
     await nadia.waitForTimeout(1800);
     await nadia.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
     const [sarahInv] = await q(`select * from invitations where token = $1`, [sarahTok]);
-    ok(sarahInv.invited_name === 'Sarah' && sarahInv.sender_id === nadiaP.id, 'invitation stores invited_name = Sarah');
-    ok((await q(`select count(*)::int n from participants where display_name = 'Sarah'`))[0].n === 0, 'no participant profile exists for Sarah before she joins');
-    ok(!sarahLink.includes('Sarah') && !sarahLink.includes('75') && /\/i\/[A-Za-z0-9_-]{22}$/.test(sarahLink), 'the link carries only an unguessable token (no name, no rating)');
+    ok(sarahInv.invited_name === 'Sarah S.' && sarahInv.sender_id === nadiaP.id, 'invitation stores invited_name = Sarah');
+    ok((await q(`select count(*)::int n from participants where display_name like 'Sarah%'`))[0].n === 0, 'no participant profile exists for Sarah before she joins');
+    ok(!sarahLink.includes('Sarah') && !sarahLink.includes('75') && /\/join\/[A-Za-z0-9_-]{22}$/.test(sarahLink), 'the link carries only an unguessable token (no name, no rating)');
     const landingData = (await rpcAs(null, 'open_invitation', { p_token: sarahTok }, '4.4.4.4')).body;
-    ok(landingData.invited_name === 'Sarah' && landingData.sender_name === 'Nadia' && !JSON.stringify(landingData).includes('75'), 'invitation page data: first names only, no ratings');
+    ok(landingData.invited_name === 'Sarah S.' && landingData.sender_name === 'Nadia' && !JSON.stringify(landingData).includes('75'), 'invitation page data: first names only, no ratings');
 
     // 1. Correct name: Sarah confirms; she rates Nadia 40% independently
     const sarah = await newPhone();
@@ -1114,8 +1169,8 @@ try {
     await sarah.locator('.circular').waitFor();
     ok(!(await sarah.locator('body').innerText()).includes('75'), 'Sarah never sees Nadia’s rating');
     await VALUE_D(40)(sarah);
-    await sarah.getByRole('heading', { name: 'Are you Sarah?' }).waitFor();
-    ok(await sarah.getByText('That’s who Nadia invited.').isVisible() && await sarah.getByText('We’re in stealth mode.').isVisible(), 'confirmation screen: "Are you Sarah?" / "That’s who Nadia invited."');
+    await sarah.getByRole('heading', { name: 'Are you Sarah S.?' }).waitFor();
+    ok(await sarah.getByText('That’s who Nadia invited.').isVisible() && await sarah.getByText('We’re in stealth mode.').isVisible(), 'confirmation screen: "Are you Sarah S.?" / "That’s who Nadia invited."');
     const yes = sarah.getByRole('button', { name: 'Yes, that’s me' });
     ok(await yes.isDisabled() && await sarah.getByRole('button', { name: 'That’s not my name' }).isVisible(), 'two options; "Yes, that’s me" needs consent first');
     await sarah.waitForTimeout(1200);
@@ -1126,7 +1181,7 @@ try {
     await sarah.locator('.home').waitFor();
     const sarahP = await byName('Sarah');
     const sarahUser = await authUser(sarahP.user_id);
-    ok(sarahP.invited_name === 'Sarah' && sarahP.confirmed_name === 'Sarah' && sarahP.name_was_corrected === false
+    ok(sarahP.invited_name === 'Sarah S.' && sarahP.confirmed_name === 'Sarah S.' && sarahP.name_was_corrected === false
       && sarahP.invitation_id === sarahInv.id && sarahUser && sarahP.parent_id === nadiaP.id, 'stored: invited_name Sarah, confirmed_name Sarah, not corrected, invitation_id, user id, parent Nadia');
     // 6. Ratings stored independently, in both directions, on the same invitation
     const ratings = await q(`select direction, value, rater_id, method from classifications where invitation_id = $1 order by direction`, [sarahInv.id]);
@@ -1144,12 +1199,12 @@ try {
 
     // Nadia's second invitation: Jon
     await nadia.getByRole('button', { name: 'Invite someone' }).first().click();
-    await nadia.getByLabel('Their first name').fill('Jon');
+    await nadia.getByLabel('Their first name and last initial').fill('Jon J.');
     await nadia.getByRole('button', { name: 'Continue' }).click();
     await VALUE_D(55)(nadia, '.sheet');
-    await nadia.getByRole('heading', { name: 'Jon’s link is ready.' }).waitFor();
+    await nadia.getByRole('heading', { name: 'Jon J.’s link is ready.' }).waitFor();
     const jonLink = 'http://' + (await nadia.locator('.sheet .url').innerText());
-    const jonTok = jonLink.split('/i/')[1];
+    const jonTok = jonLink.split(/\/(?:join|i)\//)[1];
     await nadia.locator('.sheet').getByRole('button', { name: 'Later' }).click();
 
     // 4. Forwarded link: someone else opens it and says it wasn't meant for them
@@ -1158,15 +1213,15 @@ try {
     await stranger.goto(jonLink);
     await stranger.getByRole('button', { name: 'Enter the Experiment' }).click();
     await VALUE_D(5)(stranger);
-    await stranger.getByRole('heading', { name: 'Are you Jon?' }).waitFor();
+    await stranger.getByRole('heading', { name: 'Are you Jon J.?' }).waitFor();
     await stranger.waitForTimeout(1600); // let the entrance animation settle
     await stranger.getByRole('button', { name: 'That’s not my name' }).click();
-    await stranger.getByPlaceholder('Your first name').waitFor();
+    await stranger.getByPlaceholder(NAME_PH).waitFor();
     await stranger.waitForTimeout(800);
     await stranger.screenshot({ path: path.join(SHOTS, '31-not-my-name.png') });
     await stranger.getByRole('button', { name: 'This invite wasn’t meant for me' }).click();
-    await stranger.getByRole('heading', { name: 'This invitation is for Jon.' }).waitFor();
-    ok(await stranger.getByText('Ask Nadia for an invitation of your own.').isVisible(), 'forwarded link: "This invitation is for Jon." / "Ask Nadia…"');
+    await stranger.getByRole('heading', { name: 'This invitation is for Jon J.' }).waitFor();
+    ok(await stranger.getByText('Ask Nadia for an invitation of your own.').isVisible(), 'forwarded link: "This invitation is for Jon J." / "Ask Nadia…"');
     const [jonInv1] = await q(`select * from invitations where token = $1`, [jonTok]);
     ok(jonInv1.status === 'opened' && jonInv1.accepted_at === null && jonInv1.misdirected_count === 1, 'not accepted; recorded as misdirected; link stays open for Jon');
     ok((await q(`select count(*)::int n from classifications where invitation_id = $1 and direction = 'inbound'`, [jonInv1.id]))[0].n === 0, 'the stranger’s rating of Nadia is discarded');
@@ -1177,30 +1232,30 @@ try {
     await jon.goto(jonLink);
     await jon.getByRole('button', { name: 'Enter the Experiment' }).click();
     await VALUE_D(30)(jon);
-    await jon.getByRole('heading', { name: 'Are you Jon?' }).waitFor();
+    await jon.getByRole('heading', { name: 'Are you Jon J.?' }).waitFor();
     await jon.getByRole('button', { name: 'That’s not my name' }).click();
-    await jon.getByPlaceholder('Your first name').fill('F u c k');
+    await jon.getByPlaceholder(NAME_PH).fill('Fuck J.');
     await jon.getByText(CONSENT).click();
     await jon.getByRole('button', { name: 'Continue' }).click();
     await jon.getByText('Please enter a different name.').waitFor();
     ok(true, 'corrected names go through name moderation');
-    await jon.getByPlaceholder('Your first name').fill('Jonathan');
+    await jon.getByPlaceholder(NAME_PH).fill('Jonathan J.');
     await jon.reload();
-    await jon.getByPlaceholder('Your first name').waitFor();
-    ok((await jon.getByPlaceholder('Your first name').inputValue()) === 'Jonathan'
+    await jon.getByPlaceholder(NAME_PH).waitFor();
+    ok((await jon.getByPlaceholder(NAME_PH).inputValue()) === 'Jonathan J.'
       && await jon.locator('.consents .check').evaluate((el) => el.classList.contains('is-checked'))
       && await jon.locator('.classifier').count() === 0, 'refresh keeps the step, the typed name and the consent (no re-answering)');
     await jon.getByRole('button', { name: 'Continue' }).click();
     await jon.locator('.home').waitFor();
     const jonP = await byName('Jonathan');
-    ok(jonP.invited_name === 'Jon' && jonP.confirmed_name === 'Jonathan' && jonP.name_was_corrected === true && jonP.parent_id === nadiaP.id,
+    ok(jonP.invited_name === 'Jon J.' && jonP.confirmed_name === 'Jonathan J.' && jonP.name_was_corrected === true && jonP.parent_id === nadiaP.id,
       'corrected: invited_name Jon, confirmed_name Jonathan, name_was_corrected true');
     ok((await q(`select value from classifications where invitation_id = $1 and direction = 'inbound'`, [jonInv1.id]))[0].value === '30', 'Jon’s own rating (30%) is the one kept');
     ok((await rpcAs(null, 'open_invitation', { p_token: jonTok }, '4.4.4.5')).body.state === 'used', 'once accepted, the invitation page reveals nothing more');
 
     // Moderation still applies: a hidden invited name isn't shown; the screen falls back to "And you are?"
     const adminJwtN = await jwtOf(adminPage);
-    const t3 = (await rpcAs(await jwtOf(sarah), 'create_invitation', { p_value: { strength: 'weak', context: 'other', comfort: '3', circular: '20' }[sarahP.method], p_recipient_label: 'Kai' })).body.token;
+    const t3 = (await rpcAs(await jwtOf(sarah), 'create_invitation', { p_value: { strength: 'weak', context: 'other', comfort: '3', circular: '20' }[sarahP.method], p_recipient_label: 'Kai K.' })).body.token;
     const [kaiInv] = await q(`select id from invitations where token = $1`, [t3]);
     await rpcAs(adminJwtN, 'admin_moderate', { p_target: 'invitation', p_id: kaiInv.id, p_action: 'hide', p_reason: 'test' });
     ok((await rpcAs(null, 'open_invitation', { p_token: t3 }, '4.4.4.6')).body.invited_name === null, 'a hidden invited name never reaches the invitation page');
@@ -1208,12 +1263,12 @@ try {
     // 7. Links and people from before this change
     const [leeNow] = await q(`select * from participants where display_name = 'Lee'`);
     ok(leeNow.confirmed_name === 'Lee', 'existing participants backfilled: confirmed_name = their name');
-    const erinP = (await q(`select * from participants where display_name = 'Erin'`))[0];
-    ok(erinP && erinP.invited_name === 'Erin' && erinP.name_was_corrected === false, 'a link created before this feature (legacy) still works, with the name confirmation');
+    const erinP = (await q(`select * from participants where display_name = 'Erin E.'`))[0];
+    ok(erinP && erinP.invited_name === 'Erin' && erinP.name_was_corrected === false, 'a link from before "First L." names still works: the recipient adds their initial (not counted as a correction)');
     const acctN = (await rpcAs(adminJwtN, 'admin_account_stats')).body;
     ok(acctN.names_corrected >= 1 && acctN.names_confirmed >= 2 && Number(acctN.misdirected_reports) === 1, `admin stats: ${acctN.names_confirmed} confirmed, ${acctN.names_corrected} corrected, ${acctN.misdirected_reports} forwarded-link report`);
     const pexp = (await rpcAs(adminJwtN, 'admin_export', { p_kind: 'participants' })).body.find((r) => r.participant_id === jonP.id);
-    ok(pexp.invited_name === 'Jon' && pexp.confirmed_name === 'Jonathan' && pexp.name_was_corrected === true && pexp.invitation_id === jonInv1.id && pexp.user_id === jonP.user_id, 'participants export: invited_name, confirmed_name, name_was_corrected, invitation_id, user_id');
+    ok(pexp.invited_name === 'Jon J.' && pexp.confirmed_name === 'Jonathan J.' && pexp.name_was_corrected === true && pexp.invitation_id === jonInv1.id && pexp.user_id === jonP.user_id, 'participants export: invited_name, confirmed_name, name_was_corrected, invitation_id, user_id');
   }
 
   step('Live invitation tracking — two browsers (inviter and recipient)');
@@ -1224,12 +1279,12 @@ try {
     await joinViaLink(lena, `${APP}/i/${seedL}`, 'Lena');
     const lenaP = await byName('Lena');
     await lena.getByRole('button', { name: 'Invite someone' }).first().click();
-    await lena.getByLabel('Their first name').fill('Omar');
+    await lena.getByLabel('Their first name and last initial').fill('Omar O.');
     await lena.getByRole('button', { name: 'Continue' }).click();
     await answer(lena, '.sheet', 'last');
-    await lena.getByRole('heading', { name: 'Omar’s link is ready.' }).waitFor();
+    await lena.getByRole('heading', { name: 'Omar O.’s link is ready.' }).waitFor();
     const omarLink = 'http://' + (await lena.locator('.sheet .url').innerText());
-    const omarTok = omarLink.split('/i/')[1];
+    const omarTok = omarLink.split(/\/(?:join|i)\//)[1];
     await lena.locator('.sheet').getByRole('button', { name: 'Later' }).click();
     const pill = lena.locator('.invite-card.is-filled .pill');
     await pill.waitFor();
@@ -1320,6 +1375,234 @@ try {
     ok((await asUser(omarP.user_id, 'select * from invitation_events')).length === 0 && (await asUser(null, 'select * from invitation_events')).error, 'invitation events are admin-only');
     const acctL = (await rpcAs(await jwtOf(adminPage), 'admin_account_stats')).body;
     ok(acctL.human_opens >= 1 && acctL.repeat_opens >= 2 && acctL.bot_previews >= 1 && acctL.sender_opens >= 2, `admin: ${acctL.human_opens} human opens, ${acctL.repeat_opens} repeats, ${acctL.bot_previews} bot previews, ${acctL.sender_opens} sender opens`);
+  }
+
+  step('Multiple experiments — admin setup, seed → referrals, categories, duplicates, a second experiment, pause');
+  {
+    const adminJwtE = await jwtOf(adminPage);
+    const VAL = { strength: 'acquaintance', context: 'class', comfort: '3', circular: '50' };
+    /** Landing → question → name + category + consent → home. */
+    const joinExp = async (page, link, name, category, sender = 'Truman') => {
+      await page.goto(link);
+      await page.getByRole('heading', { name: `${sender} invited you.` }).waitFor();
+      await page.getByRole('button', { name: 'Enter the Experiment' }).click();
+      await answer(page);
+      const form = page.locator('form.join-form');
+      await form.waitFor();
+      if ((await form.getAttribute('data-mode')) === 'enter') await page.getByPlaceholder(NAME_PH).fill(name);
+      await page.getByText(CONSENT).click();
+      await page.getByRole('radio', { name: category }).click();
+      await page.getByRole('button', { name: /^(Continue|Yes, that’s me)$/ }).click();
+      await page.locator('.home').waitFor();
+    };
+
+    // 1. Admin creates an experiment in the dashboard
+    await adminPage.getByRole('button', { name: 'Refresh' }).click();
+    await adminPage.getByRole('button', { name: 'New experiment' }).click();
+    const form = adminPage.locator('form.experiment-form');
+    await form.getByLabel('Experiment name').fill('Harvard Baseball');
+    await form.getByLabel('Group description').fill('Current and former Harvard Baseball players.');
+    await form.getByLabel('Invitation instruction').fill('Invite two Harvard Baseball players, current or alumni.');
+    await form.getByLabel('Invites per participant').fill('2');
+    await form.getByLabel('Participant categories').fill('Current Student, Alumni');
+    await form.getByRole('button', { name: 'Create experiment' }).click();
+    const card = adminPage.locator('.experiment-card[data-experiment="Harvard Baseball"]');
+    await card.waitFor();
+    const [hb] = await q(`select * from experiments where name = 'Harvard Baseball'`);
+    ok(hb && hb.status === 'active' && hb.invites_per_participant === 2 && JSON.stringify(hb.categories) === '["Current Student","Alumni"]' && !hb.is_default,
+      'admin creates "Harvard Baseball" (description, instruction, 2 invites, Current Student / Alumni) without code changes');
+    const hs = (await rpcAs(adminJwtE, 'admin_save_experiment', { p_id: null, p_name: 'Harvard Students', p_description: 'Harvard students and alumni.', p_invite_instruction: 'Invite two Harvard students or alumni.', p_invites_per_participant: 2, p_categories: ['Current Student', 'Alumni'], p_status: 'active' })).body;
+    ok(hs.id && hs.name === 'Harvard Students' && hs.status === 'active', 'a second experiment: "Harvard Students"');
+    ok((await rpcAs(adminJwtE, 'admin_save_experiment', { p_id: null, p_name: 'harvard baseball', p_description: '', p_invite_instruction: '', p_invites_per_participant: 2, p_categories: [], p_status: 'active' })).body.message === 'experiment_name_taken', 'experiment names are unique');
+
+    // 2. Seed links, per experiment, uniquely tracked and copyable one by one
+    await card.getByRole('button', { name: 'Seed links & tree' }).click();
+    await card.getByLabel('Number of links').fill('2');
+    await card.getByLabel('Sender name').fill('Truman');
+    await card.getByRole('button', { name: 'Generate' }).click();
+    await card.locator('.seed-panel tbody tr').nth(1).waitFor();
+    const hbSeeds = await q(`select token, experiment_id from invitations where experiment_id = $1 and sender_id is null order by created_at`, [hb.id]);
+    ok(hbSeeds.length === 2 && hbSeeds[0].token !== hbSeeds[1].token, 'two uniquely tracked seed links, both tied to Harvard Baseball');
+    const chip = card.locator('.seed-panel tbody tr').first().locator('button.mono');
+    ok(/^\/join\/[A-Za-z0-9_-]{8}…$/.test(await chip.innerText()), 'seed links are /join/TOKEN links');
+    await chip.click();
+    await card.locator('.seed-panel tbody tr').first().getByText('Copied').waitFor();
+    ok(true, 'each seed link copies on its own');
+    await adminPage.waitForTimeout(400);
+    await card.screenshot({ path: path.join(SHOTS, '52-admin-experiment-new.png') });
+
+    // 3. Generation 1 from the seed link: name + category
+    const james = await newPhone();
+    await james.goto(`${APP}/join/${hbSeeds[0].token}`);
+    await james.getByRole('heading', { name: 'Truman invited you.' }).waitFor();
+    await james.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await answer(james);
+    await james.getByRole('heading', { name: 'And you are?' }).waitFor();
+    await james.getByPlaceholder(NAME_PH).fill('james p');
+    await james.getByText(CONSENT).click();
+    const cont = james.getByRole('button', { name: 'Continue' });
+    ok(await cont.isDisabled() && await james.getByRole('radiogroup', { name: 'Which describes you?' }).isVisible(), 'categories: Continue waits for “Current Student” / “Alumni”');
+    await james.getByRole('radio', { name: 'Alumni' }).click();
+    await james.waitForTimeout(500);
+    await shot(james, '50-experiment-join-category');
+    await cont.click();
+    await james.locator('.home').waitFor();
+    const jamesP = await byName('James P.');
+    ok(jamesP.display_name === 'James P.' && jamesP.category === 'Alumni' && jamesP.experiment_id === hb.id && jamesP.depth === 1 && jamesP.parent_id === null,
+      'James P. joined Harvard Baseball from a seed: generation 1, Alumni ("james p" tidied to "James P.")');
+    ok(await james.getByText('Harvard Baseball', { exact: true }).isVisible() && await james.getByText('Invite two Harvard Baseball players, current or alumni.').isVisible()
+      && await james.getByText('Current and former Harvard Baseball players.').isVisible(), 'home: experiment name, group description and invitation instruction');
+    ok(await james.locator('.invite-slots > *').count() === 2, 'two invitation slots (the experiment’s setting)');
+    await james.waitForTimeout(600);
+    await shot(james, '51-experiment-home');
+
+    // 4. Generation 2 through a referral link
+    await james.getByRole('button', { name: 'Invite someone' }).first().click();
+    ok(await james.locator('.sheet .invite-instruction').innerText() === 'Invite two Harvard Baseball players, current or alumni.', 'the invite sheet repeats the instruction');
+    await james.locator('.sheet').getByRole('button', { name: 'Close' }).click();
+    const sarahLinkM = await invite(james, 'Sarah M.', { share: false });
+    ok(sarahLinkM.startsWith(`${APP}/join/`), 'referral links are /join/TOKEN links');
+    const sarahTokM = sarahLinkM.split('/join/')[1];
+    ok((await q(`select experiment_id from invitations where token = $1`, [sarahTokM]))[0].experiment_id === hb.id, 'the referral link belongs to the sender’s experiment');
+    const sarahM = await newPhone();
+    await sarahM.goto(sarahLinkM);
+    await sarahM.getByRole('heading', { name: 'James invited you.' }).waitFor();
+    await sarahM.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await answer(sarahM);
+    await sarahM.getByRole('heading', { name: 'Are you Sarah M.?' }).waitFor();
+    await sarahM.getByText(CONSENT).click();
+    ok(await sarahM.getByRole('button', { name: 'Yes, that’s me' }).isDisabled(), 'confirming the invited name also waits for the category');
+    await sarahM.getByRole('radio', { name: 'Current Student' }).click();
+    await sarahM.getByRole('button', { name: 'Yes, that’s me' }).click();
+    await sarahM.locator('.home').waitFor();
+    const sarahMP = (await q(`select * from participants where display_name = 'Sarah M.' and experiment_id = $1`, [hb.id]))[0];
+    ok(sarahMP.parent_id === jamesP.id && sarahMP.depth === 2 && sarahMP.category === 'Current Student', 'Sarah M. joined through James: generation 2, Current Student');
+
+    // 5. A second invitation to someone already in: a separate connection, not a second participant
+    const ken = await newPhone();
+    await joinExp(ken, `${APP}/join/${hbSeeds[1].token}`, 'Ken L.', 'Current Student');
+    const [kenP] = await q(`select * from participants where display_name = 'Ken L.'`);
+    const kenJwt = await jwtOf(ken);
+    const kenLink = await invite(ken, 'Sarah M.', { share: false });
+    await sarahM.goto(kenLink);
+    await sarahM.getByRole('heading', { name: 'Ken invited you.' }).waitFor();
+    await sarahM.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await answer(sarahM);
+    await sarahM.getByText('You were already part of the experiment. Thanks for answering.').waitFor();
+    const [kenInv] = await q(`select * from invitations where token = $1`, [kenLink.split('/join/')[1]]);
+    ok(kenInv.status === 'duplicate' && kenInv.accepted_by === sarahMP.id, 'Sarah’s second invitation (from Ken) is recorded as a connection to her');
+    ok((await q(`select count(*)::int n from participants where user_id = $1 and experiment_id = $2`, [sarahMP.user_id, hb.id]))[0].n === 1
+      && (await byName('Sarah M.')).parent_id === jamesP.id, 'she is counted once; James stays her primary referral');
+    // Same name, different person: never merged
+    const ken2 = (await rpcAs(kenJwt, 'create_invitation', { p_value: VAL[kenP.method], p_recipient_label: 'Sarah M.' })).body.token;
+    const otherSarah = await newPhone();
+    await joinExp(otherSarah, `${APP}/join/${ken2}`, 'Sarah M.', 'Alumni', 'Ken');
+    const sarahs = await q(`select * from participants where display_name = 'Sarah M.' and experiment_id = $1 order by created_at`, [hb.id]);
+    ok(sarahs.length === 2 && sarahs[0].user_id !== sarahs[1].user_id && sarahs[1].parent_id === kenP.id, 'two different people both named “Sarah M.” stay two participants (names are never used to match people)');
+    const conns = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'connections' })).body.filter((c) => c.invitee_id === sarahMP.id);
+    ok(conns.length === 2 && conns.filter((c) => c.is_primary).length === 1 && conns.find((c) => c.is_primary).inviter_id === jamesP.id
+      && conns.find((c) => !c.is_primary).inviter_id === kenP.id, 'connections export: primary (James → Sarah) and secondary (Ken → Sarah)');
+
+    // 6. An existing account joins another experiment: same login, a second membership
+    const usersBefore = (await q(`select count(*)::int n from auth.users`))[0].n;
+    const hsSeed = (await rpcAs(adminJwtE, 'admin_create_experiment_seeds', { p_experiment_id: hs.id, p_count: 1, p_sender_name: 'Truman', p_note: 'alice' })).body[0].token;
+    await alicePage.goto(`${APP}/join/${hsSeed}`);
+    await alicePage.getByRole('heading', { name: 'Truman invited you.' }).waitFor();
+    await alicePage.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await answer(alicePage);
+    await alicePage.getByRole('heading', { name: 'And you are?' }).waitFor();
+    ok(true, 'an existing participant opening another experiment’s link is treated as new to that experiment');
+    await alicePage.getByPlaceholder(NAME_PH).fill('Alice A.');
+    await alicePage.getByText(CONSENT).click();
+    await alicePage.getByRole('radio', { name: 'Alumni' }).click();
+    await alicePage.getByRole('button', { name: 'Continue' }).click();
+    await alicePage.locator('.home').waitFor();
+    const aliceRows = await q(`select p.*, e.name as exp from participants p join experiments e on e.id = p.experiment_id where p.user_id = $1 and p.deleted_at is null order by p.created_at`, [alice.user_id]);
+    ok(aliceRows.length === 2 && aliceRows.map((r) => r.exp).join() === 'The Pipeline Experiment,Harvard Students'
+      && (await q(`select count(*)::int n from auth.users`))[0].n === usersBefore, 'Alice: one account, two memberships (no duplicate account)');
+    const tabs = alicePage.getByRole('tablist', { name: 'Your experiments' });
+    ok(await tabs.getByRole('tab', { name: 'Harvard Students', selected: true }).isVisible(), 'home switches to the new experiment, with a switcher');
+    await alicePage.waitForTimeout(500);
+    await shot(alicePage, '53-experiment-switcher');
+    await tabs.getByRole('tab', { name: 'The Pipeline Experiment' }).click();
+    await tabs.getByRole('tab', { name: 'The Pipeline Experiment', selected: true }).waitFor();
+    ok(await alicePage.locator('.invite-card.is-filled').count() >= 1, 'switching back shows her original experiment and its links');
+    await tabs.getByRole('tab', { name: 'Harvard Students' }).click();
+    await tabs.getByRole('tab', { name: 'Harvard Students', selected: true }).waitFor();
+    ok((await asUser(alice.user_id, `select public.accept_invitation($1, 'Al A.', true, false, $2, 'Alumni') as r`,
+      [(await rpcAs(adminJwtE, 'admin_create_experiment_seeds', { p_experiment_id: hs.id, p_count: 1, p_sender_name: 'Truman', p_note: 'dup' })).body[0].token, 'other']))[0].r.state === 'already_participant',
+      'joining the same experiment again from another seed adds a connection, not a second membership');
+
+    // 7. Pause: no new joins or links; nothing deleted
+    const hsCard = adminPage.locator('.experiment-card[data-experiment="Harvard Students"]');
+    await adminPage.getByRole('button', { name: 'Refresh' }).click();
+    await hsCard.getByRole('button', { name: 'Pause' }).click();
+    await hsCard.getByText('Paused').waitFor();
+    const pausedSeed = (await rpcAs(adminJwtE, 'admin_create_experiment_seeds', { p_experiment_id: hs.id, p_count: 1, p_sender_name: 'Truman', p_note: 'paused' })).body[0].token;
+    const late = await newPhone();
+    await late.goto(`${APP}/join/${pausedSeed}`);
+    await late.getByRole('heading', { name: 'This experiment is paused.' }).waitFor();
+    ok((await q(`select status, opened_at from invitations where token = $1`, [pausedSeed]))[0].opened_at === null, 'paused: the link shows a calm message and nothing is recorded');
+    ok((await rpcAs(await jwtOf(alicePage), 'create_invitation', { p_value: VAL[aliceRows[1].method], p_recipient_label: 'Bea B.' })).body.message === 'experiment_paused', 'paused: no new referral links');
+    await alicePage.reload();
+    await alicePage.getByText('This experiment is paused. New invitations are on hold.').waitFor();
+    ok((await q(`select count(*)::int n from participants where experiment_id = $1 and deleted_at is null`, [hs.id]))[0].n === 1, 'paused: existing participants and data are kept');
+    await hsCard.getByRole('button', { name: 'Resume' }).click();
+    await hsCard.getByText('Active').waitFor();
+    await late.reload();
+    await late.getByRole('button', { name: 'Enter the Experiment' }).waitFor();
+    ok(true, 'resumed: the same link works again');
+
+    // 8. Links are permanent and stay in their experiment
+    const tokenNow = hbSeeds[0].token;
+    let blocked = 0;
+    try { await q(`update invitations set experiment_id = $1 where token = $2`, [hs.id, tokenNow]); } catch { blocked++; }
+    try { await q(`update invitations set token = 'x' || token where token = $1`, [tokenNow]); } catch { blocked++; }
+    try { await q(`delete from invitations where token = $1`, [tokenNow]); } catch { blocked++; }
+    ok(blocked === 3 && (await q(`select experiment_id from invitations where token = $1`, [tokenNow]))[0].experiment_id === hb.id,
+      'a link’s token and experiment can’t change, and links can’t be deleted (even by the database owner)');
+    ok((await q(`select count(*)::int n from invitations`))[0].n === (await q(`select count(distinct token)::int n from invitations`))[0].n, 'every token is unique');
+
+    // 9. Analytics, from the stored records
+    const exps = (await rpcAs(adminJwtE, 'admin_experiments')).body;
+    const st = exps.find((e) => e.id === hb.id).stats;
+    ok(st.participants === 4 && st.links_created === 5 && st.seed_links === 2 && st.opened === 5 && st.accepted === 4 && st.secondary_connections === 1 && st.max_depth === 2,
+      `Harvard Baseball: ${st.participants} participants, ${st.links_created} links, ${st.opened} opened, ${st.accepted} accepted (+${st.secondary_connections} repeat), depth ${st.max_depth}`);
+    ok(st.categories['Current Student'] === 2 && st.categories.Alumni === 2 && typeof st.median_response_s === 'number', `categories: ${JSON.stringify(st.categories)}; median response ${st.median_response_s}s`);
+    ok(exps.find((e) => e.is_default).stats.participants >= 5 && exps.length === 3, 'the original experiment keeps all earlier participants');
+    const det = (await rpcAs(adminJwtE, 'admin_experiment_detail', { p_experiment_id: hb.id })).body;
+    ok(det.tree.length === 4 && det.tree.filter((n) => n.parent === null).length === 2 && det.secondary.length === 1 && det.seeds.length === 2, 'referral tree: 4 people, 2 seed branches, 1 extra connection');
+    await adminPage.getByRole('button', { name: 'Refresh' }).click();
+    await card.locator('.tile-stat', { hasText: 'Participants' }).getByText('4', { exact: true }).waitFor();
+    ok((await card.locator('.category-split').innerText()).includes('2 Current Student'), 'dashboard card shows the numbers and the student/alumni split');
+    if (!(await card.locator('.experiment-detail').count())) await card.getByRole('button', { name: 'Seed links & tree' }).click();
+    await card.locator('.experiment-detail svg').waitFor();
+    await adminPage.waitForTimeout(800);
+    await card.screenshot({ path: path.join(SHOTS, '54-admin-experiment-analytics.png') });
+    const pexp = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'participants' })).body.find((r) => r.participant_id === jamesP.id);
+    ok(pexp.experiment_id === hb.id && pexp.category === 'Alumni' && pexp.person_key, 'participants export: experiment, category and a cross-experiment person key');
+    const aliceKeys = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'participants' })).body.filter((r) => r.user_id === alice.user_id).map((r) => r.person_key);
+    ok(aliceKeys.length === 2 && aliceKeys[0] === aliceKeys[1], 'the same person has the same key in both experiments');
+
+    // 10. Admin-only, enforced by the server and RLS
+    const jamesJwt = await jwtOf(james);
+    ok((await rpcAs(jamesJwt, 'admin_experiments')).body.message === 'forbidden'
+      && (await rpcAs(jamesJwt, 'admin_save_experiment', { p_id: hb.id, p_name: 'x', p_description: '', p_invite_instruction: '', p_invites_per_participant: 9, p_categories: [], p_status: 'paused' })).body.message === 'forbidden'
+      && (await rpcAs(jamesJwt, 'admin_create_experiment_seeds', { p_experiment_id: hb.id, p_count: 1, p_sender_name: 'J' })).body.message === 'forbidden'
+      && (await rpcAs(jamesJwt, 'admin_experiment_detail', { p_experiment_id: hb.id })).body.message === 'forbidden', 'experiment admin functions are admin-only');
+    ok((await asUser(jamesP.user_id, 'select * from experiments')).length === 0 && (await asUser(null, 'select * from experiments')).error
+      && (await asUser(jamesP.user_id, 'select * from connections')).error, 'experiments and connections are not readable by participants');
+    const jamesState = (await rpcAs(jamesJwt, 'get_my_state')).body;
+    ok(jamesState.experiment.name === 'Harvard Baseball' && !('stats' in jamesState.experiment) && jamesState.experiments.length === 1, 'participants see only their own experiment’s public details');
+
+    // 11. Erasure covers every experiment
+    await alicePage.getByLabel('Your data').click();
+    await alicePage.getByText('Delete my data').click();
+    await alicePage.getByRole('button', { name: 'Delete permanently' }).click();
+    await alicePage.getByText('Your data has been deleted.').waitFor();
+    const tombs = await q(`select * from participants where id = any($1)`, [aliceRows.map((r) => r.id)]);
+    ok(tombs.length === 2 && tombs.every((t) => t.deleted_at && t.user_id === null && t.display_name === null) && !(await authUser(alice.user_id)),
+      'deleting my data erases both memberships and the account');
   }
 
   console.log(`\n✔ ${passed} checks passed. Screenshots in test-results/`);

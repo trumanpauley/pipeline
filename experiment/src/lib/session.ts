@@ -24,6 +24,8 @@ export interface PendingJoin {
   name: string;
   marketing: boolean;
   research: boolean;
+  /** Participant category for experiments that ask (e.g. "Alumni"). */
+  category?: string | null;
 }
 
 const KEY = 'px.pending';

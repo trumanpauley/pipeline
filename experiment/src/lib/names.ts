@@ -27,3 +27,27 @@ export async function nameAcceptable(raw: string): Promise<boolean> {
     return true;
   }
 }
+
+export const NAME_FORMAT_HELP = 'Enter your first name and last initial, like “James P.”';
+
+const initcap = (s: string) =>
+  s.toLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+
+/**
+ * "First L." — a first name (one or two words) and a single last initial.
+ * Returns the tidy form ("james  p" → "James P.", "Sarah M." stays), or null
+ * if it isn't one (a full surname, a missing initial, digits…). Mirrors the
+ * server's px_format_name, which is the authority.
+ */
+export function formatName(raw: string): string | null {
+  const v = raw.trim().replace(/\s+/g, ' ');
+  const m = v.match(/^([^\s.]+(?: [^\s.]+)?) ([^\s.'’ʼ-])\.?$/u);
+  if (!m) return null;
+  let first = m[1];
+  const initial = m[2];
+  if (initial.toUpperCase() === initial.toLowerCase() || [...first].length > 30) return null;
+  first = first === first.toLowerCase() || first === first.toUpperCase()
+    ? initcap(first)
+    : first.charAt(0).toUpperCase() + first.slice(1);
+  return `${first} ${initial.toUpperCase()}.`;
+}

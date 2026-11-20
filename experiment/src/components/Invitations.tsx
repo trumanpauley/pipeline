@@ -3,7 +3,7 @@ import { api, inviteUrl, type MyInvitation } from '../lib/api';
 import { COPY } from '../config/experiment';
 import { Classifier } from './Classifier';
 import { Button, ErrorText, Sheet } from './ui';
-import { NAME_REJECTED, nameAcceptable } from '../lib/names';
+import { NAME_REJECTED, formatName, nameAcceptable } from '../lib/names';
 
 // What each invitation unlocks, in order.
 const UNLOCKS = ['Our name', 'Our mission'];
@@ -212,10 +212,13 @@ function FilledSlot({
 export function InviteSheet({
   method,
   first,
+  instruction,
   onClose,
 }: {
   method: string;
   first: boolean;
+  /** The experiment's invitation instruction, e.g. "Invite two Harvard students or alumni." */
+  instruction?: string | null;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<'who' | 'classify' | 'ready'>('who');
@@ -248,8 +251,11 @@ export function InviteSheet({
     e.preventDefault();
     if (!name.trim()) return;
     setError(null);
+    const formatted = formatName(name);
+    if (!formatted) return setError('Enter their first name and last initial, like “Sarah M.”');
+    setName(formatted);
     setChecking(true);
-    const ok = await nameAcceptable(name);
+    const ok = await nameAcceptable(formatted);
     setChecking(false);
     if (!ok) return setError(NAME_REJECTED);
     setStep('classify');
@@ -260,24 +266,26 @@ export function InviteSheet({
       {step === 'who' && (
         <form className="stack fade-up" onSubmit={submitName}>
           <h2 className="title">{first ? 'Who will you invite first?' : 'Who will you invite next?'}</h2>
-          <p className="muted">Enter their first name.</p>
+          {instruction && <p className="invite-instruction">{instruction}</p>}
+          <p className="muted">Enter their first name and last initial.</p>
           <input
             className="input"
-            placeholder="First name"
+            placeholder="e.g. Sarah M."
             value={name}
             maxLength={40}
             autoComplete="off"
             autoCapitalize="words"
             onChange={(e) => { setName(e.target.value); setError(null); }}
             autoFocus
-            aria-label="Their first name"
+            aria-label="Their first name and last initial"
           />
-          <p className="fine">Only you see this.</p>
+          <p className="fine">They’ll see it on their invitation, to confirm it’s them.</p>
           <ErrorText error={error} />
           <Button type="submit" busy={checking} disabled={!name.trim()}>Continue</Button>
         </form>
       )}
-      {step === 'classify' && <Classifier method={method} name={name.trim()} onSelect={create} track={{ direction: 'outbound' }} />}
+      {/* The question uses their first name ("How well do you know Sarah?"). */}
+      {step === 'classify' && <Classifier method={method} name={name.trim().replace(/ \S\.$/u, '')} onSelect={create} track={{ direction: 'outbound' }} />}
       {step === 'ready' && invite && (
         <div className="stack fade-up text-center">
           <div className="ready-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></div>

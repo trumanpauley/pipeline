@@ -4,7 +4,7 @@ import { isConfigured } from './lib/supabase';
 import { InvitePage } from './pages/InvitePage';
 import { HomePage } from './pages/HomePage';
 import { AdminPage } from './pages/AdminPage';
-import { Loading, Screen } from './components/ui';
+import { Constellation, Loading, Screen } from './components/ui';
 
 export function App() {
   const path = usePath();
@@ -20,8 +20,24 @@ export function App() {
   }
   if (session === undefined) return <Loading />;
 
-  const invite = path.match(/^\/i\/([A-Za-z0-9_-]{10,64})\/?$/);
+  // Tolerate punctuation that messaging apps glue onto the end of a pasted link.
+  // /join/TOKEN (current links) and /i/TOKEN (earlier links) are the same invitation.
+  const invite = path.match(/^\/(?:join|i)\/([A-Za-z0-9_-]{10,64})[/.,;:!?)\]'"’”]*$/);
   if (invite) return <InvitePage key={invite[1]} token={invite[1]} session={session} />;
+  // A damaged or truncated invitation link: say so, rather than showing sign-in.
+  if (/^\/(join|i)(\/|$)/.test(path)) return <InvalidInvite />;
   if (path.startsWith('/admin')) return <AdminPage session={session} />;
   return <HomePage session={session} />;
+}
+
+function InvalidInvite() {
+  return (
+    <Screen className="center">
+      <div className="stack fade-up text-center">
+        <Constellation small />
+        <h1 className="title">This link isn’t active.</h1>
+        <p className="muted">Ask the person who sent it for a new one.</p>
+      </div>
+    </Screen>
+  );
 }

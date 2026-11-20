@@ -6,10 +6,11 @@ import { pending, pendingFromSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import { deviceId } from '../lib/device';
 import { captchaToken } from '../lib/captcha';
-import { NAME_REJECTED, nameAcceptable } from '../lib/names';
+import { NAME_FORMAT_HELP, NAME_REJECTED, formatName, nameAcceptable } from '../lib/names';
 import { BRAND, COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
 import { LandingIntro } from '../components/LandingIntro';
+import { TypedHint } from '../components/TypedHint';
 import { DemoLinks } from './HomePage';
 import { Button, Check, Constellation, ErrorText, Loading, Screen } from '../components/ui';
 
@@ -20,7 +21,7 @@ type JoinMode = 'confirm' | 'correct' | 'enter';
  * Onboarding progress for one invitation, kept on this device so a refresh
  * returns to the same step (answered question, name choice, consent).
  */
-interface Progress { answered?: boolean; mode?: JoinMode; name?: string; research?: boolean }
+interface Progress { answered?: boolean; mode?: JoinMode; name?: string; research?: boolean; category?: string }
 const progressKey = (token: string) => `px.join.${token}`;
 const progress = {
   get(token: string): Progress {
@@ -44,6 +45,9 @@ export function InvitePage({ token, session }: { token: string; session: Session
   const [research, setResearch] = useState(false);
   const [joinMode, setJoinMode] = useState<JoinMode>('confirm');
   const [showData, setShowData] = useState(false);
+  const [category, setCategory] = useState('');
+  // The typed instruction starts the first time the name field is focused.
+  const [nameFocused, setNameFocused] = useState(false);
   const [busy, setBusy] = useState(false);
   const accepting = useRef(false);
   // One open per visit (and per session change): React's dev mode runs effects
@@ -64,12 +68,12 @@ export function InvitePage({ token, session }: { token: string; session: Session
   };
 
   const accept = useCallback(
-    async (p: { name: string; research: boolean }) => {
+    async (p: { name: string; research: boolean; category?: string | null }) => {
       if (accepting.current) return;
       accepting.current = true;
       setStep('joining');
       try {
-        const r = await api.acceptInvitation(token, p.name, p.research, deviceId());
+        const r = await api.acceptInvitation(token, p.name, p.research, deviceId(), p.category);
         pending.clear();
         progress.clear(token);
         navigate(r.state === 'already_participant' ? '/?already=1' : '/?welcome=1', true);
@@ -101,10 +105,14 @@ export function InvitePage({ token, session }: { token: string; session: Session
       if (r.state === 'preview') return show('You’ve been invited.', 'Open this link in your browser to begin.');
       if (r.state === 'rate_limited') return show('Give it a moment.', 'Too many visits from this network. Try again shortly.');
       if (r.state === 'invalid') return show('This link isn’t active.', 'Ask the person who sent it for a new one.');
+      if (r.state === 'expired') return show('This invitation has expired.', 'Ask the person who sent it for a new one.');
+      if (r.state === 'paused') return show('This experiment is paused.', 'Your invitation will work again when it reopens.');
       if (r.state === 'used')
         return show('This invitation has already been used.', 'Each link works once. Ask for a new one, or sign in if it was yours.', 'Sign in');
       if (r.state === 'own') return show('This is your invitation.', 'Send it to someone else — it works once.', 'Back to the experiment');
       if (r.state === 'joined') return navigate('/', true);
+      // Anything unrecognised is treated as not valid: never start onboarding on it.
+      if (r.state !== 'ok') return show('This link isn’t active.', 'Ask the person who sent it for a new one.');
 
       if (session) {
         if (r.already_participant) return setStep(r.answered ? 'joining' : 'intro');
@@ -144,12 +152,13 @@ export function InvitePage({ token, session }: { token: string; session: Session
     if (saved.mode) setJoinMode(saved.mode);
     if (saved.name) setName(saved.name);
     if (saved.research) setResearch(true);
+    if (saved.category) setCategory(saved.category);
   }
 
   // Remember the name choice and consent as they change (survives a refresh).
   useEffect(() => {
-    if (step === 'join') progress.set(token, { mode: joinMode, name, research });
-  }, [step, joinMode, name, research, token]);
+    if (step === 'join') progress.set(token, { mode: joinMode, name, research, category });
+  }, [step, joinMode, name, research, category, token]);
 
   const onClassified = async (value: string, ms: number) => {
     try {
@@ -163,7 +172,14 @@ export function InvitePage({ token, session }: { token: string; session: Session
   };
 
   const invitedName = info?.invited_name ?? null;
-  const mode: JoinMode = invitedName ? joinMode : 'enter';
+  // Links from before "First L." names may carry a first name only: the
+  // recipient then adds their initial (the name field starts filled in).
+  const invitedComplete = invitedName ? formatName(invitedName) : null;
+  const mode: JoinMode = invitedName ? (invitedComplete ? joinMode : 'correct') : 'enter';
+  const categories = info?.experiment?.categories ?? [];
+  useEffect(() => {
+    if (step === 'join' && invitedName && !invitedComplete && !name) setName(`${invitedName} `);
+  }, [step, invitedName, invitedComplete, name]);
 
   // "This invite wasn't meant for me": record it, don't accept, leave the link
   // open for the person it was meant for.
@@ -172,7 +188,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
     progress.clear(token);
     pending.clear();
     show(
-      `This invitation is for ${invitedName}.`,
+      `This invitation is for ${invitedName?.replace(/\.$/, '')}.`,
       `Ask ${info?.sender_name ?? 'the person who sent it'} for an invitation of your own.`,
     );
   };
@@ -181,15 +197,17 @@ export function InvitePage({ token, session }: { token: string; session: Session
     e.preventDefault();
     setError(null);
     // Confirming uses the inviter's suggestion; otherwise the name they typed.
-    const n = (mode === 'confirm' ? invitedName ?? '' : name).trim();
-    if (!n) return setError('Please enter your first name.');
+    const n = formatName(mode === 'confirm' ? invitedName ?? '' : name);
+    if (!n) return setError(NAME_FORMAT_HELP);
+    if (categories.length && !category) return setError('Choose the option that describes you.');
     if (!research) return setError('Please agree to take part in the research to continue.');
     // Check the name before creating anything; the server checks it again on join.
     setBusy(true);
     const nameOk = await nameAcceptable(n);
     setBusy(false);
     if (!nameOk) return setError(NAME_REJECTED);
-    const p = { token, name: n, research, marketing: false };
+    if (mode !== 'confirm') setName(n);
+    const p = { token, name: n, research, marketing: false, category: categories.length ? category : null };
     pending.set(p);
     if (signedIn) return void accept(p);
     // No account needed: an anonymous Supabase identity is created silently and
@@ -263,17 +281,43 @@ export function InvitePage({ token, session }: { token: string; session: Session
         </header>
         <div className="join-fields stack">
           {mode !== 'confirm' && (
-            <input
-              key={mode}
-              className={`input ${mode === 'correct' ? 'fade-up' : ''}`}
-              placeholder={mode === 'correct' ? 'Your first name' : 'First name'}
-              autoComplete="given-name"
-              autoFocus={mode === 'correct'}
-              value={name}
-              maxLength={40}
-              onChange={(e) => { setName(e.target.value); setError(null); }}
-              aria-label={mode === 'correct' ? 'Your first name' : 'First name'}
-            />
+            <div className="name-field">
+              <TypedHint id="name-hint" text={COPY.nameInstruction} start={nameFocused} />
+              <input
+                key={mode}
+                className={`input ${mode === 'correct' ? 'fade-up' : ''}`}
+                placeholder={COPY.namePlaceholder}
+                autoComplete="name"
+                autoCapitalize="words"
+                autoFocus={mode === 'correct'}
+                value={name}
+                maxLength={40}
+                onFocus={() => setNameFocused(true)}
+                onChange={(e) => { setName(e.target.value); setError(null); }}
+                aria-label={COPY.namePlaceholder}
+                aria-describedby="name-hint name-disclosure"
+              />
+            </div>
+          )}
+          <NameDisclosure />
+          {categories.length > 0 && (
+            <div className="category-choice" role="radiogroup" aria-label={COPY.categoryQuestion}>
+              <p className="fine">{COPY.categoryQuestion}</p>
+              <div className="category-options">
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={category === c}
+                    className={`chip ${category === c ? 'is-selected' : ''}`}
+                    onClick={() => { setCategory(c); setError(null); }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
           {session?.user.email && <p className="muted small">Signed in as {session.user.email}</p>}
           <div className="consents">
@@ -295,20 +339,22 @@ export function InvitePage({ token, session }: { token: string; session: Session
           {mode === 'confirm' ? (
             <>
               {/* Enabled once the research consent is ticked. */}
-              <Button type="submit" busy={busy} disabled={!research}>{COPY.joinConfirmYes}</Button>
+              <Button type="submit" busy={busy} disabled={!research || (categories.length > 0 && !category)}>{COPY.joinConfirmYes}</Button>
               <Button variant="secondary" onClick={() => { setJoinMode('correct'); setName(''); setError(null); }}>
                 {COPY.joinConfirmNo}
               </Button>
             </>
           ) : (
             <>
-              {/* Enabled once there's a first name and the research consent is ticked. */}
-              <Button type="submit" busy={busy} disabled={!name.trim() || !research}>Continue</Button>
+              {/* Enabled once there's a name (and category, if asked) and the research consent is ticked. */}
+              <Button type="submit" busy={busy} disabled={!name.trim() || !research || (categories.length > 0 && !category)}>Continue</Button>
               {mode === 'correct' && (
                 <div className="row-links fade-up">
-                  <button type="button" className="link" onClick={() => { setJoinMode('confirm'); setError(null); }}>
-                    I’m {invitedName}
-                  </button>
+                  {invitedComplete && (
+                    <button type="button" className="link" onClick={() => { setJoinMode('confirm'); setError(null); }}>
+                      I’m {invitedName}
+                    </button>
+                  )}
                   <button type="button" className="link" onClick={wrongRecipient}>{COPY.joinWrongPerson}</button>
                 </div>
               )}
@@ -318,5 +364,25 @@ export function InvitePage({ token, session }: { token: string; session: Session
         </div>
       </form>
     </Screen>
+  );
+}
+
+/** What the name is used for, with a longer explanation on request. */
+function NameDisclosure() {
+  const [more, setMore] = useState(false);
+  return (
+    <div className="name-disclosure">
+      <p className="fine" id="name-disclosure">
+        {COPY.nameDisclosure}{' '}
+        <button type="button" className="link inline" aria-expanded={more} onClick={() => setMore((v) => !v)}>
+          {more ? 'Show less' : 'More about privacy'}
+        </button>
+      </p>
+      {more && (
+        <ul className="data-notes fade-up">
+          {COPY.namePrivacy.map((l) => <li key={l}>{l}</li>)}
+        </ul>
+      )}
+    </div>
   );
 }

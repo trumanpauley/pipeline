@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, inviteUrl, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview } from '../lib/api';
+import { api, inviteUrl, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { navigate } from '../lib/router';
 import { labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
@@ -127,7 +127,7 @@ export function AdminPage({ session }: { session: Session | null }) {
         </p>
       </Panel>
 
-      <SeedPanel seeds={data.seeds} onChanged={load} />
+      <ExperimentsPanel refreshKey={version} />
 
       <Panel
         title="Names & moderation"
@@ -188,7 +188,7 @@ export function AdminPage({ session }: { session: Session | null }) {
 
       <Panel title="Research exports" note="CSV. Only the participants, waitlist and community files contain email addresses.">
         <div className="export-row">
-          {['participants', 'invitations', 'classifications', 'classification_events', 'reciprocal', 'feedback', 'waitlist'].map((k) => (
+          {['experiments', 'participants', 'invitations', 'connections', 'classifications', 'classification_events', 'reciprocal', 'feedback', 'waitlist'].map((k) => (
             <ExportButton key={k} kind={k} />
           ))}
         </div>
@@ -320,7 +320,7 @@ function ReciprocityView({ r }: { r: AdminOverview['reciprocity'] }) {
   );
 }
 
-function AdminTree({ tree }: { tree: AdminOverview['tree'] }) {
+function AdminTree({ tree, height = 520 }: { tree: (AdminOverview['tree'][number] & { category?: string | null })[]; height?: number }) {
   const nodes = useMemo<TreeNode[]>(() => [
     { id: 'root', parent: null, kind: 'root', label: 'Seeds', info: `${tree.length} participants` },
     ...tree.map((n): TreeNode => ({
@@ -328,10 +328,10 @@ function AdminTree({ tree }: { tree: AdminOverview['tree'] }) {
       parent: n.parent ?? 'root',
       kind: n.deleted ? 'deleted' : 'member',
       color: n.deleted ? undefined : METHOD_COLOR[n.method],
-      info: `Generation ${n.depth} · ${methodDef(n.method).adminName}${n.deleted ? ' · deleted' : ''}`,
+      info: `Generation ${n.depth} · ${methodDef(n.method).adminName}${n.category ? ` · ${n.category}` : ''}${n.deleted ? ' · deleted' : ''}`,
     })),
   ], [tree]);
-  return <Tree nodes={nodes} height={520} />;
+  return <Tree nodes={nodes} height={height} />;
 }
 
 function Legend() {
@@ -343,7 +343,7 @@ function Legend() {
   );
 }
 
-function SeedPanel({ seeds, onChanged }: { seeds: AdminOverview['seeds']; onChanged: () => void }) {
+function SeedPanel({ experimentId, seeds, onChanged }: { experimentId: string; seeds: AdminOverview['seeds']; onChanged: () => void }) {
   const [count, setCount] = useState(10);
   const [sender, setSender] = useState('');
   const [note, setNote] = useState('');
@@ -357,7 +357,7 @@ function SeedPanel({ seeds, onChanged }: { seeds: AdminOverview['seeds']; onChan
     setBusy(true);
     setError(null);
     try {
-      await api.adminCreateSeeds(count, sender, note);
+      await api.adminCreateExperimentSeeds(experimentId, count, sender, note);
       onChanged();
     } catch (err) {
       setError((err as Error).message);
@@ -377,7 +377,9 @@ function SeedPanel({ seeds, onChanged }: { seeds: AdminOverview['seeds']; onChan
   };
 
   return (
-    <Panel title="Seed invitations" note="Unique single-use links you send personally. Invitees see “How do you know {name}?”.">
+    <div className="seed-panel">
+      <h3>Seed links</h3>
+      <p className="muted small">Unique single-use links you send personally. Each one belongs to this experiment for good.</p>
       <form className="seed-form" onSubmit={create}>
         <input className="input" type="number" min={1} max={50} value={count}
           onChange={(e) => setCount(Number(e.target.value))} aria-label="Number of links" />
@@ -395,7 +397,7 @@ function SeedPanel({ seeds, onChanged }: { seeds: AdminOverview['seeds']; onChan
             head={['Link', 'From', 'Note', 'Status', 'Branch', '']}
             rows={seeds.map((s) => [
               <button key="c" className="chip mono" onClick={() => copy(s.token)}>
-                {copied === s.token ? 'Copied' : `/i/${s.token.slice(0, 8)}…`}
+                {copied === s.token ? 'Copied' : `/join/${s.token.slice(0, 8)}…`}
               </button>,
               s.sender_name ?? '—',
               s.note ?? '',
@@ -408,7 +410,212 @@ function SeedPanel({ seeds, onChanged }: { seeds: AdminOverview['seeds']; onChan
           />
         </>
       )}
+    </div>
+  );
+}
+
+const fmtDuration = (sec: number | null) => {
+  if (sec == null) return '—';
+  if (sec < 60) return `${Math.round(sec)}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)} min`;
+  if (sec < 86400) return `${(sec / 3600).toFixed(1)} h`;
+  return `${(sec / 86400).toFixed(1)} d`;
+};
+
+type ExperimentDraft = {
+  id: string | null;
+  name: string;
+  description: string;
+  invite_instruction: string;
+  invites_per_participant: number;
+  categories: string;
+  status: 'active' | 'paused';
+};
+
+const draftOf = (e?: Experiment): ExperimentDraft => ({
+  id: e?.id ?? null,
+  name: e?.name ?? '',
+  description: e?.description ?? '',
+  invite_instruction: e?.invite_instruction ?? '',
+  invites_per_participant: e?.invites_per_participant ?? 2,
+  categories: (e?.categories ?? []).join(', '),
+  status: e?.status ?? 'active',
+});
+
+const saveDraft = (d: ExperimentDraft) =>
+  api.adminSaveExperiment({
+    ...d,
+    invites_per_participant: Number(d.invites_per_participant),
+    categories: d.categories.split(',').map((c) => c.trim()).filter(Boolean),
+  });
+
+/**
+ * Experiments: create and edit them, pause/resume, make seed links, and see
+ * each one's numbers and referral tree. Everything is read from Supabase via
+ * admin-only functions (the server checks the admin on every call).
+ */
+function ExperimentsPanel({ refreshKey }: { refreshKey: number }) {
+  const [list, setList] = useState<Experiment[] | null>(null);
+  const [editing, setEditing] = useState<ExperimentDraft | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    try {
+      setList(await api.adminExperiments());
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, []);
+  useEffect(() => { void reload(); }, [reload, refreshKey]);
+
+  const toggleStatus = async (e: Experiment) => {
+    setError(null);
+    try {
+      await saveDraft({ ...draftOf(e), status: e.status === 'active' ? 'paused' : 'active' });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  return (
+    <Panel
+      title="Experiments"
+      note="Each experiment has its own seed links, invitation rules and network. A link always opens the experiment it was made for, and pausing keeps all data."
+    >
+      <div className="row-actions">
+        <button className="chip" onClick={() => setEditing(draftOf())}>New experiment</button>
+      </div>
+      {editing && !editing.id && (
+        <ExperimentForm draft={editing} onCancel={() => setEditing(null)} onSaved={async () => { setEditing(null); await reload(); }} />
+      )}
+      <ErrorText error={error} />
+      {!list && <p className="muted small">Loading…</p>}
+      <div className="experiments">
+        {list?.map((e) => (
+          <article key={e.id} className="experiment-card" data-experiment={e.name}>
+            <header className="experiment-card-head">
+              <div>
+                <h3>{e.name}</h3>
+                <span className={`pill tone-${e.status === 'active' ? 'done' : 'idle'}`}><i />{e.status === 'active' ? 'Active' : 'Paused'}</span>
+                {e.is_default && <span className="muted small"> · original experiment</span>}
+              </div>
+              <div className="row-actions">
+                <button className="chip" onClick={() => setEditing(draftOf(e))}>Edit</button>
+                <button className="chip" onClick={() => void toggleStatus(e)}>{e.status === 'active' ? 'Pause' : 'Resume'}</button>
+                <button className="chip" aria-expanded={open === e.id} onClick={() => setOpen(open === e.id ? null : e.id)}>
+                  {open === e.id ? 'Hide links & tree' : 'Seed links & tree'}
+                </button>
+              </div>
+            </header>
+            {editing?.id === e.id ? (
+              <ExperimentForm draft={editing} onCancel={() => setEditing(null)} onSaved={async () => { setEditing(null); await reload(); }} />
+            ) : (
+              <dl className="experiment-meta">
+                {e.description && (<><dt>Group</dt><dd>{e.description}</dd></>)}
+                <dt>Instruction</dt><dd>{e.invite_instruction || <span className="muted">Default (“Invite two people…”)</span>}</dd>
+                <dt>Invites each</dt><dd>{e.invites_per_participant}</dd>
+                <dt>Categories</dt><dd>{e.categories.length ? e.categories.join(' · ') : <span className="muted">Not asked</span>}</dd>
+              </dl>
+            )}
+            <div className="tiles compact">
+              <Tile label="Participants" value={e.stats.participants} sub={`${e.stats.people} people`} />
+              <Tile label="Links created" value={e.stats.links_created} sub={`${e.stats.seed_links} seed`} />
+              <Tile label="Opened" value={e.stats.opened} sub={pct(e.stats.opened, e.stats.links_created)} />
+              <Tile label="Accepted" value={e.stats.accepted} sub={`${pct(e.stats.accepted, e.stats.opened)} of opened${e.stats.secondary_connections ? ` · +${e.stats.secondary_connections} repeat` : ''}`} />
+              <Tile label="Median response" value={fmtDuration(e.stats.median_response_s)} sub={`open → join · ${fmtDuration(e.stats.median_link_to_join_s)} from link`} />
+              <Tile label="Max depth" value={e.stats.max_depth} sub="generations" />
+            </div>
+            {Object.keys(e.stats.categories).length > 0 && (
+              <p className="category-split small" aria-label="Participants by category">
+                {Object.entries(e.stats.categories).map(([k, n]) => (
+                  <span key={k}><strong>{n}</strong> {k}</span>
+                ))}
+              </p>
+            )}
+            {open === e.id && <ExperimentDetailView experimentId={e.id} onChanged={reload} />}
+          </article>
+        ))}
+      </div>
     </Panel>
+  );
+}
+
+function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; onCancel: () => void; onSaved: () => void }) {
+  const [d, setD] = useState(draft);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = <K extends keyof ExperimentDraft>(k: K, v: ExperimentDraft[K]) => setD((x) => ({ ...x, [k]: v }));
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await saveDraft(d);
+      onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="experiment-form" onSubmit={submit} aria-label={d.id ? 'Edit experiment' : 'New experiment'}>
+      <label>Name<input className="input" value={d.name} maxLength={80} placeholder="Harvard Baseball" onChange={(e) => set('name', e.target.value)} aria-label="Experiment name" /></label>
+      <label>Group description<textarea className="input" rows={2} value={d.description} maxLength={600} placeholder="Current and former Harvard Baseball players." onChange={(e) => set('description', e.target.value)} aria-label="Group description" /></label>
+      <label>Invitation instruction<input className="input" value={d.invite_instruction} maxLength={200} placeholder="Invite two Harvard Baseball players, current or alumni." onChange={(e) => set('invite_instruction', e.target.value)} aria-label="Invitation instruction" /></label>
+      <div className="experiment-form-row">
+        <label>Invites per participant<input className="input" type="number" min={1} max={10} value={d.invites_per_participant} onChange={(e) => set('invites_per_participant', Number(e.target.value))} aria-label="Invites per participant" /></label>
+        <label>Status
+          <select className="input" value={d.status} onChange={(e) => set('status', e.target.value as 'active' | 'paused')} aria-label="Status">
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+          </select>
+        </label>
+      </div>
+      <label>Participant categories <span className="muted">(comma-separated; leave empty to not ask)</span>
+        <input className="input" value={d.categories} placeholder="Current Student, Alumni" onChange={(e) => set('categories', e.target.value)} aria-label="Participant categories" />
+      </label>
+      <ErrorText error={error} />
+      <div className="row-actions">
+        <Button type="submit" busy={busy}>{d.id ? 'Save changes' : 'Create experiment'}</Button>
+        <button type="button" className="link" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function ExperimentDetailView({ experimentId, onChanged }: { experimentId: string; onChanged: () => void }) {
+  const [detail, setDetail] = useState<ExperimentDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const reload = useCallback(async () => {
+    try {
+      setDetail(await api.adminExperimentDetail(experimentId));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [experimentId]);
+  useEffect(() => { void reload(); }, [reload]);
+
+  if (error) return <ErrorText error={error} />;
+  if (!detail) return <p className="muted small">Loading…</p>;
+  return (
+    <div className="experiment-detail">
+      <SeedPanel experimentId={experimentId} seeds={detail.seeds} onChanged={() => { void reload(); onChanged(); }} />
+      <div>
+        <h3>Referral tree</h3>
+        <p className="muted small">
+          Each person’s primary referral. {detail.secondary.length
+            ? `${detail.secondary.length} further invitation${detail.secondary.length === 1 ? '' : 's'} to people already in are kept as extra connections (connections.csv).`
+            : 'Further invitations to people already in are kept as extra connections (connections.csv).'}
+        </p>
+        <AdminTree tree={detail.tree} height={420} />
+        <Legend />
+      </div>
+    </div>
   );
 }
 
