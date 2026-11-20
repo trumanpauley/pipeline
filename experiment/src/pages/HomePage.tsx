@@ -38,7 +38,7 @@ function SignedOut() {
         sub="Invitation only. Saved your network to an email? Sign in to open it here."
       />
       {p?.token && (
-        <button className="link" onClick={() => navigate(`/i/${p.token}`)}>
+        <button className="link" onClick={() => navigate(`/join/${p.token}`)}>
           Continue your invitation
         </button>
       )}
@@ -57,7 +57,7 @@ export function DemoLinks() {
     resetDeviceId(); // a "new person" in the demo gets a new browser identity too
     await supabase.auth.signOut();
     const token = await demoNewInvite();
-    navigate(`/i/${token}`);
+    navigate(`/join/${token}`);
     setBusy(false);
   };
   return (
@@ -106,7 +106,7 @@ function Home({ session }: { session: Session }) {
   // Signed in but not yet joined, with an invitation in progress: resume it.
   const pendingToken = state && !state.participant ? pending.get()?.token : undefined;
   useEffect(() => {
-    if (pendingToken) navigate(`/i/${pendingToken}`, true);
+    if (pendingToken) navigate(`/join/${pendingToken}`, true);
   }, [pendingToken]);
 
   useEffect(() => {
@@ -180,7 +180,22 @@ function Home({ session }: { session: Session }) {
   }
 
   const invites = state.invitations ?? [];
-  const max = state.max_invites ?? 2;
+  // The experiment's invite count (never hides links made under a higher one).
+  const max = Math.max(state.max_invites ?? 2, invites.length);
+  const exp = state.experiment;
+  const experiments = state.experiments ?? [];
+  const instruction = exp?.invite_instruction ?? null;
+  const switchTo = async (id: string) => {
+    if (id === exp?.id) return;
+    try {
+      await api.switchExperiment(id);
+      setReveal(null);
+      setSheet(null);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   const reveals = state.reveals ?? [];
   const level = p.reveal_level;
   const joined = (state.branch?.length ?? 1) - 1;
@@ -203,6 +218,30 @@ function Home({ session }: { session: Session }) {
 
       {notice && <div className="toast fade-up">{notice}</div>}
 
+      {exp && (!exp.is_default || experiments.length > 1) && (
+        <section className="experiment-bar fade-up" aria-label="Experiment">
+          {experiments.length > 1 ? (
+            <div className="experiment-tabs" role="tablist" aria-label="Your experiments">
+              {experiments.map((x) => (
+                <button
+                  key={x.id}
+                  role="tab"
+                  aria-selected={x.current}
+                  className={`chip ${x.current ? 'is-active' : ''}`}
+                  onClick={() => void switchTo(x.id)}
+                >
+                  {x.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="experiment-name">{exp.name}</p>
+          )}
+          {exp.description && <p className="fine experiment-description">{exp.description}</p>}
+          {exp.status === 'paused' && <p className="fine experiment-paused">This experiment is paused. New invitations are on hold.</p>}
+        </section>
+      )}
+
       <section className="hero">
         <div className="progress" aria-label={`${level} of 2 revealed`}>
           {[0, 1].map((i) => <i key={i} className={i < level ? 'on' : ''} />)}
@@ -210,7 +249,7 @@ function Home({ session }: { session: Session }) {
         {level === 0 && (
           <>
             <h1 className="display small">Now it’s your turn{firstName ? `, ${firstName}` : ''}.</h1>
-            <p className="muted">Invite two people to discover what we’re building.</p>
+            <p className="muted">{instruction ?? `Invite ${countWord(max)} ${max === 1 ? 'person' : 'people'} to discover what we’re building.`}</p>
           </>
         )}
         {level >= 1 && <h1 className="display small reveal-static">{reveals[0]?.title}</h1>}
@@ -274,6 +313,7 @@ function Home({ session }: { session: Session }) {
       {sheet === 'invite' && (
         <InviteSheet
           method={p.method}
+          instruction={instruction}
           first={invites.length === 0}
           onClose={() => {
             setSheet(null);
@@ -516,3 +556,6 @@ function BranchTree({ state }: { state: MyState }) {
   }, [state]);
   return <Tree nodes={nodes} height={320} />;
 }
+
+const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const countWord = (n: number) => COUNT_WORDS[n] ?? String(n);

@@ -23,9 +23,9 @@ Phone browser ──► Vercel (static SPA)
 
 | Route        | What it is                                                                 |
 |--------------|-----------------------------------------------------------------------------|
-| `/i/:token`  | Invitation: landing → one-tap classification → first name + consent → in   |
-| `/`          | Participant home: reveals, two invite slots, branch tree, early access, privacy |
-| `/admin`     | Admin dashboard: metrics, seed links, method comparison, tree, CSV exports  |
+| `/join/:token` | Invitation: landing → one-tap classification → "First L." name (+ category) + consent → in. Older `/i/:token` links still work. |
+| `/`          | Participant home: the current experiment, reveals, invite slots, branch tree, privacy |
+| `/admin`     | Admin dashboard: experiments (create, pause, seed links, per-experiment analytics and tree), metrics, CSV exports |
 
 ### Onboarding and accounts
 
@@ -107,7 +107,7 @@ people genuinely share browsers.
     inviter-versus-recipient agreement for every method pair.
   - Exports: `classifications.csv` (with `question_version`, `completed`, `strength_score`) and
     `classification_events.csv`.
-- **Two active links** per participant (`max_invites`). A revoked link, or one used by someone who
+- **Two active links** per participant by default; each experiment sets its own number (*Invites per participant*). A revoked link, or one used by someone who
   was already a participant, frees its slot. There's a lifetime cap of `max_links_total`.
 - **No loops or double credit:** each participant has exactly one parent, set once when they join.
   Existing participants are never re-parented; their visit to another link is recorded as
@@ -138,8 +138,10 @@ people genuinely share browsers.
 ### Changing the experiment
 
 - **Copy, question wording, method labels:** `src/config/experiment.ts`
+- **Experiments** (name, description, instruction, invites per participant, categories, pause):
+  `/admin` → Experiments
 - **Without redeploying:** Supabase → Table editor → `experiment_settings` (`reveals`, `unlock_on`,
-  `max_invites`, `methods` to enable or disable a method, `feedback_question`)
+  `methods` to enable or disable a method, `feedback_question`)
 - **Adding or renaming a stored option value:** update both `METHODS` in `src/config/experiment.ts`
   and the `method_options` setting.
 - **Schema changes:** add `supabase/migrations/003_*.sql`. Don't edit an applied migration.
@@ -156,8 +158,8 @@ project still works if you have to.
 1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
    `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
-   `008_live_invitation_tracking.sql` and `009_pipeline_community.sql`. If you've already run some, run
-   only the ones after them.
+   `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
+   `010_multi_experiment.sql`. If you've already run some, run only the ones after them.
 2. **Make yourself an admin:**
    ```sql
    insert into public.admins (email) values ('you@example.com');
@@ -396,13 +398,72 @@ your Vercel team is sent to a Vercel sign-in page. Only the production domain
 
 ### 4. Launch
 
-1. Open `/admin` → **Seed invitations** → generate 10 links. Set "Your name, as invitees see it"
-   to your first name; invitees will be asked "How close are you to {name}?".
-2. Send each person their own link. Each link works once.
+1. Open `/admin` → **Experiments** → **New experiment** (or use *The Pipeline Experiment*, which
+   holds everything created before experiments existed). See [Experiments](#experiments).
+2. On the experiment's card → **Seed links & tree** → generate links. Set "Your name, as invitees
+   see it" to your first name; invitees will be asked "How close are you to {name}?". Copy each
+   link and send each person their own. Each link works once.
 3. Watch the dashboard. The CSV exports cover participants, invitations, classifications,
    reciprocal pairs, feedback, the waitlist and the Pipeline Community (`community.csv`,
    `research_pool.csv`). Only participants (linked emails), waitlist and the community files
    contain email addresses.
+
+## Experiments
+
+Run several networking experiments side by side (for example *Harvard Baseball* and *Harvard
+Students*) from the admin dashboard, without code changes. Migration `010` adds this; everything
+created before it lives in the default experiment, *The Pipeline Experiment*, and works as before.
+
+**Each experiment has** a name, a group description, an invitation instruction ("Invite two
+Harvard Baseball players, current or alumni."), invitations per participant (default 2), optional
+participant categories (e.g. *Current Student*, *Alumni*; leave empty to not ask) and a status
+(active or paused). Participants see the name, description and instruction on their home screen
+and the instruction again when they invite someone; categories are asked on the join screen.
+
+**Links.** Seed links are made per experiment on its card (**Seed links & tree**), each a unique,
+single-use, separately tracked link with its own Copy button. Referral links belong to the
+sender's experiment. A link's experiment is stored with its token in Supabase when it's created and
+can never change (a trigger blocks changing a token or its experiment, and deleting invitations),
+so a link always opens the same experiment, whatever is deployed later. Links look like
+`https://<VITE_PUBLIC_APP_URL>/join/TOKEN`; earlier `/i/TOKEN` and `#/i/TOKEN` links keep working.
+
+**Pausing** stops new joins, answers and links: a paused experiment's links show "This experiment is
+paused." and record nothing. People already in keep their home screen and data. Resume any time.
+
+**People, not names.** A participant row is one person's membership in one experiment
+(`unique (user_id, experiment_id)`):
+- Someone already in one experiment who opens another experiment's link joins it with the same
+  login. No second account is created, and their home screen gets a switcher.
+- Within an experiment, a person is counted once. A further invitation to someone already in is
+  recorded as an extra connection (`status = 'duplicate'`); the invitation they joined through is
+  their **primary referral**, which places them in the tree.
+- One browser holds one membership per experiment.
+- Name similarity is never used to match people: two "Sarah M." are two participants.
+- The full graph (primary and extra connections, across experiments) is in `connections.csv`.
+  `person_key`, a salted hash of the login, links one person's memberships across experiments
+  without exposing who they are.
+
+**Names** are a first name and last initial ("James P."). Input is tidied on the server ("james
+p" → "James P."), and a full surname is refused, so it's never stored. The same rule applies to the
+names inviters type. Names from before this change are kept as they are. On the join screen,
+"Enter your first name and last initial." types itself in above the field the first time it's
+focused (about 1.2s, once, instant with reduced motion). A short note below explains how the name
+is used, with a longer explanation on request.
+
+**Analytics** (per experiment, from Supabase records):
+- participants, people and links created (including seed links), opened and accepted;
+- extra connections;
+- median response time (first open → joined; link created → joined also shown);
+- maximum depth and the category split;
+- the referral tree.
+
+Exports: `experiments.csv`, `connections.csv`, and experiment, category and `person_key` columns
+in `participants.csv` and `invitations.csv`.
+
+**Security.** All experiment admin functions check the admin on the server
+(`px_require_admin`). The `experiments` table and `connections` view aren't readable by
+participants or anonymous visitors. Participants only ever receive their own experiment's public
+details (name, description, instruction, categories).
 
 ## Pipeline Community
 
@@ -517,13 +578,27 @@ It covers:
   limits on joins, opens and community sign-ups.
 - **Privacy and admin:** branch privacy, RLS on every table, admin numbers, community CSVs, and data
   deletion (including the anonymous auth user).
+- **Names:** "First L." only. The instruction types once on first focus, typing still works while
+  it animates, and the field doesn't move. The disclosure and longer explanation are checked. A
+  first name alone or a full surname is refused, and nothing is saved.
+- **Multiple experiments:** the admin creates an experiment in the dashboard and makes per-experiment
+  seed links (unique, `/join/TOKEN`, copied one at a time). The test then follows seed →
+  generation 1 → generation 2 with categories, and checks:
+  - a second invitation to someone already in becomes an extra connection, not a second participant;
+  - two people with the same name stay separate;
+  - an existing account joins a second experiment without a new account, and the switcher works;
+  - pausing records nothing and keeps data, and resuming makes the link work again;
+  - links can't change experiment, token, or be deleted;
+  - per-experiment analytics, tree and exports are correct, and admin access is enforced;
+  - erasure covers every experiment.
 
 It saves screenshots to `test-results/`.
 
 `npm run test:mobile` checks the phone experience on the browser-only demo build, with no database
 needed. On every text-entry screen, the field and its button must stay above a simulated iPhone
 keyboard. On the landing page, typing must advance one letter at a time with the caret always
-visible, even through a 300ms freeze. Screenshots go to `test-results/mobile/`.
+visible, even through a 300ms freeze. The name instruction must type in about 1–1.5s, never block
+typing, not restart on refocus, and appear at once with reduced motion. Screenshots go to `test-results/mobile/`.
 
 It needs PostgreSQL 14+ and Playwright's Chromium:
 

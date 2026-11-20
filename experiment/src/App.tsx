@@ -21,10 +21,11 @@ export function App() {
   if (session === undefined) return <Loading />;
 
   // Tolerate punctuation that messaging apps glue onto the end of a pasted link.
-  const invite = path.match(/^\/i\/([A-Za-z0-9_-]{10,64})[/.,;:!?)\]'"’”]*$/);
+  // /join/TOKEN (current links) and /i/TOKEN (earlier links) are the same invitation.
+  const invite = path.match(/^\/(?:join|i)\/([A-Za-z0-9_-]{10,64})[/.,;:!?)\]'"’”]*$/);
   if (invite) return <InvitePage key={invite[1]} token={invite[1]} session={session} />;
   // A damaged or truncated invitation link: say so, rather than showing sign-in.
-  if (path.startsWith('/i/') || path === '/i') return <InvalidInvite />;
+  if (/^\/(join|i)(\/|$)/.test(path)) return <InvalidInvite />;
   if (path.startsWith('/admin')) return <AdminPage session={session} />;
   return <HomePage session={session} />;
 }

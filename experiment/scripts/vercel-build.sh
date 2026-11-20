@@ -18,7 +18,8 @@ else
   echo "Warning: no VITE_PUBLIC_APP_URL; invitation links will use whatever address the sender has open."
 fi
 if [ "$PIPELINE_DEMO" = "1" ]; then
-  npm run build:demo
+  # Assets from the site root, so path-style links (/join/TOKEN) load too.
+  npm run build:demo:root
   rm -rf dist && mv dist-demo dist
 else
   npm run build

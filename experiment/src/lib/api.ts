@@ -105,8 +105,46 @@ export interface AdminAccountStats {
   shared_by_copy?: number;
 }
 
+/** What participants may see about an experiment (no stats, no other members). */
+export interface ExperimentInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  invite_instruction: string | null;
+  /** e.g. ["Current Student", "Alumni"]; empty = not asked. */
+  categories: string[];
+  invites_per_participant: number;
+  status: 'active' | 'paused';
+  is_default: boolean;
+}
+
+export interface Experiment extends ExperimentInfo {
+  created_at: string;
+  updated_at: string;
+  stats: {
+    participants: number;
+    people: number;
+    links_created: number;
+    seed_links: number;
+    opened: number;
+    accepted: number;
+    secondary_connections: number;
+    median_response_s: number | null;
+    median_link_to_join_s: number | null;
+    max_depth: number;
+    categories: Record<string, number>;
+  };
+}
+
+export interface ExperimentDetail {
+  seeds: AdminOverview['seeds'];
+  tree: (AdminOverview['tree'][number] & { category: string | null })[];
+  secondary: { from: string | null; to: string }[];
+}
+
 export interface OpenResult {
-  state: 'ok' | 'invalid' | 'expired' | 'used' | 'own' | 'joined' | 'rate_limited' | 'preview';
+  state: 'ok' | 'invalid' | 'expired' | 'paused' | 'used' | 'own' | 'joined' | 'rate_limited' | 'preview';
+  experiment?: ExperimentInfo;
   sender_name?: string | null;
   /** First name the inviter gave for this invitation (seed links have none). */
   invited_name?: string | null;
@@ -147,8 +185,13 @@ export interface MyState {
     suspended?: boolean;
     marketing_consent: boolean;
     created_at: string;
+    category?: string | null;
   };
   max_invites?: number;
+  /** The experiment this home screen is about. */
+  experiment?: ExperimentInfo;
+  /** Every experiment this person is in (same account). */
+  experiments?: { id: string; name: string; current: boolean }[];
   feedback_question?: string;
   reveals?: { title: string }[];
   invitations?: MyInvitation[];
@@ -162,8 +205,18 @@ const MESSAGES: Record<string, string> = {
   self_invite: 'You can’t accept your own invitation.',
   consent_required: 'Please agree to take part in the research to continue.',
   invalid_name: 'Please enter a different name.',
+  invalid_name_format: 'Enter a first name and last initial, like “James P.”',
+  category_required: 'Choose the option that describes you.',
+  experiment_paused: 'This experiment is paused right now.',
+  invalid_experiment_name: 'Give the experiment a name (up to 80 characters).',
+  invalid_experiment_text: 'The description or instruction is too long.',
+  invalid_invite_count: 'Invitations per participant must be between 1 and 10.',
+  invalid_categories: 'Use up to 8 categories of 40 characters or fewer.',
+  experiment_name_taken: 'Another experiment already has that name.',
+  not_found: 'That experiment no longer exists.',
+  invalid_count: 'Choose between 1 and 50 links.',
   suspended: 'Your participation is paused.',
-  invite_limit: 'You’ve used both invitations.',
+  invite_limit: 'You’ve used all your invitations.',
   link_limit: 'You’ve reached the limit for new links.',
   invalid_value: 'Please choose an answer.',
   invalid_label: 'That name is too long.',
@@ -204,14 +257,17 @@ export const api = {
   openInvitation: (token: string, device?: string) => rpc<OpenResult>('open_invitation', { p_token: token, p_device: device ?? null }),
   answerInvitation: (token: string, value: string, ms: number) =>
     rpc('answer_invitation', { p_token: token, p_value: value, p_response_ms: ms }),
-  acceptInvitation: (token: string, name: string, research: boolean, device: string) =>
+  acceptInvitation: (token: string, name: string, research: boolean, device: string, category?: string | null) =>
     rpc<{ state: 'joined' | 'already_participant' }>('accept_invitation', {
       p_token: token,
       p_display_name: name,
       p_research_consent: research,
       p_marketing_consent: false, // never collected at join; see the waitlist instead
       p_device: device,
+      p_category: category ?? null,
     }),
+  /** Show another experiment this person is in on the home screen. */
+  switchExperiment: (experimentId: string) => rpc('switch_experiment', { p_experiment_id: experimentId }),
   createInvitation: (value: string, label: string | null, ms: number) =>
     rpc<{ id: string; token: string }>('create_invitation', {
       p_value: value,
@@ -257,9 +313,37 @@ export const api = {
       p_note: note,
     }),
   adminRevoke: (id: string) => rpc('admin_revoke_invitation', { p_invitation_id: id }),
+  adminExperiments: () => rpc<Experiment[]>('admin_experiments'),
+  adminExperimentDetail: (id: string) => rpc<ExperimentDetail>('admin_experiment_detail', { p_experiment_id: id }),
+  adminSaveExperiment: (e: {
+    id: string | null;
+    name: string;
+    description: string;
+    invite_instruction: string;
+    invites_per_participant: number;
+    categories: string[];
+    status: 'active' | 'paused';
+  }) =>
+    rpc<ExperimentInfo>('admin_save_experiment', {
+      p_id: e.id,
+      p_name: e.name,
+      p_description: e.description,
+      p_invite_instruction: e.invite_instruction,
+      p_invites_per_participant: e.invites_per_participant,
+      p_categories: e.categories,
+      p_status: e.status,
+    }),
+  adminCreateExperimentSeeds: (experimentId: string, count: number, senderName: string, note: string) =>
+    rpc<{ id: string; token: string }[]>('admin_create_experiment_seeds', {
+      p_experiment_id: experimentId,
+      p_count: count,
+      p_sender_name: senderName,
+      p_note: note,
+    }),
 };
 
-export const inviteUrl = (token: string) => appUrl(`/i/${token}`);
+/** Permanent public link for an invitation: {VITE_PUBLIC_APP_URL}/join/{token}. */
+export const inviteUrl = (token: string) => appUrl(`/join/${token}`);
 
 export interface AdminOverview {
   totals: {

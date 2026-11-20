@@ -118,6 +118,21 @@ export const COPY = {
   joinWrongPerson: 'This invite wasn’t meant for me',
   // Seed links (no inviter-provided name).
   joinSeedTitle: 'And you are?',
+  // Name entry: first name and last initial ("James P.").
+  nameInstruction: 'Enter your first name and last initial.',
+  namePlaceholder: 'First name and last initial',
+  nameDisclosure:
+    'We use your first name and last initial to identify you within this networking experiment. Your name may be visible to people participating in your invitation chain.',
+  namePrivacy: [
+    'We only ask for a first name and last initial: never a full surname, and no account or email.',
+    'People you invite see your first name when they open your link. Whoever invited you typed your name, and sees when you join.',
+    'Other participants don’t see your name. The network view shows people as anonymous dots.',
+    'We record who invited whom, in which experiment, and how each person describes the connection. Nobody sees how you described them.',
+    'The research team sees names and the invitation network to run and study the experiment, and reports results in aggregate.',
+    'If you join more than one experiment, your participations are linked through this browser’s sign-in, never by matching names.',
+    'You can delete your data at any time from “Your data”.',
+  ],
+  categoryQuestion: 'Which describes you?',
   research: [
     'We record how people describe their connections and how invitations spread.',
     'Analysis is aggregate. Nobody sees how you described them.',

@@ -9,6 +9,8 @@ import crypto from 'node:crypto';
 import pg from 'pg';
 import { WebSocketServer } from 'ws';
 
+// Like PostgREST: arrays and objects are passed as JSON (not as Postgres arrays).
+const jsonArg = (v) => (v !== null && typeof v === 'object' ? JSON.stringify(v) : v);
 const SECRET = 'local-test-secret';
 const b64u = (b) => Buffer.from(b).toString('base64url');
 
@@ -201,7 +203,7 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
           await client.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)]);
           const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
           await client.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-forwarded-for': ip, 'user-agent': req.headers['user-agent'] ?? '' })]);
-          const r = await client.query(`select public.${m[1]}(${args}) as result`, keys.map((k) => body[k]));
+          const r = await client.query(`select public.${m[1]}(${args}) as result`, keys.map((k) => jsonArg(body[k])));
           await client.query('commit');
           return send(200, r.rows[0].result);
         } catch (e) {

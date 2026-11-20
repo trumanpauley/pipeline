@@ -451,6 +451,21 @@ tr:last-child td { border-bottom: 0; }
 }
 .join-body { font-size: 17px; line-height: 1.45; animation: fadeUp 0.8s var(--ease) 0.7s both; }
 .join-fields { gap: 16px; animation: fadeUp 0.8s var(--ease) 0.95s both; }
+/* Name entry: the instruction types itself in above the field on first focus.
+   Its line is reserved up front, so the field never moves while it types. */
+.name-field { display: flex; flex-direction: column; gap: 8px; }
+.type-hint { margin: 0; min-height: 1.4em; font-size: 14px; line-height: 1.4; color: var(--text-2); }
+.type-hint-rest { visibility: hidden; }
+.type-hint-caret {
+  display: inline-block; width: 0; height: 1em; margin-right: -1.5px; vertical-align: -0.14em;
+  border-left: 1.5px solid var(--accent);
+}
+.name-disclosure { display: flex; flex-direction: column; gap: 10px; margin-top: -4px; }
+.name-disclosure .fine { line-height: 1.45; }
+.category-choice { display: flex; flex-direction: column; gap: 10px; }
+.category-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.category-options .chip { min-height: 40px; padding: 0 16px; }
+.category-options .chip.is-selected { background: var(--text); color: var(--bg); border-color: var(--text); }
 @keyframes stealthIn { from { opacity: 0; letter-spacing: 0.4em; } to { opacity: 1; letter-spacing: 0.22em; } }
 @keyframes stealthPulse {
   0%, 100% { opacity: 0.55; box-shadow: 0 0 0 0 rgba(138, 180, 255, 0.35); }
@@ -516,3 +531,31 @@ tr:last-child td { border-bottom: 0; }
   30% { transform: scale(1.9); box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.12); }
   100% { transform: scale(1); }
 }
+
+/* Experiments: which group this home screen is about (hidden for the default one). */
+.experiment-bar { display: flex; flex-direction: column; gap: 8px; }
+.experiment-name { margin: 0; font-size: 13px; font-weight: 560; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.experiment-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -2px; padding: 2px; }
+.experiment-tabs::-webkit-scrollbar { display: none; }
+.experiment-tabs .chip { white-space: nowrap; }
+.experiment-description { line-height: 1.45; }
+.experiment-paused { color: var(--text-2); }
+.invite-instruction { margin: 0; font-size: 16px; line-height: 1.45; color: var(--text); }
+
+/* ---------- admin: experiments ---------- */
+.experiments { display: flex; flex-direction: column; gap: 14px; }
+.experiment-card { border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.experiment-card-head { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: flex-start; }
+.experiment-card-head h3 { margin: 0 0 4px; font-size: 16px; font-weight: 620; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.experiment-meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
+.experiment-meta dt { color: var(--text-3); }
+.experiment-meta dd { margin: 0; }
+.category-split { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; color: var(--text-2); }
+.experiment-form { display: flex; flex-direction: column; gap: 10px; }
+.experiment-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-2); }
+.experiment-form textarea.input { resize: vertical; min-height: 64px; padding-top: 14px; }
+.experiment-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.experiment-detail { display: flex; flex-direction: column; gap: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+.experiment-detail h3, .seed-panel h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.seed-panel { display: flex; flex-direction: column; gap: 10px; }

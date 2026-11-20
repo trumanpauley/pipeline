@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
 
 // A tiny router — three routes don't justify a dependency.
-// Normal builds use real paths (/i/abc). The browser-only demo build
-// (VITE_HASH_ROUTER=1) uses #/i/abc so it works on any static host.
+// Normal builds use real paths (/join/abc). The browser-only demo build
+// (VITE_HASH_ROUTER=1) uses #/join/abc so it works on any static host.
+// Invitation links from earlier versions (/i/abc, #/i/abc) keep working.
 const HASH = import.meta.env.VITE_HASH_ROUTER === '1';
+
+// Hash builds: a shared path-style link (/join/abc or /i/abc) is moved into
+// the hash on load, so the same permanent link works with either build.
+if (HASH && typeof window !== 'undefined') {
+  const m = window.location.pathname.match(/^(.*?\/)(join|i)\/([A-Za-z0-9_-]{10,64})\/?$/);
+  if (m && !window.location.hash.replace(/^#\/?/, '')) {
+    window.history.replaceState(null, '', `${m[1]}#/join/${m[3]}`);
+  }
+}
 
 /** Current location as "/path?query", in either mode. */
 function current(): string {
@@ -36,7 +46,9 @@ const PUBLIC_URL = (() => {
 
 /** Absolute URL for an in-app path, e.g. an invitation link to share. */
 export function appUrl(path: string): string {
-  if (PUBLIC_URL) return HASH ? `${PUBLIC_URL}/#${path}` : `${PUBLIC_URL}${path}`;
+  // Hash builds served from the site root (Vercel) can take path-style links
+  // too; builds with relative asset paths (served from a sub-folder) can't.
+  if (PUBLIC_URL) return HASH && import.meta.env.BASE_URL !== '/' ? `${PUBLIC_URL}/#${path}` : `${PUBLIC_URL}${path}`;
   if (HASH) return `${window.location.href.split('#')[0]}#${path}`;
   return `${window.location.origin}${path}`;
 }
