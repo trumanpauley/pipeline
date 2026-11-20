@@ -92,6 +92,7 @@ psql('supabase/migrations/007_invited_names.sql');
 psql('supabase/migrations/008_live_invitation_tracking.sql');
 psql('supabase/migrations/009_pipeline_community.sql');
 psql('supabase/migrations/010_multi_experiment.sql');
+psql('supabase/migrations/011_early_access.sql');
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
@@ -396,7 +397,7 @@ try {
   await alicePage.waitForTimeout(300);
   await shot(alicePage, '05d-home-second-unlocked');
 
-  step('Second invitation → mission → Pipeline Community');
+  step('Second invitation → mission → early-access signup');
   await alicePage.getByRole('button', { name: 'Invite someone' }).first().click();
   ok(await alicePage.getByRole('heading', { name: 'Who will you invite next?' }).isVisible(), 'second flow asks "Who will you invite next?"');
   await alicePage.getByRole('button', { name: 'Close' }).click();
@@ -406,45 +407,40 @@ try {
   await alicePage.waitForTimeout(2200);
   await shot(alicePage, '06-reveal-2');
   await alicePage.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
-  await alicePage.getByRole('heading', { name: 'You’re just getting connected.' }).waitFor();
+  await alicePage.getByRole('heading', { name: 'Be part of what’s next.' }).waitFor();
   await alicePage.waitForTimeout(900);
-  await shot(alicePage, '07-community');
-  ok(true, 'community screen appears right after the mission reveal');
+  await shot(alicePage, '07-early-access');
+  ok(true, 'early-access screen appears after the second invitation');
   const overlayText = await alicePage.locator('.waitlist-overlay').innerText();
-  ok(/welcome to pipeline/i.test(overlayText)
-    && overlayText.includes('Help us build a better way to navigate the people and communities we’re connected to.')
-    && overlayText.includes('Early access, future experiments, and occasional updates. Optional.'), 'community copy');
-  const joinBtn = alicePage.getByRole('button', { name: 'Join the Pipeline Community' });
+  ok(overlayText.includes('Pipeline is building a new way to discover connections through shared communities. Join our early-access list to be among the first to experience it.'), 'early-access copy');
+  ok(overlayText.includes('No account is created, and you can unsubscribe anytime from “Your data”.'), 'privacy note: how the email is used, and how to unsubscribe');
+  const joinBtn = alicePage.getByRole('button', { name: 'Join Early Access' });
   const checks = alicePage.locator('.waitlist-overlay .check input');
-  ok(!(await checks.nth(0).isChecked()) && !(await checks.nth(1).isChecked()), 'both consents unticked by default');
-  await alicePage.getByLabel('Your email address').fill('Alice@Test.dev');
-  ok(await joinBtn.isDisabled(), 'join disabled until a preference is chosen');
-  ok(await alicePage.getByTestId('community-none-note').isVisible(), 'explains that nothing is saved with neither selected');
-  const researchLabel = (await alicePage.locator('.waitlist-overlay .check-label').nth(0).innerText()).trim();
-  ok(researchLabel === 'Invite me to future Pipeline experiments.', 'first checkbox wording');
-  ok((await alicePage.locator('.waitlist-overlay .check-label').nth(1).innerText()).trim() === 'Send me Pipeline updates and early access.', 'second checkbox wording');
-  await alicePage.locator('.waitlist-overlay .check').nth(0).click();
-  ok(!(await joinBtn.isDisabled()), 'join enabled with one preference');
+  const researchLabel = (await alicePage.locator('.waitlist-overlay .check-label').innerText()).trim();
+  ok(await checks.count() === 1 && !(await checks.first().isChecked()) && researchLabel === 'I’m interested in participating in future Pipeline experiments.', 'one separate, unticked checkbox for future experiments');
+  ok(await joinBtn.isDisabled() && await alicePage.getByRole('button', { name: 'Not Now' }).isVisible(), 'email is optional: Join waits for an email, "Not Now" skips');
+  ok(await alicePage.getByLabel('Password').count() === 0 && await alicePage.getByLabel('Verification code').count() === 0, 'no password and no confirmation code');
+  await alicePage.getByLabel('Email address').fill('Alice@Test.dev');
   await joinBtn.click();
-  await alicePage.getByRole('heading', { name: 'You’re in.' }).waitFor();
-  await shot(alicePage, '08-community-done');
+  await alicePage.getByRole('heading', { name: 'You’re on the list.' }).waitFor();
+  await shot(alicePage, '08-early-access-done');
   await alicePage.getByRole('button', { name: 'Continue' }).click();
   let [cs] = await q(`select * from community_signups where participant_id = $1`, [alice.id]);
-  ok(cs && cs.email === 'alice@test.dev' && cs.signed_up_at, 'signup stored against the participant, email normalised, timestamped');
-  ok(cs.research_invites && cs.research_invites_text === researchLabel && cs.research_invites_at, 'only future experiments: consent + exact text + timestamp');
-  ok(!cs.updates && cs.updates_at === null && cs.unsubscribed_at === null, 'updates not consented');
-  ok((await byName('Alice')).marketing_consent === false, 'community signup does not touch research/marketing fields');
-  ok((await authUser(alice.user_id)).email === null, 'no account or password: email is not linked to the auth identity');
-  await alicePage.locator('.early-card:not(.save-card)').waitFor({ state: 'detached', timeout: 5000 }).then(() => ok(true, 'no community card once joined'), () => ok(false, 'no community card once joined'));
+  ok(cs && cs.email === 'alice@test.dev' && cs.signed_up_at && cs.experiment_id === alice.experiment_id, 'stored: email (normalised), participant, experiment, signup time');
+  ok(cs.updates && cs.updates_at && cs.updates_text === 'Join our early-access list to be among the first to experience it.', 'early-access consent with its exact wording and timestamp');
+  ok(!cs.research_invites && cs.research_invites_at === null && cs.unsubscribed_at === null, 'box left unticked: no future-experiments consent');
+  ok((await byName('Alice')).marketing_consent === false, 'early-access signup does not touch research/marketing fields');
+  ok((await authUser(alice.user_id)).email === null, 'no account: the email is not linked to the sign-in');
+  await alicePage.locator('.early-card:not(.save-card)').waitFor({ state: 'detached', timeout: 5000 }).then(() => ok(true, 'no early-access card once joined'), () => ok(false, 'no early-access card once joined'));
 
-  step('Pipeline Community: return later, update and withdraw consent');
+  step('Early access: return later, add consent, unsubscribe, rejoin');
   await alicePage.reload();
   await alicePage.locator('.home').waitFor();
   await alicePage.waitForTimeout(800);
-  ok(await alicePage.getByRole('heading', { name: 'You’re just getting connected.' }).count() === 0, 'screen not shown again after joining');
+  ok(await alicePage.getByRole('heading', { name: 'Be part of what’s next.' }).count() === 0, 'screen not shown again after joining');
   await alicePage.getByLabel('Your data').click();
   const row = alicePage.locator('[data-testid="community-row"]');
-  ok((await row.innerText()).includes('alice@test.dev'), 'Your data shows the community signup');
+  ok((await row.innerText()).includes('Early access') && (await row.innerText()).includes('alice@test.dev'), 'Your data shows the early-access signup');
   await row.getByRole('button', { name: 'Manage' }).click();
   await alicePage.getByRole('heading', { name: 'Your preferences' }).waitFor();
   ok(await checks.nth(0).isChecked() && !(await checks.nth(1).isChecked()), 'manage screen reflects current preferences');
@@ -453,7 +449,7 @@ try {
   await alicePage.getByRole('heading', { name: 'Preferences saved.' }).waitFor();
   await alicePage.getByRole('button', { name: 'Continue' }).click();
   [cs] = await q(`select * from community_signups where participant_id = $1`, [alice.id]);
-  ok(cs.research_invites && cs.updates && cs.updates_at && cs.updates_text === 'Send me Pipeline updates and early access.', 'both: updates consent added with its own timestamp');
+  ok(cs.research_invites && cs.updates && cs.research_invites_at && cs.research_invites_text === researchLabel, 'future-experiments consent added later, with its own wording and timestamp');
   const firstResearchAt = cs.research_invites_at.getTime();
   await alicePage.getByLabel('Your data').click();
   await row.getByRole('button', { name: 'Manage' }).click();
@@ -464,16 +460,15 @@ try {
   ok(!cs.research_invites && !cs.updates && cs.unsubscribed_at && cs.research_invites_withdrawn_at && cs.updates_withdrawn_at, 'unsubscribe withdraws both, with timestamps');
   ok(cs.research_invites_at.getTime() === firstResearchAt, 'original consent record kept for audit');
   await alicePage.locator('.early-card:not(.save-card)').waitFor();
-  ok(true, 'community card returns after unsubscribing');
+  ok(true, 'early-access card returns after unsubscribing');
   await alicePage.locator('.early-card:not(.save-card)').click();
-  await alicePage.getByRole('heading', { name: 'You’re just getting connected.' }).waitFor();
-  ok((await alicePage.getByLabel('Your email address').inputValue()) === 'alice@test.dev', 'rejoin pre-fills the email');
-  await alicePage.locator('.waitlist-overlay .check').nth(1).click();
+  await alicePage.getByRole('heading', { name: 'Be part of what’s next.' }).waitFor();
+  ok((await alicePage.getByLabel('Email address').inputValue()) === 'alice@test.dev', 'rejoin pre-fills the email');
   await joinBtn.click();
-  await alicePage.getByRole('heading', { name: 'You’re in.' }).waitFor();
+  await alicePage.getByRole('heading', { name: 'You’re on the list.' }).waitFor();
   await alicePage.getByRole('button', { name: 'Continue' }).click();
   [cs] = await q(`select * from community_signups where participant_id = $1`, [alice.id]);
-  ok(!cs.research_invites && cs.updates && cs.unsubscribed_at === null, 'only updates (rejoined)');
+  ok(!cs.research_invites && cs.updates && cs.unsubscribed_at === null, 'rejoined early access only');
   ok((await q(`select count(*)::int n from community_signups where participant_id = $1`, [alice.id]))[0].n === 1, 'still one row per participant');
   {
     const jwt = await jwtOf(alicePage);
@@ -661,18 +656,19 @@ try {
   await davePage.getByRole('button', { name: 'Submit and reveal' }).click();
   await continueReveal(davePage);
   await continueReveal(davePage);
-  await davePage.getByRole('heading', { name: 'You’re just getting connected.' }).waitFor();
-  await davePage.getByRole('button', { name: 'Maybe later' }).click();
+  await davePage.getByRole('heading', { name: 'Be part of what’s next.' }).waitFor();
+  ok(true, 'skipping the invitations (one question instead) also ends at the early-access screen');
+  await davePage.getByRole('button', { name: 'Not Now' }).click();
   await davePage.locator('.early-card:not(.save-card)').waitFor();
   await davePage.waitForTimeout(600);
   await shot(davePage, '10-home-community-card');
-  ok((await q(`select count(*)::int n from community_signups where participant_id = $1`, [dave.id]))[0].n === 0, '"Maybe later" stores no email or consent');
+  ok((await q(`select count(*)::int n from community_signups where participant_id = $1`, [dave.id]))[0].n === 0, '"Not Now" stores no email or consent');
   ok((await byName('Dave')).community_prompt_dismissed_at, 'skip remembered on the server');
   ok(await davePage.locator('.home').count() === 1 && (await byName('Dave')).reveal_level === 2, 'skipping does not affect participation (back on the dashboard)');
   await davePage.reload();
   await davePage.locator('.home').waitFor();
   await davePage.waitForTimeout(800);
-  ok(await davePage.getByRole('heading', { name: 'You’re just getting connected.' }).count() === 0, 'community screen does not reappear after "Maybe later"');
+  ok(await davePage.getByRole('heading', { name: 'Be part of what’s next.' }).count() === 0, 'the screen does not reappear after "Not Now"');
   {
     // Duplicate: someone else's address changes nothing and reveals nothing.
     const before = (await q(`select * from community_signups where participant_id = $1`, [alice.id]))[0];
@@ -684,15 +680,14 @@ try {
       && (await q(`select count(*)::int n from community_signups where participant_id = $1`, [dave.id]))[0].n === 0, 'no duplicate subscription created');
   }
   await davePage.locator('.early-card:not(.save-card)').click();
-  await davePage.getByLabel('Your email address').fill('dave@test.dev');
-  await davePage.locator('.waitlist-overlay .check').nth(0).click();
-  await davePage.locator('.waitlist-overlay .check').nth(1).click();
-  await davePage.getByRole('button', { name: 'Join the Pipeline Community' }).click();
-  await davePage.getByRole('heading', { name: 'You’re in.' }).waitFor();
+  await davePage.getByLabel('Email address').fill('dave@test.dev');
+  await davePage.locator('.waitlist-overlay .check').click();
+  await davePage.getByRole('button', { name: 'Join Early Access' }).click();
+  await davePage.getByRole('heading', { name: 'You’re on the list.' }).waitFor();
   await davePage.getByRole('button', { name: 'Continue' }).click();
   {
     const [d] = await q(`select * from community_signups where participant_id = $1`, [dave.id]);
-    ok(d && d.research_invites && d.updates && d.research_invites_at && d.updates_at, 'both preferences, each timestamped (joined later from the dashboard)');
+    ok(d && d.research_invites && d.updates && d.research_invites_at && d.updates_at, 'early access + future experiments, each timestamped (joined later from the dashboard)');
     const again = await rpcAs(await jwtOf(davePage), 'join_community', { p_email: 'dave@test.dev', p_research_invites: true, p_updates: true });
     ok(again.body.ok && (await q(`select count(*)::int n from community_signups where email = 'dave@test.dev'`))[0].n === 1, 'resubmitting the same email does not duplicate');
   }
@@ -895,11 +890,15 @@ try {
   const cst = (await rpcAs(adminJwt, 'admin_community_stats')).body;
   ok(cst.total === 2 && cst.research_invites === 1 && cst.updates === 2 && cst.both === 1, `community stats: ${cst.total} signups, ${cst.research_invites} future experiments, ${cst.updates} updates`);
   ok(cst.eligible >= 2 && cst.by_generation.some((g) => g.depth === 1 && g.signups === 1) && cst.by_generation.some((g) => g.depth === 3 && g.signups === 1), 'community conversion base and signups by generation');
+  const byExp = cst.by_experiment.find((e) => e.name === 'The Pipeline Experiment');
+  ok(byExp && byExp.signups === 2 && byExp.research_invites === 1 && byExp.participants === 6, `early access by experiment: ${byExp?.signups} of ${byExp?.participants} participants, ${byExp?.research_invites} interested in future experiments`);
   ok(acct.shared === 3 && acct.shared_by_copy === 3, `admin: ${acct.shared} links shared since tracking began (legacy excluded)`);
   ok((await adminPage.locator('.funnel').innerText()).includes('Shared'), 'funnel shows the Shared step');
-  ok((await adminPage.locator('.tiles').first().innerText()).includes('Community'), 'dashboard shows the community tile');
-  ok(await adminPage.getByRole('heading', { name: 'Pipeline Community' }).isVisible(), 'admin: Pipeline Community section');
-  await adminPage.getByRole('heading', { name: 'Pipeline Community' }).scrollIntoViewIfNeeded();
+  ok((await adminPage.locator('.tiles').first().innerText()).includes('Early access'), 'dashboard shows the early-access tile');
+  ok(await adminPage.getByRole('heading', { name: 'Early access' }).isVisible(), 'admin: Early access section');
+  const eaPanel = adminPage.locator('.panel', { has: adminPage.getByRole('heading', { name: 'Early access' }) });
+  ok((await eaPanel.innerText()).includes('The Pipeline Experiment') && (await eaPanel.innerText()).includes('33%'), 'section shows signups by experiment and the share of participants');
+  await adminPage.getByRole('heading', { name: 'Early access' }).scrollIntoViewIfNeeded();
   await adminPage.screenshot({ path: path.join(SHOTS, '12c-admin-community.png') });
   ok(!JSON.stringify(await adminPage.locator('.settings').innerText()).includes('hash_salt'), 'salt hidden from the settings panel');
   ok(await adminPage.getByRole('heading', { name: 'Names & moderation' }).isVisible(), 'admin: Names & moderation section');
@@ -918,13 +917,13 @@ try {
     adminPage.getByRole('button', { name: 'community.csv' }).click(),
   ]);
   const csv = fs.readFileSync(await download.path(), 'utf8');
-  ok(['participant_id', 'depth', 'email', 'research_invites', 'research_invites_at', 'research_invites_withdrawn_at', 'updates', 'updates_at', 'updates_withdrawn_at', 'signed_up_at', 'unsubscribed_at'].every((c) => csv.split('\n')[0].split(',').includes(c)) && csv.trim().split('\n').length === 3, 'community CSV export (2 rows, consents + timestamps)');
+  ok(['participant_id', 'experiment_id', 'experiment', 'depth', 'email', 'research_invites', 'research_invites_at', 'research_invites_withdrawn_at', 'updates', 'updates_at', 'updates_withdrawn_at', 'signed_up_at', 'unsubscribed_at'].every((c) => csv.split('\n')[0].split(',').includes(c)) && csv.trim().split('\n').length === 3, 'community CSV export (2 rows, consents + timestamps)');
   const [poolDl] = await Promise.all([
     adminPage.waitForEvent('download'),
     adminPage.getByRole('button', { name: 'research_pool.csv' }).click(),
   ]);
   const pool = fs.readFileSync(await poolDl.path(), 'utf8').trim().split('\n');
-  ok(pool.length === 2 && pool[0].split(',').sort().join() === 'depth,email,participant_id,research_invites_at' && pool[1].includes('dave@test.dev'), 'research pool: only people who agreed to future experiments, no relationship data');
+  ok(pool.length === 2 && pool[0].split(',').sort().join() === 'depth,email,experiment,experiment_id,participant_id,research_invites_at' && pool[1].includes('dave@test.dev'), 'consenting-participants CSV: only people who agreed to future experiments, with email and experiment, no relationship data');
 
   step('Right to erasure');
   await davePage.getByLabel('Your data').click();
@@ -1583,6 +1582,15 @@ try {
     ok(pexp.experiment_id === hb.id && pexp.category === 'Alumni' && pexp.person_key, 'participants export: experiment, category and a cross-experiment person key');
     const aliceKeys = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'participants' })).body.filter((r) => r.user_id === alice.user_id).map((r) => r.person_key);
     ok(aliceKeys.length === 2 && aliceKeys[0] === aliceKeys[1], 'the same person has the same key in both experiments');
+
+    // Early access is recorded against the experiment the person signed up in
+    await rpcAs(await jwtOf(james), 'join_community', { p_email: 'james@test.dev', p_research_invites: true, p_updates: true });
+    const eaHB = (await rpcAs(adminJwtE, 'admin_community_stats')).body.by_experiment.find((e) => e.experiment_id === hb.id);
+    ok(eaHB.signups === 1 && eaHB.research_invites === 1 && eaHB.participants === 4
+      && (await q(`select experiment_id from community_signups where email = 'james@test.dev'`))[0].experiment_id === hb.id,
+      'early-access signups are stored and counted per experiment (Harvard Baseball: 1 of 4)');
+    const poolHB = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'research_pool' })).body.find((r) => r.email === 'james@test.dev');
+    ok(poolHB && poolHB.experiment === 'Harvard Baseball', 'the consenting-participants export names the experiment');
 
     // 10. Admin-only, enforced by the server and RLS
     const jamesJwt = await jwtOf(james);
