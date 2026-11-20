@@ -131,12 +131,12 @@ async function keyboardCheck(browser) {
     await p.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
   }
 
-  await p.getByRole('heading', { name: 'You’re just getting connected.' }).waitFor();
-  await p.locator('.waitlist-overlay .check').nth(1).click(); // explicit consent (updates)
-  await check('community-email', p.getByLabel('Your email address'), p.getByRole('button', { name: 'Join the Pipeline Community' }));
-  await p.getByLabel('Your email address').fill('maya@college.edu');
-  await p.getByRole('button', { name: 'Join the Pipeline Community' }).click();
-  await p.getByRole('heading', { name: 'You’re in.' }).waitFor();
+  await p.getByRole('heading', { name: 'Be part of what’s next.' }).waitFor();
+  await p.locator('.waitlist-overlay .check').click(); // optional: future experiments
+  await check('community-email', p.getByLabel('Email address'), p.getByRole('button', { name: 'Join Early Access' }));
+  await p.getByLabel('Email address').fill('maya@college.edu');
+  await p.getByRole('button', { name: 'Join Early Access' }).click();
+  await p.getByRole('heading', { name: 'You’re on the list.' }).waitFor();
   await p.getByRole('button', { name: 'Continue' }).click();
   // Save the network by phone (demo build has phone verification on; no SMS is sent)
   await p.locator('.save-card').click();

@@ -35,13 +35,14 @@ Nobody types an email before the referral stage:
    calls Supabase `signInAnonymously()`. That creates a real, unique auth user (no email, no
    password), and the participant, their answers and their links are tied to it.
 2. **The session is kept in the browser,** so returning on the same phone needs no sign-in.
-3. **After the mission reveal,** an optional **Pipeline Community** screen ("You're just getting
-   connected.") asks for an email and two separate, unticked choices: *Invite me to future
-   Pipeline experiments* and *Send me Pipeline updates and early access*. Joining needs at least
-   one; with neither ticked nothing is stored. "Maybe later" stores nothing except that the screen
-   was dismissed (on the server, so it never reappears), and participation is unaffected. A
-   Pipeline Community card on the home screen and a row in *Your data* let people join later,
-   change either choice, or unsubscribe. See [Pipeline Community](#pipeline-community).
+3. **At the end of the invitation experiment** (after the second invitation, or after "answer one
+   question instead"), an optional early-access screen ("Be part of what's next.") asks for an
+   email, with a separate, unticked box: *I'm interested in participating in future Pipeline
+   experiments*. **Join Early Access** puts the email on the list; there's no password, code or
+   account. **Not Now** stores nothing except that the screen was dismissed (on the server, so it
+   never reappears), and participation is unaffected. An *Early access* card on the home screen and
+   a row in *Your data* let people join later, change either choice, or unsubscribe. See
+   [Early access](#early-access).
 4. **Saving the network (optional):** from that screen ("Also save my network to this email") or
    from **Your data → Save**, the participant links a verified email with a 6-digit code. The email
    is attached to the *same* Supabase user (`updateUser` + `verifyOtp`, type `email_change`), so
@@ -159,7 +160,8 @@ project still works if you have to.
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
    `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
    `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
-   `010_multi_experiment.sql`. If you've already run some, run only the ones after them.
+   `010_multi_experiment.sql` and `011_early_access.sql`. If you've already run some, run only the
+   ones after them.
 2. **Make yourself an admin:**
    ```sql
    insert into public.admins (email) values ('you@example.com');
@@ -465,9 +467,13 @@ in `participants.csv` and `invitations.csv`.
 participants or anonymous visitors. Participants only ever receive their own experiment's public
 details (name, description, instruction, categories).
 
-## Pipeline Community
+## Early access
 
-Optional, shown once after the mission reveal (migration `009`).
+Optional email signup at the end of the invitation experiment (migrations `009` and `011`; the
+table is still called `community_signups`). **Join Early Access** records the early-access consent
+(`updates`); the checkbox records consent to be contacted about future experiments
+(`research_invites`). Each signup also stores the participant and the experiment they were in
+(`experiment_id`, e.g. Harvard Baseball).
 
 - **Privacy.** Emails live only in `community_signups`, which has RLS on and no grants: the REST
   API can't read or write it. Participants see their own signup through `get_my_account()`;
@@ -480,13 +486,18 @@ Optional, shown once after the mission reveal (migration `009`).
 - **Duplicates.** One row per participant and one per email. Submitting an address that already
   belongs to someone else returns a normal success, changes nothing and creates nothing, so
   addresses can't be probed. Sign-ups are rate-limited per IP (`community_per_ip_hour`).
-- **Admin.** The dashboard's *Pipeline Community* panel shows signups, each consent, conversion
-  (active signups ÷ participants who reached the mission), "Maybe later" and unsubscribes, and
-  signups by generation, with two admin-only CSVs:
-  - `community.csv`: every signup with both consents and all timestamps.
+- **Admin.** The dashboard's *Early access* panel shows:
+  - total signups and the percentage of participants who signed up;
+  - how many are interested in future experiments;
+  - the share of people who reached the end;
+  - "Not now" choices and unsubscribes;
+  - signups by experiment.
+
+  It has two admin-only CSVs:
   - `research_pool.csv`: only people with an active *future experiments* consent (participant
-    id, email, generation). It contains no relationship data and is the list to use when
-    Experiment 2 needs to contact people.
+    id, email, experiment, generation). It contains no relationship data and is the list to use
+    when recruiting for the next experiment.
+  - `community.csv`: every signup, with its experiment, both consents and all timestamps.
 
 ## Try it on a phone (no Supabase, no Codespace)
 
@@ -566,11 +577,15 @@ It covers:
   after `002`, including a new participant joining their link and them signing in by email.
 - **Email-free onboarding:** seed → generation 1 → 2 → 3 with no email field, on anonymous
   identities; the session survives reloads.
-- **Reveals and Pipeline Community:** both reveals; the community screen right after the mission;
-  signup with only future experiments, only updates, and both; the button disabled with neither;
-  "Maybe later" storing nothing and never reappearing; joining later from the home card; changing
-  and withdrawing consent (with timestamps kept); duplicate emails creating nothing and revealing
-  nothing; admin-only stats and exports; nothing readable through the table API.
+- **Reveals and early access:**
+  - both reveals, and the early-access screen after the second invitation and after the skip
+    question;
+  - joining with and without the future-experiments box;
+  - "Not Now" storing nothing and never reappearing, and joining later from the home card;
+  - adding, changing and withdrawing consent, with timestamps kept;
+  - duplicate emails creating nothing and revealing nothing;
+  - signups stored and counted per experiment, and admin-only stats and exports;
+  - nothing readable through the table API.
 - **Email linking:** an email linked to the *same* identity, then sign-in on a second phone showing
   the same network.
 - **Abuse protections:** self-referral by account and by browser, one participant per browser,

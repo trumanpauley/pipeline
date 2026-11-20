@@ -283,8 +283,8 @@ function Home({ session }: { session: Session }) {
       {level >= 2 && account && !account.community?.subscribed && (
         <button className="early-card fade-up" onClick={() => setOverlay('community')}>
           <div>
-            <strong>Pipeline Community</strong>
-            <span>Early access and future experiments.</span>
+            <strong>Early access</strong>
+            <span>Be part of what’s next.</span>
           </div>
           <span className="arrow" aria-hidden="true">→</span>
         </button>
@@ -346,7 +346,7 @@ function Home({ session }: { session: Session }) {
           onDone={() => {
             if (reveal < level) return setReveal(reveal + 1);
             setReveal(null);
-            // After the mission reveal, invite them to the Pipeline Community —
+            // After the mission reveal (two invitations, or the skip question), offer early access —
             // unless they already joined or chose "Maybe later" (kept on the server).
             if (reveal >= 2 && account && !account.community && !account.community_prompt_dismissed) {
               setOverlay('community');
@@ -503,7 +503,7 @@ function PrivacySheet({
         {p.reveal_level >= 2 && (
         <div className="account-row" data-testid="community-row">
           <div>
-            <div>Pipeline Community</div>
+            <div>Early access</div>
             <div className="muted">{community?.subscribed ? community.email : 'Not joined'}</div>
           </div>
           <button className={`chip ${community?.subscribed ? 'ghost' : ''}`} onClick={onCommunity}>
@@ -526,7 +526,7 @@ function PrivacySheet({
         ) : (
           <div className="stack confirm">
             <p className="muted small">
-              This erases your name, email, Pipeline Community signup and answers, and closes any unused links.
+              This erases your name, email, early-access signup and answers, and closes any unused links.
               People who joined through you stay in the experiment anonymously.
             </p>
             <Button onClick={del} busy={busy}>Delete permanently</Button>

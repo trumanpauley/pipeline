@@ -92,6 +92,7 @@ export interface AdminCommunityStats {
   eligible: number;
   participants: number;
   by_generation: { depth: number; eligible: number; signups: number }[];
+  by_experiment?: { experiment_id: string; name: string; participants: number; signups: number; research_invites: number }[];
 }
 
 export interface AdminAccountStats {
