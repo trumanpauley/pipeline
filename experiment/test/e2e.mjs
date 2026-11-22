@@ -306,7 +306,9 @@ try {
   const adminPage = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   await adminPage.goto(`${APP}/admin`);
   await adminPage.getByLabel('Email', { exact: true }).fill('admin@test.dev');
-  await adminPage.getByRole('button', { name: 'Email me a code' }).click();
+  await adminPage.getByRole('button', { name: 'Email me a sign-in link' }).click();
+  await adminPage.getByRole('heading', { name: 'Tap the link in your email' }).waitFor();
+  await adminPage.getByRole('button', { name: 'Have a code instead?' }).click();
   await adminPage.getByLabel('Verification code').fill(await getCode('admin@test.dev'));
   await adminPage.getByRole('button', { name: 'Verify', exact: true }).click();
   await adminPage.getByRole('heading', { name: 'Dashboard' }).waitFor();
@@ -699,7 +701,9 @@ try {
   const leePage = await newPhone();
   await leePage.goto(APP);
   await leePage.getByLabel('Email', { exact: true }).fill('legacy@test.dev');
-  await leePage.getByRole('button', { name: 'Email me a code' }).click();
+  await leePage.getByRole('button', { name: 'Email me a sign-in link' }).click();
+  await leePage.getByRole('heading', { name: 'Tap the link in your email' }).waitFor();
+  await leePage.getByRole('button', { name: 'Have a code instead?' }).click();
   await leePage.getByLabel('Verification code').fill(await getCode('legacy@test.dev'));
   await leePage.getByRole('button', { name: 'Verify', exact: true }).click();
   await leePage.locator('.invite-card.status-accepted').waitFor();

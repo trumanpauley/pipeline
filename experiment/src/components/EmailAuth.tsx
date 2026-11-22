@@ -4,7 +4,13 @@ import { captchaToken } from '../lib/captcha';
 import { formatPhone, normalizePhone, phoneEnabled } from '../lib/phone';
 import { Button, ErrorText } from './ui';
 
-/** Email → one-time code (or magic link). The parent reacts to the session. */
+/**
+ * Email → sign-in link. Supabase's default email (no custom SMTP) contains only
+ * a link, so that's what this screen asks for; tapping it opens the app signed
+ * in. A code box stays one tap away for emails that include a code (custom
+ * templates, and the local demo, where it's shown straight away). The parent
+ * reacts to the session either way.
+ */
 export function EmailCodeStep({
   email,
   onBack,
@@ -16,6 +22,7 @@ export function EmailCodeStep({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(30);
+  const [showCode, setShowCode] = useState(Boolean(import.meta.env.VITE_DEMO));
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -45,31 +52,42 @@ export function EmailCodeStep({
   return (
     <form className="stack fade-up" onSubmit={verify}>
       <p className="eyebrow">Check your email</p>
-      <h1 className="title">Enter the code</h1>
+      <h1 className="title">Tap the link in your email</h1>
       <p className="muted">
-        Sent to <span className="em">{email}</span>. You can also tap the link in the email.
+        We sent a sign-in link to <span className="em">{email}</span>. Open it on this device to continue.
       </p>
-      <input
-        className="input code-input"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        placeholder="••••••"
-        maxLength={10}
-        value={code}
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-        autoFocus
-        aria-label="Verification code"
-      />
-      <ErrorText error={error} />
-      <Button type="submit" busy={busy} disabled={code.length < 6}>
-        Verify
-      </Button>
+      {showCode ? (
+        <>
+          <input
+            className="input code-input"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="••••••"
+            maxLength={10}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            autoFocus
+            aria-label="Verification code"
+          />
+          <ErrorText error={error} />
+          <Button type="submit" busy={busy} disabled={code.length < 6}>
+            Verify
+          </Button>
+        </>
+      ) : (
+        <>
+          <ErrorText error={error} />
+          <button type="button" className="link center-link" onClick={() => setShowCode(true)}>
+            Have a code instead?
+          </button>
+        </>
+      )}
       <div className="row-links">
         <button type="button" className="link" onClick={onBack}>
           Change email
         </button>
         <button type="button" className="link" onClick={resend} disabled={cooldown > 0}>
-          {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+          {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend email'}
         </button>
       </div>
     </form>
@@ -175,7 +193,7 @@ export function SignIn({
       )}
       <ErrorText error={error} />
       <Button type="submit" busy={busy}>
-        {mode === 'email' ? 'Email me a code' : 'Text me a code'}
+        {mode === 'email' ? 'Email me a sign-in link' : 'Text me a code'}
       </Button>
       {canUsePhone && (
         <button

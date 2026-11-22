@@ -98,7 +98,7 @@ async function keyboardCheck(browser) {
 
   await p.goto(BASE);
   await p.getByText('Fresh invite as a new visitor').waitFor({ timeout: 60000 });
-  await check('sign-in-email', p.getByLabel('Email', { exact: true }), p.getByRole('button', { name: 'Email me a code' }));
+  await check('sign-in-email', p.getByLabel('Email', { exact: true }), p.getByRole('button', { name: 'Email me a sign-in link' }));
 
   await p.getByText('Fresh invite as a new visitor').click();
   await p.getByRole('button', { name: 'Enter the Experiment' }).click({ timeout: 60000 });
