@@ -93,6 +93,15 @@ psql('supabase/migrations/008_live_invitation_tracking.sql');
 psql('supabase/migrations/009_pipeline_community.sql');
 psql('supabase/migrations/010_multi_experiment.sql');
 psql('supabase/migrations/011_early_access.sql');
+psql('supabase/migrations/012_connection_strength_abc.sql');
+{
+  const [def] = await q(`select categories from experiments where is_default`);
+  ok(JSON.stringify(def.categories) === '["Current Harvard student","Harvard alumnus/alumna"]', '012: the original experiment now asks "Current Harvard student" / "Harvard alumnus/alumna"');
+  ok(!(await q(`select value from experiment_settings where key = 'methods'`))[0].value.includes('strength'), '012: the 3-point closeness method (A) leaves the rotation for new links (the 5-point meter replaces it)');
+  // Most flows below test other things; the group question is covered in the multi-experiment step,
+  // and participants without a group are asked for it by the ABC questionnaire.
+  await q(`update experiments set categories = '[]' where is_default`);
+}
 const [legacyAfter] = await q(`select * from participants where display_name = 'Lee'`);
 ok(legacyAfter.email === 'legacy@test.dev' && legacyAfter.marketing_consent === true, 'legacy participant data intact');
 const [legacyInv] = await q(`select * from invitations where token = $1`, [legacyLink]);
@@ -162,17 +171,29 @@ const rpcAs = async (jwt, fn, args = {}, ip) => {
   });
   return { status: r.status, body: await r.json() };
 };
-/** Answer whichever classification method is shown (first option; for D, one keyboard step then Continue). */
-async function answer(page, scope = '', which = 'first') {
+/** Answer whichever classification method is shown (first option; for D, one keyboard step then Continue).
+ *  For the invitee's question (no scope), also answers the relationship questions that follow. */
+async function answer(page, scope = '', which = 'first', { rating = true } = {}) {
   await page.locator(`${scope} .classifier`).waitFor();
+  const method = await page.locator(`${scope} .classifier`).getAttribute('data-method');
   if (await page.locator(`${scope} .classifier .circular`).count()) {
     await page.locator(`${scope} .circular-input`).focus();
     await page.keyboard.press(which === 'last' ? 'End' : 'ArrowRight');
     await page.locator(`${scope} .classifier`).getByRole('button', { name: 'Continue', exact: true }).click();
-    return;
+  } else {
+    const opts = page.locator(`${scope} .classifier .option, ${scope} .classifier .scale-dot`);
+    await (which === 'last' ? opts.last() : opts.first()).click();
   }
-  const opts = page.locator(`${scope} .classifier .option, ${scope} .classifier .scale-dot`);
-  await (which === 'last' ? opts.last() : opts.first()).click();
+  if (!scope && rating) await rate(page, method);
+  return method;
+}
+/** The invitee's connection-strength meter, then comfort (skipped when that was their assigned question). */
+async function rate(page, method, { closeness = 4, comfort = 3 } = {}) {
+  await page.locator('.closeness-meter').waitFor();
+  await page.locator('.closeness-bar').nth(closeness - 1).click();
+  await page.locator('.closeness').getByRole('button', { name: 'Continue' }).click();
+  if (method === 'comfort') return;
+  await page.getByTestId('comfort').locator('.scale-dot').nth(comfort - 1).click();
 }
 
 /** Landing → relationship question → name + consent. Returns at the join result. */
@@ -185,8 +206,41 @@ async function startJoin(page, link, name, { shots = false, checks = false } = {
   await page.locator('.classifier').waitFor();
   const method = await page.locator('.classifier').getAttribute('data-method');
   if (shots) await page.waitForTimeout(600), await shot(page, `02-question-${method}`);
-  await answer(page);
+  await answer(page, '', 'first', { rating: !checks });
   if (checks) {
+    // Connection-strength meter, then comfort asking for an introduction
+    const meter = page.locator('.closeness-meter');
+    await meter.waitFor();
+    ok(await page.getByRole('heading', { name: 'How close are you to Truman?' }).isVisible(), 'connection strength: "How close are you to {inviter}?"');
+    const cont0 = page.locator('.closeness').getByRole('button', { name: 'Continue' });
+    ok(await cont0.isDisabled() && (await page.locator('.closeness-label').innerText()) === 'Tap or slide to choose', 'meter starts unset; Continue waits for a choice');
+    const labels = [];
+    for (let i = 0; i < 5; i++) {
+      await page.locator('.closeness-bar').nth(i).click();
+      labels.push(await page.locator('.closeness-label').innerText());
+    }
+    ok(labels.join('|') === 'Barely know them|Acquaintance|Know them fairly well|Good friend|Very close friend', 'five levels, each described as it’s chosen');
+    await meter.focus();
+    await page.keyboard.press('ArrowLeft');
+    ok((await meter.getAttribute('aria-valuetext')) === '4 of 5: Good friend', 'keyboard and screen readers: arrow keys, "4 of 5: Good friend"');
+    const mb = await meter.boundingBox();
+    await page.mouse.move(mb.x + mb.width * 0.05, mb.y + mb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(mb.x + mb.width * 0.5, mb.y + mb.height / 2, { steps: 5 });
+    await page.mouse.up();
+    ok((await page.locator('.closeness').getAttribute('data-value')) === '3', 'sliding along the bars works too (→ 3)');
+    const head = await page.locator('.closeness .question').boundingBox();
+    const vh = page.viewportSize().height;
+    ok(head.y < vh / 3 && (await cont0.boundingBox()).y + 56 < vh, `question in the upper third (${Math.round(head.y)}px of ${vh}px), Continue on screen`);
+    if (shots) await page.waitForTimeout(400), await shot(page, `02b-connection-strength`);
+    await page.locator('.closeness-bar').nth(3).click();
+    await cont0.click();
+    if (method !== 'comfort') {
+      await page.getByRole('heading', { name: 'How comfortable would you feel asking Truman for an introduction?' }).waitFor();
+      ok(true, 'then the comfort question (kept separate from closeness)');
+      if (shots) await page.waitForTimeout(400), await shot(page, `02c-comfort`);
+      await page.getByTestId('comfort').locator('.scale-dot').nth(2).click();
+    }
     // First-name + consent page ("stealth mode")
     await page.getByText('We’re in stealth mode.').waitFor();
     if (shots) await page.waitForTimeout(1500), await shot(page, `03-name-consent-empty`);
@@ -306,7 +360,9 @@ try {
   const adminPage = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   await adminPage.goto(`${APP}/admin`);
   await adminPage.getByLabel('Email', { exact: true }).fill('admin@test.dev');
-  await adminPage.getByRole('button', { name: 'Email me a code' }).click();
+  await adminPage.getByRole('button', { name: 'Email me a sign-in link' }).click();
+  await adminPage.getByRole('heading', { name: 'Tap the link in your email' }).waitFor();
+  await adminPage.getByRole('button', { name: 'Have a code instead?' }).click();
   await adminPage.getByLabel('Verification code').fill(await getCode('admin@test.dev'));
   await adminPage.getByRole('button', { name: 'Verify', exact: true }).click();
   await adminPage.getByRole('heading', { name: 'Dashboard' }).waitFor();
@@ -556,6 +612,18 @@ try {
   const bobPage = await newPhone();
   await joinViaLink(bobPage, bobLink, 'Bob');
   const bob = await byName('Bob');
+  {
+    // Connection strength is stored against each relationship, in its direction (rater → ratee).
+    const aliceNow = await byName('Alice');
+    const [ra] = await q(`select * from relationship_strength where invitation_id = $1`, [aliceNow.invitation_id]);
+    ok(ra && ra.direction === 'inbound' && ra.rater_id === aliceNow.id && ra.ratee_id === null && ra.closeness === 4 && ra.comfort >= 1,
+      `Alice → Truman (seed link): closeness ${ra?.closeness}, comfort ${ra?.comfort}, linked to her once she joined`);
+    const [rb] = await q(`select * from relationship_strength where invitation_id = $1`, [bob.invitation_id]);
+    ok(rb && rb.rater_id === bob.id && rb.ratee_id === alice.id && rb.closeness === 4 && rb.comfort >= 1 && rb.experiment_id === bob.experiment_id,
+      'Bob → Alice: closeness and comfort saved on that invitation, rater Bob, ratee Alice');
+    ok((await asUser(bob.user_id, 'select * from relationship_ratings')).error && (await asUser(null, 'select * from relationship_strength')).error,
+      'ratings are not readable through the API (participants or visitors)');
+  }
   ok(bob.depth === 2 && bob.parent_id === alice.id, 'Bob is generation 2, child of Alice');
 
   step('Opened vs joined, and duplicate credit');
@@ -645,6 +713,65 @@ try {
   await joinViaLink(davePage, daveLink, 'Dave');
   const dave = await byName('Dave');
   ok(dave.depth === 3 && dave.parent_id === bob.id, 'Dave is generation 3, child of Bob');
+
+  step('ABC experiment: Dave (generation 3) gets the scenario right after joining');
+  {
+    ok(!(await rpcAs(await jwtOf(bobPage), 'get_abc')).body.eligible && !(await rpcAs(await jwtOf(alicePage), 'get_abc')).body.eligible,
+      'generations 1 and 2 (Alice, Bob) don’t get the ABC questions');
+    const dlg = davePage.locator('.sheet .abc');
+    await dlg.waitFor();
+    ok((await dlg.getAttribute('data-step')) === 'classify' && await davePage.getByRole('radio', { name: 'Harvard alumnus/alumna' }).isVisible(),
+      'no group on file yet → asked first: "Current Harvard student" / "Harvard alumnus/alumna"');
+    await davePage.getByRole('radio', { name: 'Harvard alumnus/alumna' }).click();
+    await davePage.locator('.sheet .abc[data-step="intro"]').waitFor();
+    const fname = await davePage.locator('.sheet .abc').getAttribute('data-name');
+    const order = await davePage.locator('.sheet .abc').getAttribute('data-order');
+    ok(['Jane', 'John'].includes(fname) && ['cold_first', 'warm_first'].includes(order), `assigned at random: ${fname}, ${order}`);
+    ok((await davePage.locator('.abc-scenario').innerText()) === `Imagine ${fname} is a Harvard junior looking for advice about internship opportunities.`, 'alumni scenario shown first');
+    const head = await davePage.locator('.abc-scenario').boundingBox();
+    ok(head.y < davePage.viewportSize().height / 3, `centred dialog: heading in the upper third (${Math.round(head.y)}px)`);
+    await davePage.waitForTimeout(500);
+    await shot(davePage, '60-abc-scenario');
+    // "Not now", then come back later: same name and order
+    await davePage.getByRole('button', { name: 'Not now' }).click();
+    await davePage.getByRole('button', { name: /One quick scenario/ }).click();
+    await davePage.locator('.sheet .abc[data-step="intro"]').waitFor();
+    ok((await davePage.locator('.sheet .abc').getAttribute('data-name')) === fname && (await davePage.locator('.sheet .abc').getAttribute('data-order')) === order,
+      'resuming keeps the same name and question order');
+    await davePage.getByRole('button', { name: 'Continue' }).click();
+    const first = order === 'cold_first' ? 'cold' : 'warm';
+    const second = first === 'cold' ? 'warm' : 'cold';
+    const qText = { cold: `How likely would you be to respond if ${fname} sent you a message on LinkedIn asking for advice?`, warm: `How likely would you be to respond if Bob personally introduced ${fname} to you?` };
+    await davePage.getByTestId(`abc-${first}`).waitFor();
+    ok((await davePage.getByTestId(`abc-${first}`).locator('.question').innerText()) === qText[first]
+      && (await davePage.getByTestId(`abc-${first}`).locator('.scale-context').innerText()).startsWith(`Imagine ${fname}`), `first question (${first}), with the same scenario above it; the inviter's real name in the warm one`);
+    await davePage.waitForTimeout(400);
+    await shot(davePage, `61-abc-${first}`);
+    await davePage.getByTestId(`abc-${first}`).locator('.scale-dot').nth(first === 'cold' ? 1 : 4).click();
+    await davePage.getByTestId(`abc-${second}`).waitFor();
+    // leave half-way and resume: only the second question remains
+    await davePage.reload();
+    await davePage.locator('.home').waitFor();
+    await davePage.getByRole('button', { name: /One quick scenario/ }).click();
+    await davePage.getByTestId(`abc-${second}`).waitFor();
+    ok((await davePage.getByTestId(`abc-${second}`).locator('.question').innerText()) === qText[second], 'a half-finished questionnaire resumes at the unanswered question');
+    await davePage.getByTestId(`abc-${second}`).locator('.scale-dot').nth(second === 'cold' ? 1 : 4).click();
+    await davePage.getByRole('heading', { name: 'Thank you.' }).waitFor();
+    await davePage.getByRole('button', { name: 'Continue' }).click();
+    await davePage.getByRole('button', { name: /One quick scenario/ }).waitFor({ state: 'detached' });
+    const [ab] = await q(`select * from abc_responses where participant_id = $1`, [dave.id]);
+    ok(ab && ab.cold === 2 && ab.warm === 5 && ab.completed_at && ab.fictional_name === fname && ab.question_order === order
+      && ab.classification === 'alumni' && ab.depth === 3 && ab.inviter_id === bob.id && ab.experiment_id === dave.experiment_id && ab.invitation_id === dave.invitation_id,
+      'stored: cold 2, warm 5, name, order, group, generation, inviter, experiment, completion time');
+    ok((await byName('Dave')).classification === 'alumni', 'the group is saved on Dave’s participant record');
+    const djwt = await jwtOf(davePage);
+    ok((await rpcAs(djwt, 'answer_abc', { p_question: 'cold', p_value: 5 })).body.error === 'abc_completed'
+      && (await q(`select cold from abc_responses where participant_id = $1`, [dave.id]))[0].cold === 2, 'answers are locked once complete (no duplicate submissions)');
+    ok((await rpcAs(djwt, 'answer_abc', { p_question: 'warm', p_value: 9 })).body.error === 'invalid_value', 'values outside 1–5 are refused');
+    ok((await asUser(dave.user_id, 'select * from abc_responses')).error, 'ABC answers are not readable through the API');
+    // Invitations keep working regardless
+    ok(await davePage.locator('.invite-slots').isVisible(), 'invitations work as usual after the questionnaire');
+  }
   const reused = await newPhone();
   await reused.goto(daveLink);
   await reused.getByRole('heading', { name: 'This invitation has already been used.' }).waitFor();
@@ -699,7 +826,9 @@ try {
   const leePage = await newPhone();
   await leePage.goto(APP);
   await leePage.getByLabel('Email', { exact: true }).fill('legacy@test.dev');
-  await leePage.getByRole('button', { name: 'Email me a code' }).click();
+  await leePage.getByRole('button', { name: 'Email me a sign-in link' }).click();
+  await leePage.getByRole('heading', { name: 'Tap the link in your email' }).waitFor();
+  await leePage.getByRole('button', { name: 'Have a code instead?' }).click();
   await leePage.getByLabel('Verification code').fill(await getCode('legacy@test.dev'));
   await leePage.getByRole('button', { name: 'Verify', exact: true }).click();
   await leePage.locator('.invite-card.status-accepted').waitFor();
@@ -925,6 +1054,66 @@ try {
   const pool = fs.readFileSync(await poolDl.path(), 'utf8').trim().split('\n');
   ok(pool.length === 2 && pool[0].split(',').sort().join() === 'depth,email,experiment,experiment_id,participant_id,research_invites_at' && pool[1].includes('dave@test.dev'), 'consenting-participants CSV: only people who agreed to future experiments, with email and experiment, no relationship data');
 
+  step('Admin: ABC analytics, connection strength and preview');
+  {
+    const ajwt = await jwtOf(adminPage);
+    const st = (await rpcAs(ajwt, 'admin_abc_stats', { p_experiment_id: null, p_classification: null })).body;
+    ok(st.participation.eligible === 1 && st.participation.completed === 1 && Number(st.outreach.avg_cold) === 2 && Number(st.outreach.avg_warm) === 5 && Number(st.outreach.avg_advantage) === 3,
+      'ABC: 1 eligible, 1 completed; cold 2, warm 5, introduction advantage +3');
+    const ratings = (await q(`select count(*)::int n from relationship_strength s join participants p on p.id = s.rater_id and p.invitation_id = s.invitation_id where p.deleted_at is null`))[0].n;
+    ok(st.strength.ratings_n === ratings && st.strength.closeness_dist.reduce((x, y) => x + y, 0) === ratings, `connection strength: ${ratings} ratings, distribution adds up`);
+    ok(st.strength.advantage_by_closeness.find((r) => r.closeness === 4).n === 1 && Number(st.strength.advantage_by_closeness.find((r) => r.closeness === 4).avg_advantage) === 3,
+      'introduction advantage by connection strength (Dave rated Bob 4 → +3)');
+    ok(st.by_depth.some((d) => d.depth === 3 && d.abc_n === 1) && st.by_classification.some((c) => c.classification === 'alumni' && c.abc_n === 1), 'by generation and by group');
+    ok(st.strength.comfort_by_closeness.length === 5, 'connection strength vs comfort table');
+    const onlyStudents = (await rpcAs(ajwt, 'admin_abc_stats', { p_experiment_id: null, p_classification: 'student' })).body;
+    ok(onlyStudents.participation.completed === 0, 'filter by group (students: none yet)');
+    const defId = (await q(`select id from experiments where is_default`))[0].id;
+    await rpcAs(ajwt, 'admin_set_experiment_test', { p_experiment_id: defId, p_is_test: true });
+    const hidden = (await rpcAs(ajwt, 'admin_abc_stats', { p_experiment_id: null, p_classification: null })).body;
+    const picked = (await rpcAs(ajwt, 'admin_abc_stats', { p_experiment_id: defId, p_classification: null })).body;
+    ok(hidden.participation.completed === 0 && hidden.strength.ratings_n === 0 && picked.participation.completed === 1, 'test experiments stay out of the analytics unless picked explicitly');
+    await rpcAs(ajwt, 'admin_set_experiment_test', { p_experiment_id: defId, p_is_test: false });
+    ok((await rpcAs(await jwtOf(davePage), 'admin_set_experiment_test', { p_experiment_id: defId, p_is_test: true })).body.message === 'forbidden'
+      && (await rpcAs(await jwtOf(davePage), 'admin_abc_stats', { p_experiment_id: null, p_classification: null })).body.message === 'forbidden', 'ABC analytics and test flags are admin-only');
+    await adminPage.getByRole('button', { name: 'Refresh' }).click();
+    const abcPanel = adminPage.locator('.panel', { has: adminPage.getByRole('heading', { name: 'ABC experiment' }) });
+    await abcPanel.locator('.tile-stat', { hasText: 'Introduction advantage' }).getByText('+3.00').waitFor();
+    ok(true, 'dashboard: ABC section with the introduction advantage');
+    await abcPanel.scrollIntoViewIfNeeded();
+    await abcPanel.screenshot({ path: path.join(SHOTS, '62-admin-abc.png') });
+    const [dl] = await Promise.all([adminPage.waitForEvent('download'), abcPanel.getByRole('button', { name: 'abc.csv' }).click()]);
+    const abcCsv = fs.readFileSync(await dl.path(), 'utf8');
+    ok(abcCsv.split('\n').length === 2 && !/Dave|Bob|@/.test(abcCsv) && ['fictional_name', 'question_order', 'cold', 'warm', 'advantage', 'closeness', 'comfort', 'classification', 'depth', 'inviter_id']
+      .every((c) => abcCsv.split('\n')[0].split(',').includes(c)), 'abc.csv: anonymised (no names or emails), one row with every field');
+    // Preview: the participant screens, nothing saved
+    const before = (await q(`select (select count(*) from abc_responses)::int a, (select count(*) from relationship_ratings)::int r`))[0];
+    const prev = adminPage.locator('.panel', { has: adminPage.getByRole('heading', { name: 'Preview participant questions' }) });
+    await prev.getByLabel('Preview generation').fill('2');
+    ok((await prev.getByTestId('preview-eligibility').innerText()).includes('Generation 2 doesn’t get'), 'preview: generation 2 doesn’t get the ABC questions');
+    await prev.getByLabel('Preview generation').fill('3');
+    await prev.getByLabel('Preview group').selectOption('student');
+    await prev.getByLabel('Preview name').selectOption('John');
+    await prev.getByLabel('Preview order').selectOption('warm_first');
+    await prev.getByLabel('Preview inviter name').fill('Sam');
+    await prev.getByRole('button', { name: 'Start preview' }).click();
+    await adminPage.getByRole('heading', { name: 'How close are you to Sam?' }).waitFor();
+    await adminPage.locator('.closeness-bar').nth(4).click();
+    await adminPage.locator('.closeness').getByRole('button', { name: 'Continue' }).click();
+    await adminPage.locator('.scale-dot').nth(3).click();
+    await adminPage.locator('.sheet .abc[data-step="intro"]').waitFor();
+    ok((await adminPage.locator('.abc-scenario').innerText()) === 'Imagine John is an incoming Harvard student looking for advice on which classes to take.', 'preview: student scenario with John');
+    await adminPage.getByRole('button', { name: 'Continue' }).click();
+    ok((await adminPage.getByTestId('abc-warm').locator('.question').innerText()) === 'How likely would you be to respond if Sam personally introduced John to you?', 'preview: warm question first, as chosen');
+    await adminPage.getByTestId('abc-warm').locator('.scale-dot').nth(4).click();
+    await adminPage.getByTestId('abc-cold').locator('.scale-dot').nth(0).click();
+    await adminPage.getByRole('button', { name: 'Continue' }).click();
+    await prev.getByTestId('preview-summary').waitFor();
+    ok((await prev.getByTestId('preview-summary').innerText()).includes('+4.00'), 'preview summary: warm 5, cold 1 → +4');
+    const after = (await q(`select (select count(*) from abc_responses)::int a, (select count(*) from relationship_ratings)::int r`))[0];
+    ok(after.a === before.a && after.r === before.r, 'preview answers are never saved (analytics untouched)');
+  }
+
   step('Right to erasure');
   await davePage.getByLabel('Your data').click();
   await davePage.getByText('Delete my data').click();
@@ -935,6 +1124,8 @@ try {
   ok(tomb.invited_name === null && tomb.confirmed_name === null, 'invited and confirmed names erased too');
   ok((await q(`select count(*)::int n from waitlist where participant_id = $1`, [dave.id]))[0].n === 0, 'waitlist entry deleted');
   ok((await q(`select count(*)::int n from community_signups where participant_id = $1`, [dave.id]))[0].n === 0, 'community signup deleted');
+  ok((await q(`select count(*)::int n from abc_responses where participant_id = $1`, [dave.id]))[0].n === 0
+    && (await q(`select count(*)::int n from relationship_ratings where rater_id = $1`, [dave.id]))[0].n === 0, 'ABC answers and relationship ratings deleted');
   ok(!(await authUser(dave.user_id)), 'anonymous auth user removed');
 
 
@@ -1006,6 +1197,7 @@ try {
     await touchDrag(mira, miraCdp, 100, 37, 50);
     ok(await pctOf(mira) === 37, 'dragging back counter-clockwise lowers the rating (37%)');
     await cont.click();
+    await rate(mira, 'circular');
     await mira.getByPlaceholder(NAME_PH).waitFor();
     const [aRow] = await q(`select c.* from classifications c join invitations i on i.id = c.invitation_id where i.token = $1`, [tokA]);
     ok(aRow.method === 'circular' && aRow.value === '37' && aRow.question_version === 'circular_v1' && aRow.response_ms > 0, `stored: method circular, 37%, question version circular_v1, ${aRow.response_ms}ms`);
@@ -1062,6 +1254,7 @@ try {
     const theoPct = await pctOf(theo);
     ok(theoPct >= 59 && theoPct <= 61 && (await theo.locator('.circular-label').innerText()) === 'Well', `mouse drag → ${theoPct}% · Well`);
     await theo.locator('.circular').getByRole('button', { name: 'Continue', exact: true }).click();
+    await rate(theo, 'circular');
     await completeJoin(theo, 'Theo', { consentBox: true }); // wide screen: click the box, not the sentence (it holds the "How data is used" link)
     await theo.locator('.home').waitFor();
 
@@ -1072,6 +1265,7 @@ try {
     await zero.locator('.circular-input').focus();
     await zero.keyboard.press('ArrowLeft'); // stays at 0, but counts as an interaction
     await zero.locator('.circular').getByRole('button', { name: 'Continue', exact: true }).click();
+    await rate(zero, 'circular');
     await zero.getByPlaceholder(NAME_PH).waitFor();
     ok((await q(`select value from classifications c join invitations i on i.id = c.invitation_id where i.token = $1`, [tokZ]))[0].value === '0', '0% can be confirmed after interacting, and is stored as 0');
 
@@ -1168,6 +1362,7 @@ try {
     await sarah.locator('.circular').waitFor();
     ok(!(await sarah.locator('body').innerText()).includes('75'), 'Sarah never sees Nadia’s rating');
     await VALUE_D(40)(sarah);
+    await rate(sarah, 'circular', { closeness: 5, comfort: 4 });
     await sarah.getByRole('heading', { name: 'Are you Sarah S.?' }).waitFor();
     ok(await sarah.getByText('That’s who Nadia invited.').isVisible() && await sarah.getByText('We’re in stealth mode.').isVisible(), 'confirmation screen: "Are you Sarah S.?" / "That’s who Nadia invited."');
     const yes = sarah.getByRole('button', { name: 'Yes, that’s me' });
@@ -1212,6 +1407,7 @@ try {
     await stranger.goto(jonLink);
     await stranger.getByRole('button', { name: 'Enter the Experiment' }).click();
     await VALUE_D(5)(stranger);
+    await rate(stranger, 'circular', { closeness: 1, comfort: 1 });
     await stranger.getByRole('heading', { name: 'Are you Jon J.?' }).waitFor();
     await stranger.waitForTimeout(1600); // let the entrance animation settle
     await stranger.getByRole('button', { name: 'That’s not my name' }).click();
@@ -1231,6 +1427,7 @@ try {
     await jon.goto(jonLink);
     await jon.getByRole('button', { name: 'Enter the Experiment' }).click();
     await VALUE_D(30)(jon);
+    await rate(jon, 'circular');
     await jon.getByRole('heading', { name: 'Are you Jon J.?' }).waitFor();
     await jon.getByRole('button', { name: 'That’s not my name' }).click();
     await jon.getByPlaceholder(NAME_PH).fill('Fuck J.');

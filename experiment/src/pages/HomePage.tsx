@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, type MyAccount, type MyState } from '../lib/api';
+import { api, type AbcState, type MyAccount, type MyState } from '../lib/api';
 import { currentQuery, navigate } from '../lib/router';
 import { demoNewInvite, demoReset, isLocalDemo } from '../lib/demo';
 import { pending } from '../lib/session';
@@ -12,6 +12,7 @@ import { RevealOverlay } from '../components/Reveal';
 import { Tree, type TreeNode } from '../components/Tree';
 import { WaitlistOverlay } from '../components/Waitlist';
 import { CommunityOverlay } from '../components/Community';
+import { AbcFlow } from '../components/Abc';
 import { SaveNetworkOverlay } from '../components/SaveNetwork';
 import { formatPhone, phoneEnabled } from '../lib/phone';
 import { resetDeviceId } from '../lib/device';
@@ -80,6 +81,11 @@ function Home({ session }: { session: Session }) {
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | 'invite' | 'feedback' | 'privacy'>(null);
   const [reveal, setReveal] = useState<number | null>(null);
+  // ABC questionnaire: opens once right after joining (if eligible); a card
+  // on the home screen resumes it if they choose "Not now".
+  const [justJoined] = useState(() => currentQuery().get('welcome') === '1');
+  const [abc, setAbc] = useState<AbcState | null>(null);
+  const abcAutoOpened = useRef(false);
   const [notice, setNotice] = useState<string | null>(() => {
     const q = currentQuery();
     if (q.get('already')) return 'You were already part of the experiment. Thanks for answering.';
@@ -126,6 +132,20 @@ function Home({ session }: { session: Session }) {
   // Live statuses: when someone opens or accepts one of my invitations, the
   // card (and the network) update without a refresh.
   useLiveInvitations(state?.participant?.id, () => void load());
+
+  const openAbc = useCallback(async () => {
+    try {
+      setAbc(await api.getAbc());
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, []);
+  const abcDue = Boolean(state?.abc?.eligible && !state.abc.completed);
+  useEffect(() => {
+    if (!abcDue || !justJoined || abcAutoOpened.current) return;
+    abcAutoOpened.current = true;
+    void openAbc();
+  }, [abcDue, justJoined, openAbc]);
 
   if (error) {
     return (
@@ -257,6 +277,16 @@ function Home({ session }: { session: Session }) {
         {level >= 2 && <p className="mission reveal-static">{reveals[1]?.title}</p>}
       </section>
 
+      {abcDue && !abc && (
+        <button className="early-card abc-card fade-up" onClick={() => void openAbc()}>
+          <div>
+            <strong>One quick scenario</strong>
+            <span>Two questions, about 30 seconds.</span>
+          </div>
+          <span className="arrow" aria-hidden="true">→</span>
+        </button>
+      )}
+
       <InviteSlots
         invitations={invites}
         max={max}
@@ -359,6 +389,23 @@ function Home({ session }: { session: Session }) {
           onClose={(changed) => {
             setOverlay(null);
             if (changed) void load();
+          }}
+        />
+      )}
+      {abc?.eligible && (
+        <AbcFlow
+          state={abc}
+          onClassify={async (key) => {
+            await api.setMyClassification(key);
+            setAbc(await api.getAbc());
+          }}
+          onAnswer={async (q, v) => {
+            setAbc(await api.answerAbc(q, v));
+          }}
+          onClose={() => setAbc(null)}
+          onDone={() => {
+            setAbc(null);
+            void load();
           }}
         />
       )}

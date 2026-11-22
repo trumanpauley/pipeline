@@ -156,12 +156,16 @@ trigger that creates a `profiles` row for every new auth user, so sharing a proj
 Pipeline profiles for experiment participants. Table and function names don't collide, so sharing a
 project still works if you have to.
 
-1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
+1. **SQL Editor, new project:** paste all of `supabase/setup.sql` and click **Run**. It's every
+   migration below in one file and one transaction, so it either installs completely or changes
+   nothing. (Regenerate it with `sh scripts/build-setup-sql.sh` after adding a migration.)
+
+   **SQL Editor, existing project:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
    `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
    `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
-   `010_multi_experiment.sql` and `011_early_access.sql`. If you've already run some, run only the
-   ones after them.
+   `010_multi_experiment.sql`, `011_early_access.sql` and `012_connection_strength_abc.sql`. If
+   you've already run some, run only the ones after them.
 2. **Make yourself an admin:**
    ```sql
    insert into public.admins (email) values ('you@example.com');
@@ -467,6 +471,62 @@ in `participants.csv` and `invitations.csv`.
 participants or anonymous visitors. Participants only ever receive their own experiment's public
 details (name, description, instruction, categories).
 
+## Connection strength and the ABC experiment
+
+Migration `012`. It changes no existing records.
+
+**Connection strength (every invitee).** After their assigned relationship question, the invitee
+rates the person who invited them on a five-bar meter, "How close are you to {name}?":
+1 Barely know them · 2 Acquaintance · 3 Know them fairly well · 4 Good friend · 5 Very close
+friend. They then answer the 1–5 comfort question ("How comfortable would you feel asking {name}
+for an introduction?"), unless that was already their assigned question.
+- Ratings go in `relationship_ratings`, one row per invitation and direction (rater → ratee). Only
+  the invitee's rating (`inbound`) is collected now, but the inviter's rating of the same
+  relationship can be added later without schema changes.
+- The view `relationship_strength` adds the comfort answer from either place.
+- The 5-point meter supersedes method A (3-point "How close are you to…?"), so A is out of the
+  rotation for new links and nobody is asked the same thing twice. Existing A answers are kept. To
+  bring it back: `update experiment_settings set value = value || '["strength"]' where key = 'methods';`
+
+**Groups.** Participants pick *Current Harvard student* or *Harvard alumnus/alumna* on the join
+screen (the original experiment now asks this too; new experiments start with these two
+categories). The group is stored in `participants.classification`. Each experiment's
+`abc_scenarios` lists its groups and their scenario text (`{name}` = Jane/John), so other
+communities can have their own later.
+
+**ABC experiment (generation 3 and deeper).** Generation 1 joined from a seed link, and
+generation 2 are their invitees. In "depth" terms, counting seed participants as 0, it starts at
+depth 2. The threshold is set per experiment in `abc_min_depth`, and `abc_enabled` turns it off.
+- **When:** right after joining, a centred dialog shows the scenario: students see "Imagine
+  {Jane/John} is an incoming Harvard student looking for advice on which classes to take.",
+  alumni see "…a Harvard junior looking for advice about internship opportunities."
+- **Questions:** two 1–5 questions follow, cold ("…if {name} sent you a message on LinkedIn asking
+  for advice?") and warm ("…if {inviter} personally introduced {name} to you?").
+- **Random assignment:** Jane/John and the question order are drawn at random once and stored, so
+  they stay the same if the person comes back.
+- **Resuming and locking:** answers are saved one at a time, so "Not now" or a refresh resumes at
+  the unanswered question. They're locked once both are in, and each participant has one row.
+- **Missing group:** people who joined before groups were asked are asked first.
+- **Invitations are unaffected** whether or not someone answers.
+
+**Admin.**
+- The *ABC experiment* panel shows:
+  - eligible, completed and completion rate, with results by experiment;
+  - average cold, warm and introduction advantage (warm − cold), with distributions;
+  - connection-strength distribution, advantage by strength, and strength vs comfort;
+  - students vs alumni and results by generation;
+  - checks for order and name effects.
+- It filters by experiment and group, with anonymised `abc.csv` and `relationships.csv` exports.
+- These are self-reported answers, so differences are associations, not causes.
+- *Preview participant questions* runs the meter, comfort question and ABC flow for any group,
+  name, order and generation, without saving anything.
+- **Mark as test** on an experiment lets you rehearse the real flow end to end on a phone; its
+  data stays out of the ABC analytics unless you pick it in the filter.
+
+**Phone layout.** Question dialogs are now centred cards over the blurred page, with the heading in
+the upper third. They're sized to the visible screen (safe areas, browser bars, keyboard), so
+options never sit under the toolbar. Full-page questions use the same placement.
+
 ## Early access
 
 Optional email signup at the end of the invitation experiment (migrations `009` and `011`; the
@@ -596,6 +656,14 @@ It covers:
 - **Names:** "First L." only. The instruction types once on first focus, typing still works while
   it animates, and the field doesn't move. The disclosure and longer explanation are checked. A
   first name alone or a full surname is refused, and nothing is saved.
+- **Connection strength and ABC:**
+  - the meter (tap, slide, keyboard and screen-reader text) and the comfort question;
+  - ratings stored per relationship and direction, and linked when the invitee joins;
+  - generation 3 gets the scenario, with the group asked first if missing;
+  - random Jane/John and order kept on resume, resuming half-way, answers locked once complete,
+    invalid values refused;
+  - admin stats and filters, test experiments left out, the anonymised CSV, and the preview
+    saving nothing.
 - **Multiple experiments:** the admin creates an experiment in the dashboard and makes per-experiment
   seed links (unique, `/join/TOKEN`, copied one at a time). The test then follows seed →
   generation 1 → generation 2 with categories, and checks:
@@ -612,8 +680,10 @@ It saves screenshots to `test-results/`.
 `npm run test:mobile` checks the phone experience on the browser-only demo build, with no database
 needed. On every text-entry screen, the field and its button must stay above a simulated iPhone
 keyboard. On the landing page, typing must advance one letter at a time with the caret always
-visible, even through a 300ms freeze. The name instruction must type in about 1–1.5s, never block
-typing, not restart on refocus, and appear at once with reduced motion. Screenshots go to `test-results/mobile/`.
+visible, even through a 300ms freeze. The landing caret must sit right after the last typed letter, be gone once typing ends,
+and not be left behind if the browser pauses the page. Nothing may overlap or be cut off at
+320×568. The name instruction must type in about 1–1.5s, never block typing, not restart on
+refocus, and appear at once with reduced motion. Screenshots go to `test-results/mobile/`.
 
 It needs PostgreSQL 14+ and Playwright's Chromium:
 

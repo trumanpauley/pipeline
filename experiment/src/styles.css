@@ -241,16 +241,28 @@ button { font: inherit; color: inherit; }
 .tree-caption { margin: 0; text-align: center; font-size: 13px; color: var(--text-3); min-height: 18px; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* ---------- sheet ---------- */
-.sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: flex-end; justify-content: center; z-index: 20; animation: fadeIn 0.3s both; }
-.sheet {
-  position: relative; width: 100%; max-width: 480px; max-height: 92dvh; overflow: auto;
-  background: var(--bg); border: 1px solid var(--line); border-bottom: 0;
-  border-radius: 24px 24px 0 0; padding: 40px 24px max(28px, env(safe-area-inset-bottom));
-  animation: sheetUp 0.45s var(--ease) both;
+/* ---------- dialogs (formerly a bottom sheet) ----------
+   Centred card over a blurred page. The top gap puts the heading in the upper
+   third of the visible screen when there's room; on short screens and with the
+   keyboard open it shrinks, and the card scrolls inside itself, so options are
+   never pushed under the browser's toolbar or the home indicator. Heights use
+   the visible area (--vv-h from src/lib/keyboard.ts, else 100dvh). */
+.sheet-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: flex-start; justify-content: center; z-index: 20; animation: fadeIn 0.3s both;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
 }
-@media (min-width: 600px) { .sheet-backdrop { align-items: center; } .sheet { border-radius: 24px; border-bottom: 1px solid var(--line); } }
-@keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet {
+  position: relative; width: 100%; max-width: 480px; overflow: auto;
+  margin-top: clamp(0px, calc(var(--vv-h, 100dvh) * 0.14 - 24px), 120px);
+  max-height: 100%;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 24px;
+  padding: 40px 22px 24px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+  animation: dialogIn 0.4s var(--ease) both;
+}
+@media (min-height: 760px) { .sheet { margin-top: clamp(0px, calc(var(--vv-h, 100dvh) * 0.18 - 24px), 160px); } }
+@keyframes dialogIn { from { transform: translateY(14px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 .sheet-close { position: absolute; top: 12px; right: 12px; appearance: none; border: 0; background: var(--surface-2); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--text-2); }
 .ready-mark { width: 56px; height: 56px; border-radius: 50%; background: var(--text); color: var(--bg); display: grid; place-items: center; animation: pop 0.5s var(--ease) both; }
 .url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: var(--text-2); background: var(--surface); padding: 10px 14px; border-radius: 10px; word-break: break-all; }
@@ -348,13 +360,13 @@ tr:last-child td { border-bottom: 0; }
 .typewriter { margin: 0; }
 .landing-body { font-size: 18px; line-height: 1.45; max-width: 330px; align-self: center; }
 .tw-rest { visibility: hidden; }
-/* Zero-width anchor: the caret never shifts text or changes line breaks. */
-.tw-caret { position: relative; }
-.tw-caret::after {
-  content: ''; position: absolute; left: 1px; top: 0.1em; width: 1.5px; height: 1.1em;
-  background: currentColor; opacity: 0; transition: opacity 0.25s;
+/* Zero-width, in the text flow: the caret never shifts text or changes line
+   breaks. It's only in the page while typing (solid, no blink, no fade), so
+   there's nothing to get stuck. */
+.tw-caret {
+  display: inline-block; width: 0; height: 1.05em; margin-right: -1.5px; vertical-align: -0.16em;
+  border-left: 1.5px solid currentColor; opacity: 0.75; pointer-events: none;
 }
-.tw-caret.is-on::after { opacity: 0.75; transition: none; } /* solid while typing: no blink or fade-in, so it never seems to stall */
 .landing-cta { width: 100%; opacity: 0; transform: translateY(6px); transition: opacity 0.5s var(--ease), transform 0.5s var(--ease); }
 .landing-cta.is-shown { opacity: 1; transform: none; }
 .landing-follow { font-size: 15px; color: var(--text-2); text-align: center; max-width: 300px; }
@@ -366,8 +378,9 @@ tr:last-child td { border-bottom: 0; }
 .sheet-backdrop, .waitlist-overlay, .reveal-overlay {
   top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100dvh);
 }
-.sheet { max-height: min(92dvh, calc(var(--vv-h, 100dvh) - 12px)); overscroll-behavior: contain; }
-.kb-open .sheet { padding-top: 32px; }
+.sheet { overscroll-behavior: contain; }
+/* Keyboard open: use all the space left above it. */
+.kb-open .sheet { margin-top: 0; padding-top: 32px; }
 /* Center the waitlist content, but if it's taller than the visible area,
    start at the top so nothing is cut off and it can scroll. */
 .waitlist-overlay { align-items: flex-start; }
@@ -559,3 +572,53 @@ tr:last-child td { border-bottom: 0; }
 .experiment-detail { display: flex; flex-direction: column; gap: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
 .experiment-detail h3, .seed-panel h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
 .seed-panel { display: flex; flex-direction: column; gap: 10px; }
+
+/* Full-page questions (the invitee's relationship questions): heading in the
+   upper third of the visible screen, options right below, nothing pushed to
+   the bottom edge. */
+.screen.question-screen .screen-inner {
+  justify-content: flex-start;
+  padding-top: clamp(8px, calc(var(--vv-h, 100dvh) * 0.16 - 28px), 150px);
+}
+
+/* ---------- connection-strength meter ---------- */
+.closeness { display: flex; flex-direction: column; gap: 18px; }
+.closeness .question { margin-bottom: 6px; }
+.closeness-meter {
+  display: flex; align-items: flex-end; gap: 10px; height: 120px; padding: 6px 2px 0;
+  touch-action: none; cursor: pointer; outline: none; user-select: none; -webkit-user-select: none;
+}
+.closeness-meter:focus-visible { box-shadow: 0 0 0 2px var(--accent); border-radius: 12px; }
+.closeness-bar {
+  flex: 1; height: var(--h); border-radius: 10px; background: var(--surface-2);
+  border: 1px solid var(--line); transition: background 0.25s var(--ease), border-color 0.25s, transform 0.25s var(--ease), box-shadow 0.3s;
+  animation: fadeUp 0.5s var(--ease) both;
+}
+.closeness-bar.is-on { background: color-mix(in srgb, var(--accent) 55%, var(--surface-2)); border-color: transparent; }
+.closeness-bar.is-current { background: var(--accent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 45%, transparent); transform: translateY(-2px); }
+.closeness-scale { display: flex; gap: 10px; margin-top: -8px; }
+.closeness-scale button {
+  flex: 1; appearance: none; border: 0; background: none; padding: 4px 0; font: inherit; font-size: 13px;
+  color: var(--text-3); cursor: pointer;
+}
+.closeness-scale button.is-current { color: var(--text); font-weight: 600; }
+.closeness-label { margin: 0; min-height: 1.4em; text-align: center; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-3); transition: color 0.2s; }
+.closeness-label.is-shown { color: var(--text); }
+@media (prefers-reduced-motion: reduce) { .closeness-bar { transition: none; } }
+
+/* ---------- ABC scenario ---------- */
+.scale-context { margin: 0 0 12px; font-size: 14px; line-height: 1.45; color: var(--text-2); }
+.abc .question { margin-bottom: 20px; }
+.abc-scenario { font-size: 24px; }
+
+/* ---------- admin: ABC experiment ---------- */
+.abc-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.abc-h { margin: 8px 0 6px; font-size: 14px; font-weight: 600; color: var(--text-2); }
+.abc-row { grid-template-columns: minmax(0, 150px) minmax(80px, 1fr) 72px; }
+.bar.accent { background: var(--accent); }
+.dist-legend .sw.accent { background: var(--accent); }
+.preview-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.preview-controls label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-2); }
+.preview-check { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text-2); }
+.preview-layer { position: fixed; inset: 0; z-index: 30; background: var(--bg); overflow: auto; }
+.preview-summary { display: flex; flex-direction: column; gap: 8px; }
