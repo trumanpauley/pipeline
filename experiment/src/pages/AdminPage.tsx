@@ -30,15 +30,27 @@ export function AdminPage({ session }: { session: Session | null }) {
   const [cstats, setCstats] = useState<AdminCommunityStats | null>(null);
   const [version, setVersion] = useState(0); // bumps on every refresh so sub-panels reload too
   const [error, setError] = useState<string | null>(null);
+  // Tabs: the overview, then one per experiment (remembered on this device).
+  const [groups, setGroups] = useState<Experiment[]>([]);
+  const [tab, setTabState] = useState<string>(() => {
+    try { return localStorage.getItem('px.adminTab') || 'overview'; } catch { return 'overview'; }
+  });
+  const setTab = (t: string) => {
+    setTabState(t);
+    try { localStorage.setItem('px.adminTab', t); } catch { /* ignore */ }
+    window.scrollTo(0, 0);
+  };
 
   const load = useCallback(async () => {
     try {
-      const [o, a, m, c] = await Promise.all([
+      const [o, a, m, c, g] = await Promise.all([
         api.adminOverview(),
         api.adminAccountStats(),
         api.adminMethodStats().catch(() => null),
         api.adminCommunityStats().catch(() => null),
+        api.adminExperiments().catch(() => [] as Experiment[]),
       ]);
+      setGroups(g);
       setData(o);
       setAcct(a);
       setMstats(m);
@@ -62,7 +74,7 @@ export function AdminPage({ session }: { session: Session | null }) {
   if (!session) {
     return (
       <Screen className="center">
-        <SignIn heading="Admin" sub="Sign in with an admin email." allowPhone={false} />
+        <SignIn heading="Admin" sub="Sign in with an admin email. With a password, no email is sent." allowPhone={false} allowPassword />
       </Screen>
     );
   }
@@ -81,6 +93,7 @@ export function AdminPage({ session }: { session: Session | null }) {
   if (!data) return <Loading />;
 
   const t = data.totals;
+  const group = groups.find((g) => g.id === tab) ?? null;
   const inv = data.invitations;
 
   return (
@@ -95,6 +108,27 @@ export function AdminPage({ session }: { session: Session | null }) {
           <button className="chip" onClick={() => navigate('/')}>App</button>
         </div>
       </header>
+
+      <nav className="admin-tabs" role="tablist" aria-label="Dashboard sections">
+        <button role="tab" aria-selected={!group} className={`chip ${!group ? 'is-active' : ''}`} onClick={() => setTab('overview')}>
+          Overview
+        </button>
+        {groups.map((g) => (
+          <button key={g.id} role="tab" aria-selected={group?.id === g.id} className={`chip ${group?.id === g.id ? 'is-active' : ''}`} onClick={() => setTab(g.id)}>
+            {g.name}{g.is_test ? ' · test' : ''}
+          </button>
+        ))}
+      </nav>
+
+      {group ? (
+        <>
+          <ExperimentsPanel refreshKey={version} only={group.id} onChanged={load} />
+          <AbcPanel refreshKey={version} fixedExperiment={group.id} />
+          <AbcPreviewPanel experimentId={group.id} />
+          <DemoLinks />
+        </>
+      ) : (
+      <>
 
       <section className="tiles">
         <Tile label="Participants" value={t.participants} sub={`${t.seed_participants} seeds`} />
@@ -129,7 +163,7 @@ export function AdminPage({ session }: { session: Session | null }) {
         </p>
       </Panel>
 
-      <ExperimentsPanel refreshKey={version} />
+      <ExperimentsPanel refreshKey={version} onChanged={load} />
 
       <Panel
         title="Names & moderation"
@@ -206,6 +240,8 @@ export function AdminPage({ session }: { session: Session | null }) {
           {JSON.stringify(Object.fromEntries(Object.entries(data.settings).filter(([k]) => k !== 'hash_salt')), null, 2)}
         </pre>
       </Panel>
+      </>
+      )}
     </main>
   );
 }
@@ -459,20 +495,28 @@ const saveDraft = (d: ExperimentDraft) =>
  * each one's numbers and referral tree. Everything is read from Supabase via
  * admin-only functions (the server checks the admin on every call).
  */
-function ExperimentsPanel({ refreshKey }: { refreshKey: number }) {
-  const [list, setList] = useState<Experiment[] | null>(null);
+function ExperimentsPanel({ refreshKey, only, onChanged }: { refreshKey: number; only?: string; onChanged?: () => void }) {
+  const [all, setList] = useState<Experiment[] | null>(null);
+  const list = only ? all?.filter((e) => e.id === only) ?? null : all;
   const [editing, setEditing] = useState<ExperimentDraft | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  // A group's own tab opens its seed links and tree straight away.
+  const [open, setOpen] = useState<string | null>(only ?? null);
+  useEffect(() => { if (only) setOpen(only); }, [only]);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
+  const fetchList = useCallback(async () => {
     try {
       setList(await api.adminExperiments());
     } catch (e) {
       setError(adminErrorText(e));
     }
   }, []);
-  useEffect(() => { void reload(); }, [reload, refreshKey]);
+  // After a change: refresh this list, and let the page refresh its tabs.
+  const reload = useCallback(async () => {
+    await fetchList();
+    onChanged?.();
+  }, [fetchList, onChanged]);
+  useEffect(() => { void fetchList(); }, [fetchList, refreshKey]);
 
   const toggleStatus = async (e: Experiment) => {
     setError(null);
@@ -486,12 +530,16 @@ function ExperimentsPanel({ refreshKey }: { refreshKey: number }) {
 
   return (
     <Panel
-      title="Experiments"
-      note="Each experiment has its own seed links, invitation rules and network. A link always opens the experiment it was made for, and pausing keeps all data."
+      title={only ? (list?.[0]?.name ?? 'Experiment') : 'Experiments'}
+      note={only
+        ? 'This group’s settings, seed links, numbers and referral tree. Links always open this group, and pausing keeps all data.'
+        : 'Each experiment has its own seed links, invitation rules and network. A link always opens the experiment it was made for, and pausing keeps all data. Each one also has its own tab above.'}
     >
-      <div className="row-actions">
-        <button className="chip" onClick={() => setEditing(draftOf())}>New experiment</button>
-      </div>
+      {!only && (
+        <div className="row-actions">
+          <button className="chip" onClick={() => setEditing(draftOf())}>New experiment</button>
+        </div>
+      )}
       {editing && !editing.id && (
         <ExperimentForm draft={editing} onCancel={() => setEditing(null)} onSaved={async () => { setEditing(null); await reload(); }} />
       )}
@@ -661,9 +709,10 @@ function BarRows({ rows, legend }: { rows: { label: string; a: number; b?: numbe
 }
 
 /** Warm vs cold outreach and connection strength, filterable by experiment and group. */
-function AbcPanel({ refreshKey }: { refreshKey: number }) {
+function AbcPanel({ refreshKey, fixedExperiment }: { refreshKey: number; fixedExperiment?: string }) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
-  const [exp, setExp] = useState('');
+  const [expPicked, setExp] = useState('');
+  const exp = fixedExperiment ?? expPicked;
   const [cls, setCls] = useState('');
   const [st, setSt] = useState<AdminAbcStats | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -687,10 +736,12 @@ function AbcPanel({ refreshKey }: { refreshKey: number }) {
       note="Would people answer Jane/John more readily through an introduction than a cold LinkedIn message, and does that depend on how close they are to the person who introduces them? These are self-reported answers, so read differences as associations, not causes. Previews are never stored, and test experiments are left out unless you pick one here."
     >
       <div className="abc-filters">
-        <select className="input" value={exp} onChange={(e) => setExp(e.target.value)} aria-label="Filter by experiment">
-          <option value="">All experiments</option>
-          {experiments.map((e) => <option key={e.id} value={e.id}>{e.name}{e.is_test ? ' (test)' : ''}</option>)}
-        </select>
+        {!fixedExperiment && (
+          <select className="input" value={exp} onChange={(e) => setExp(e.target.value)} aria-label="Filter by experiment">
+            <option value="">All experiments</option>
+            {experiments.map((e) => <option key={e.id} value={e.id}>{e.name}{e.is_test ? ' (test)' : ''}</option>)}
+          </select>
+        )}
         <select className="input" value={cls} onChange={(e) => setCls(e.target.value)} aria-label="Filter by participant group">
           <option value="">Students and alumni</option>
           {groups.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
@@ -781,9 +832,10 @@ function AbcPanel({ refreshKey }: { refreshKey: number }) {
  * and generation. Runs entirely in this browser; nothing is saved, so real
  * analytics stay clean. Open /admin on a phone to try it there.
  */
-function AbcPreviewPanel() {
+function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
-  const [expId, setExpId] = useState('');
+  const [expId, setExpId] = useState(experimentId ?? '');
+  useEffect(() => { if (experimentId) setExpId(experimentId); }, [experimentId]);
   const [group, setGroup] = useState('');
   const [name, setName] = useState<'Jane' | 'John'>('Jane');
   const [order, setOrder] = useState<'cold_first' | 'warm_first'>('cold_first');

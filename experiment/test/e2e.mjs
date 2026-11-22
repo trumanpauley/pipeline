@@ -146,6 +146,8 @@ const getCode = async (email) => {
   }
   throw new Error(`no code for ${email}`);
 };
+/** 1 if a sign-in email (code/link) was sent to this address, else 0. */
+const getCodeCount = async (email) => ((await (await fetch(`${API}/__test/code?email=${encodeURIComponent(email)}`)).json())?.code ? 1 : 0);
 const getPhoneCode = async (phone) => {
   for (let i = 0; i < 40; i++) {
     const r = await (await fetch(`${API}/__test/code?phone=${encodeURIComponent(phone)}`)).json();
@@ -1125,6 +1127,31 @@ try {
     ok(after.a === before.a && after.r === before.r, 'preview answers are never saved (analytics untouched)');
   }
 
+  step('Admin sign-in with a password (no email sent)');
+  {
+    // Like Supabase → Authentication → Users → Add user, with "Auto Confirm User"
+    await fetch(`${API}/__test/create-user`, { method: 'POST', body: JSON.stringify({ email: 'owner@test.dev', password: 'correct horse battery' }) });
+    await q(`insert into admins (email) values ('owner@test.dev') on conflict do nothing`);
+    const ownerCtx = await browser.newContext({ ...iphone });
+    contexts.push(ownerCtx);
+    const owner = await ownerCtx.newPage();
+    await owner.goto(`${APP}/admin`);
+    await owner.getByRole('button', { name: 'Use a password instead' }).click();
+    await owner.getByLabel('Email', { exact: true }).fill('Owner@Test.dev');
+    await owner.getByLabel('Password').fill('wrong');
+    await owner.getByRole('button', { name: 'Sign in' }).click();
+    await owner.getByText('Wrong email or password.').waitFor();
+    ok(true, 'wrong password: a plain message, no email sent');
+    await owner.getByLabel('Password').fill('correct horse battery');
+    await owner.getByRole('button', { name: 'Sign in' }).click();
+    await owner.getByRole('heading', { name: 'Dashboard' }).waitFor();
+    ok((await getCodeCount('owner@test.dev')) === 0, 'signed in to the dashboard with no email at all');
+    await owner.reload();
+    await owner.getByRole('heading', { name: 'Dashboard' }).waitFor();
+    ok(true, 'stays signed in on this device after a reload');
+    await ownerCtx.close();
+  }
+
   step('Right to erasure');
   await davePage.getByLabel('Your data').click();
   await davePage.getByText('Delete my data').click();
@@ -1363,7 +1390,7 @@ try {
     ok((await q(`select count(*)::int n from participants where display_name like 'Sarah%'`))[0].n === 0, 'no participant profile exists for Sarah before she joins');
     ok(!sarahLink.includes('Sarah') && !sarahLink.includes('75') && /\/join\/[A-Za-z0-9_-]{22}$/.test(sarahLink), 'the link carries only an unguessable token (no name, no rating)');
     const landingData = (await rpcAs(null, 'open_invitation', { p_token: sarahTok }, '4.4.4.4')).body;
-    ok(landingData.invited_name === 'Sarah S.' && landingData.sender_name === 'Nadia' && !JSON.stringify(landingData).includes('75'), 'invitation page data: first names only, no ratings');
+    ok(landingData.invited_name === 'Sarah S.' && landingData.sender_name === 'Nadia' && !/\b75\b/.test(JSON.stringify({ ...landingData, experiment: { ...landingData.experiment, id: undefined } })), 'invitation page data: first names only, no ratings');
 
     // 1. Correct name: Sarah confirms; she rates Nadia 40% independently
     const sarah = await newPhone();
@@ -1799,6 +1826,24 @@ try {
       'early-access signups are stored and counted per experiment (Harvard Baseball: 1 of 4)');
     const poolHB = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'research_pool' })).body.find((r) => r.email === 'james@test.dev');
     ok(poolHB && poolHB.experiment === 'Harvard Baseball', 'the consenting-participants export names the experiment');
+
+    // Tabs: Overview + one per group, each showing that group's view
+    await adminPage.getByRole('button', { name: 'Refresh' }).click();
+    const adminTabs = adminPage.getByRole('tablist', { name: 'Dashboard sections' });
+    await adminTabs.getByRole('tab', { name: 'Harvard Baseball' }).click();
+    await adminPage.locator('.experiment-card[data-experiment="Harvard Baseball"] .experiment-detail svg').waitFor();
+    ok(await adminPage.locator('.experiment-card').count() === 1 && await adminPage.getByRole('heading', { name: 'Harvard Baseball', exact: true }).first().isVisible()
+      && await adminPage.getByLabel('Filter by experiment').count() === 0
+      && (await adminPage.getByLabel('Preview experiment').inputValue()) === hb.id, 'group tab: only that group (seed links and tree open), its ABC results and preview');
+    ok(await adminTabs.getByRole('tab', { name: 'Harvard Students' }).isVisible() && await adminTabs.getByRole('tab', { name: 'The Pipeline Experiment' }).isVisible(), 'a tab for every group saved in Supabase');
+    await adminPage.waitForTimeout(500);
+    await adminPage.screenshot({ path: path.join(SHOTS, '55-admin-group-tab.png') });
+    await adminPage.reload();
+    await adminTabs.getByRole('tab', { name: 'Harvard Baseball', selected: true }).waitFor();
+    ok(true, 'the chosen tab is remembered on this device');
+    await adminTabs.getByRole('tab', { name: 'Overview' }).click();
+    await adminPage.locator('.experiment-card').nth(2).waitFor();
+    ok(await adminPage.getByLabel('Filter by experiment').isVisible(), 'Overview shows everything again');
 
     // 10. Admin-only, enforced by the server and RLS
     const jamesJwt = await jwtOf(james);

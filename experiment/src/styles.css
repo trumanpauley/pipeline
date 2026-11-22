@@ -622,3 +622,8 @@ tr:last-child td { border-bottom: 0; }
 .preview-check { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text-2); }
 .preview-layer { position: fixed; inset: 0; z-index: 30; background: var(--bg); overflow: auto; }
 .preview-summary { display: flex; flex-direction: column; gap: 8px; }
+
+/* Admin tabs: overview + one per experiment; scrolls sideways on phones. */
+.admin-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: -4px 0 4px; position: sticky; top: 0; z-index: 5; background: var(--bg); padding-block: 8px; }
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tabs .chip { white-space: nowrap; flex: none; }
