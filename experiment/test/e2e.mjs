@@ -94,6 +94,17 @@ psql('supabase/migrations/009_pipeline_community.sql');
 psql('supabase/migrations/010_multi_experiment.sql');
 psql('supabase/migrations/011_early_access.sql');
 psql('supabase/migrations/012_connection_strength_abc.sql');
+psql('supabase/migrations/013_copy_safe_name_check.sql');
+{
+  // SQL is pasted into the Supabase editor from a browser, which drops invisible characters:
+  // the migrations must not rely on any (013 fixed one that broke every name check).
+  const invisible = /[\u00AD\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF\uFE00-\uFE0F]/u;
+  const files = fs.readdirSync(path.join(root, 'supabase/migrations')).map((f) => `supabase/migrations/${f}`).concat('supabase/setup.sql');
+  const bad = files.filter((f) => invisible.test(fs.readFileSync(path.join(root, f), 'utf8')));
+  ok(bad.length === 0, `no invisible characters in the SQL to paste${bad.length ? ` (found in ${bad})` : ''}`);
+  ok((await q(`select public.px_name_problem('Fück') as a, public.px_name_problem(E'Al\\u200Bice') as b, public.px_name_problem('Alice') as c`))
+    .every((r) => r.a === 'blocked' && r.b === 'characters' && r.c === null), 'name check (013): same rules, written copy-safe');
+}
 {
   const [def] = await q(`select categories from experiments where is_default`);
   ok(JSON.stringify(def.categories) === '["Current Harvard student","Harvard alumnus/alumna"]', '012: the original experiment now asks "Current Harvard student" / "Harvard alumnus/alumna"');
