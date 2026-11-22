@@ -293,14 +293,31 @@ const MESSAGES: Record<string, string> = {
 
 export class ApiError extends Error {
   code: string;
+  /** False for errors without a friendly message (the raw server text is in `code`). */
+  known: boolean;
   constructor(code: string) {
     super(MESSAGES[code] ?? 'Something went wrong. Please try again.');
     this.code = code;
+    this.known = code in MESSAGES;
   }
 }
 
+/** For admin screens: the friendly message, plus the server's own words when there isn't one. */
+export function adminErrorText(e: unknown): string {
+  if (e instanceof ApiError && !e.known) return `${e.message} (${e.code})`;
+  return (e as Error)?.message ?? String(e);
+}
+
+// A page left in the background (e.g. an email app's in-app browser) can wake
+// with an expired access token before the client refreshes it.
+const expiredToken = (message: string) => /jwt expired|invalid jwt|token is expired/i.test(message);
+
 export async function rpc<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.rpc(fn, args);
+  let { data, error } = await supabase.rpc(fn, args);
+  if (error && expiredToken(error.message)) {
+    const refreshed = await supabase.auth.refreshSession();
+    if (!refreshed.error) ({ data, error } = await supabase.rpc(fn, args));
+  }
   if (error) throw new ApiError(error.message);
   // Some checks (e.g. a rejected name) return { error } so the server can record
   // the attempt for rate limiting instead of aborting the request.

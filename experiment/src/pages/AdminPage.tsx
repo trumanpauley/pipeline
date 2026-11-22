@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, inviteUrl, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail } from '../lib/api';
+import { adminErrorText, api, inviteUrl, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail } from '../lib/api';
 import { AbcFlow } from '../components/Abc';
 import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, ScaleQuestion } from '../components/Relationship';
 import { supabase } from '../lib/supabase';
@@ -46,7 +46,7 @@ export function AdminPage({ session }: { session: Session | null }) {
       setVersion((n) => n + 1);
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      setError(adminErrorText(e));
     }
   }, []);
 
@@ -365,7 +365,7 @@ function SeedPanel({ experimentId, seeds, onChanged }: { experimentId: string; s
       await api.adminCreateExperimentSeeds(experimentId, count, sender, note);
       onChanged();
     } catch (err) {
-      setError((err as Error).message);
+      setError(adminErrorText(err));
     } finally {
       setBusy(false);
     }
@@ -469,7 +469,7 @@ function ExperimentsPanel({ refreshKey }: { refreshKey: number }) {
     try {
       setList(await api.adminExperiments());
     } catch (e) {
-      setError((e as Error).message);
+      setError(adminErrorText(e));
     }
   }, []);
   useEffect(() => { void reload(); }, [reload, refreshKey]);
@@ -480,7 +480,7 @@ function ExperimentsPanel({ refreshKey }: { refreshKey: number }) {
       await saveDraft({ ...draftOf(e), status: e.status === 'active' ? 'paused' : 'active' });
       await reload();
     } catch (err) {
-      setError((err as Error).message);
+      setError(adminErrorText(err));
     }
   };
 
@@ -513,7 +513,7 @@ function ExperimentsPanel({ refreshKey }: { refreshKey: number }) {
                 <button
                   className="chip"
                   title="Test experiments are for trying the full flow on a phone; their data stays out of the ABC analytics."
-                  onClick={async () => { await api.adminSetExperimentTest(e.id, !e.is_test).catch((err: Error) => setError(err.message)); await reload(); }}
+                  onClick={async () => { await api.adminSetExperimentTest(e.id, !e.is_test).catch((err: Error) => setError(adminErrorText(err))); await reload(); }}
                 >
                   {e.is_test ? 'Use as real' : 'Mark as test'}
                 </button>
@@ -569,7 +569,7 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
       await saveDraft(d);
       onSaved();
     } catch (err) {
-      setError((err as Error).message);
+      setError(adminErrorText(err));
     } finally {
       setBusy(false);
     }
@@ -608,7 +608,7 @@ function ExperimentDetailView({ experimentId, onChanged }: { experimentId: strin
     try {
       setDetail(await api.adminExperimentDetail(experimentId));
     } catch (e) {
-      setError((e as Error).message);
+      setError(adminErrorText(e));
     }
   }, [experimentId]);
   useEffect(() => { void reload(); }, [reload]);
@@ -671,7 +671,7 @@ function AbcPanel({ refreshKey }: { refreshKey: number }) {
   useEffect(() => { void api.adminExperiments().then(setExperiments).catch(() => undefined); }, [refreshKey]);
   useEffect(() => {
     setError(null);
-    api.adminAbcStats(exp || null, cls || null).then(setSt).catch((e: Error) => setError(e.message));
+    api.adminAbcStats(exp || null, cls || null).then(setSt).catch((e: Error) => setError(adminErrorText(e)));
   }, [exp, cls, refreshKey]);
 
   const groups = useMemo(() => {
