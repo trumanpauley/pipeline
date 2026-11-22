@@ -50,6 +50,10 @@ export function TypedHint({
     }
     let raf = 0;
     const t0 = performance.now();
+    const finish = () => {
+      cancelAnimationFrame(raf);
+      setShown(n);
+    };
     const tick = (now: number) => {
       const elapsed = now - t0;
       let k = 0;
@@ -58,8 +62,16 @@ export function TypedHint({
       if (k < n) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [start, times]);
+    // If the page is hidden or frames stop (in-app browsers), finish rather than freeze mid-word.
+    const onHide = () => document.visibilityState === 'hidden' && finish();
+    document.addEventListener('visibilitychange', onHide);
+    const backstop = window.setTimeout(finish, duration + 1500);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(backstop);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, [start, times, duration]);
 
   const chars = [...text];
   const typing = start && shown < chars.length;

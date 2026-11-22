@@ -119,7 +119,20 @@ export interface ExperimentInfo {
   is_default: boolean;
 }
 
+export interface AbcScenario {
+  key: string;
+  label: string;
+  /** "{name}" is replaced with Jane or John. */
+  scenario: string;
+}
+
 export interface Experiment extends ExperimentInfo {
+  /** Rehearsal experiment: left out of the ABC / connection-strength analytics. */
+  is_test: boolean;
+  abc_enabled: boolean;
+  /** Generation from which participants get the ABC experiment (seed-link joiners are 1). */
+  abc_min_depth: number;
+  abc_scenarios: AbcScenario[];
   created_at: string;
   updated_at: string;
   stats: {
@@ -141,6 +154,47 @@ export interface ExperimentDetail {
   seeds: AdminOverview['seeds'];
   tree: (AdminOverview['tree'][number] & { category: string | null })[];
   secondary: { from: string | null; to: string }[];
+}
+
+/** The ABC questionnaire, as the participant sees it. */
+export interface AbcState {
+  eligible: boolean;
+  needs_classification?: boolean;
+  groups?: { key: string; label: string }[];
+  name?: 'Jane' | 'John';
+  scenario?: string;
+  order?: 'cold_first' | 'warm_first';
+  classification?: string;
+  cold?: number | null;
+  warm?: number | null;
+  completed?: boolean;
+  /** The inviter's approved first name, if any. */
+  inviter_name?: string | null;
+}
+
+type Avg = number | null;
+export interface AdminAbcStats {
+  participation: { eligible: number; started: number; completed: number };
+  by_experiment: { experiment_id: string; name: string; eligible: number; completed: number; avg_cold: Avg; avg_warm: Avg; avg_advantage: Avg }[];
+  outreach: {
+    avg_cold: Avg;
+    avg_warm: Avg;
+    avg_advantage: Avg;
+    cold_dist: number[];
+    warm_dist: number[];
+    advantage_dist: { advantage: number; n: number }[];
+    by_order: { order: string; n: number; avg_cold: Avg; avg_warm: Avg }[];
+    by_name: { name: string; n: number; avg_advantage: Avg }[];
+  };
+  by_classification: { classification: string; abc_n: number | null; avg_cold: Avg; avg_warm: Avg; avg_advantage: Avg; ratings_n: number | null; avg_closeness: Avg }[];
+  by_depth: { depth: number; ratings_n: number | null; avg_closeness: Avg; abc_n: number | null; avg_advantage: Avg }[];
+  strength: {
+    ratings_n: number;
+    avg_closeness: Avg;
+    closeness_dist: number[];
+    advantage_by_closeness: { closeness: number; n: number; avg_cold: Avg; avg_warm: Avg; avg_advantage: Avg }[];
+    comfort_by_closeness: { closeness: number; n: number; avg_comfort: Avg; comfort_dist: number[] }[];
+  };
 }
 
 export interface OpenResult {
@@ -193,6 +247,7 @@ export interface MyState {
   experiment?: ExperimentInfo;
   /** Every experiment this person is in (same account). */
   experiments?: { id: string; name: string; current: boolean }[];
+  abc?: { eligible: boolean; completed: boolean };
   feedback_question?: string;
   reveals?: { title: string }[];
   invitations?: MyInvitation[];
@@ -206,6 +261,8 @@ const MESSAGES: Record<string, string> = {
   self_invite: 'You can’t accept your own invitation.',
   consent_required: 'Please agree to take part in the research to continue.',
   invalid_name: 'Please enter a different name.',
+  abc_completed: 'You’ve already answered these. Thank you!',
+  abc_started: 'Your group can’t be changed now.',
   invalid_name_format: 'Enter a first name and last initial, like “James P.”',
   category_required: 'Choose the option that describes you.',
   experiment_paused: 'This experiment is paused right now.',
@@ -267,6 +324,16 @@ export const api = {
       p_device: device,
       p_category: category ?? null,
     }),
+  /** The invitee's closeness to their inviter (and comfort asking them for an introduction). */
+  rateRelationship: (token: string, closeness: number, comfort: number | null) =>
+    rpc('rate_relationship', { p_token: token, p_closeness: closeness, p_comfort: comfort }),
+  getAbc: () => rpc<AbcState>('get_abc'),
+  setMyClassification: (key: string) => rpc('set_my_classification', { p_key: key }),
+  answerAbc: (question: 'cold' | 'warm', value: number) => rpc<AbcState>('answer_abc', { p_question: question, p_value: value }),
+  adminSetExperimentTest: (experimentId: string, isTest: boolean) =>
+    rpc('admin_set_experiment_test', { p_experiment_id: experimentId, p_is_test: isTest }),
+  adminAbcStats: (experimentId: string | null, classification: string | null) =>
+    rpc<AdminAbcStats>('admin_abc_stats', { p_experiment_id: experimentId, p_classification: classification }),
   /** Show another experiment this person is in on the home screen. */
   switchExperiment: (experimentId: string) => rpc('switch_experiment', { p_experiment_id: experimentId }),
   createInvitation: (value: string, label: string | null, ms: number) =>

@@ -19,6 +19,13 @@ const prefersReducedMotion = () =>
  * Types `text` once `run` is true. The full sentence is always laid out (the
  * untyped tail is invisible), so nothing reflows while it types. Screen readers
  * get the whole sentence immediately.
+ *
+ * The caret is a real element that exists only while letters are being added,
+ * so it can never be left behind. (It used to be a pseudo-element faded out
+ * with a CSS transition; iOS Safari and in-app browsers don't always repaint
+ * that, which left a frozen caret on screen.) If the browser pauses the page
+ * mid-typing (a background tab, an in-app browser loading off screen), the
+ * sentence is completed at once instead of resuming with a caret.
  */
 function Typewriter({
   text,
@@ -46,14 +53,19 @@ function Typewriter({
 
   useEffect(() => {
     if (!run || instant) return;
-    // Steady cadence: one letter per interval, at most one per frame. If the
-    // phone drops frames, typing resumes where it was instead of catching up
-    // in a burst, so the caret never jumps.
+    // Steady cadence: one letter per interval, at most one per frame, so the
+    // caret never jumps after a dropped frame.
     let raf = 0;
     let n = 1;
     let last = performance.now();
+    const finish = () => {
+      cancelAnimationFrame(raf);
+      n = text.length;
+      setCount(text.length);
+    };
     setCount(1);
     const tick = (now: number) => {
+      if (now - last > 1000) return finish(); // the page was frozen or hidden
       if (now - last >= msPerChar) {
         n += 1;
         last = now - Math.min(now - last - msPerChar, msPerChar / 2);
@@ -62,7 +74,15 @@ function Typewriter({
       if (n < text.length) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const onHide = () => document.visibilityState === 'hidden' && finish();
+    document.addEventListener('visibilitychange', onHide);
+    // Backstop if animation frames stop entirely: timers still fire.
+    const backstop = window.setTimeout(finish, text.length * msPerChar + 2000);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(backstop);
+      document.removeEventListener('visibilitychange', onHide);
+    };
   }, [run, instant, msPerChar, text.length]);
 
   useEffect(() => {
@@ -74,7 +94,7 @@ function Typewriter({
       <span className="sr-only">{text}</span>
       <span aria-hidden="true">
         {text.slice(0, count)}
-        <span className={`tw-caret ${run && !done ? 'is-on' : ''}`} />
+        {run && !instant && !done && <span className="tw-caret" />}
         <span className="tw-rest">{text.slice(count)}</span>
       </span>
     </p>

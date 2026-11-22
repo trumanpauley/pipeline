@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, inviteUrl, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail } from '../lib/api';
+import { api, inviteUrl, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail } from '../lib/api';
+import { AbcFlow } from '../components/Abc';
+import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, ScaleQuestion } from '../components/Relationship';
 import { supabase } from '../lib/supabase';
 import { navigate } from '../lib/router';
 import { labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
@@ -183,6 +185,9 @@ export function AdminPage({ session }: { session: Session | null }) {
         <AdminTree tree={data.tree} />
         <Legend />
       </Panel>
+
+      <AbcPanel refreshKey={version} />
+      <AbcPreviewPanel />
 
       {cstats && <CommunityPanel stats={cstats} />}
 
@@ -438,7 +443,7 @@ const draftOf = (e?: Experiment): ExperimentDraft => ({
   description: e?.description ?? '',
   invite_instruction: e?.invite_instruction ?? '',
   invites_per_participant: e?.invites_per_participant ?? 2,
-  categories: (e?.categories ?? []).join(', '),
+  categories: e ? e.categories.join(', ') : 'Current Harvard student, Harvard alumnus/alumna',
   status: e?.status ?? 'active',
 });
 
@@ -500,10 +505,18 @@ function ExperimentsPanel({ refreshKey }: { refreshKey: number }) {
                 <h3>{e.name}</h3>
                 <span className={`pill tone-${e.status === 'active' ? 'done' : 'idle'}`}><i />{e.status === 'active' ? 'Active' : 'Paused'}</span>
                 {e.is_default && <span className="muted small"> · original experiment</span>}
+                {e.is_test && <span className="muted small"> · test (left out of ABC analytics)</span>}
               </div>
               <div className="row-actions">
                 <button className="chip" onClick={() => setEditing(draftOf(e))}>Edit</button>
                 <button className="chip" onClick={() => void toggleStatus(e)}>{e.status === 'active' ? 'Pause' : 'Resume'}</button>
+                <button
+                  className="chip"
+                  title="Test experiments are for trying the full flow on a phone; their data stays out of the ABC analytics."
+                  onClick={async () => { await api.adminSetExperimentTest(e.id, !e.is_test).catch((err: Error) => setError(err.message)); await reload(); }}
+                >
+                  {e.is_test ? 'Use as real' : 'Mark as test'}
+                </button>
                 <button className="chip" aria-expanded={open === e.id} onClick={() => setOpen(open === e.id ? null : e.id)}>
                   {open === e.id ? 'Hide links & tree' : 'Seed links & tree'}
                 </button>
@@ -616,6 +629,269 @@ function ExperimentDetailView({ experimentId, onChanged }: { experimentId: strin
         <Legend />
       </div>
     </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// ABC experiment and connection strength
+// ---------------------------------------------------------------------------
+
+const num = (v: number | null | undefined, digits = 2) => (v == null ? '—' : Number(v).toFixed(digits));
+const signed = (v: number | null | undefined) => (v == null ? '—' : `${Number(v) > 0 ? '+' : ''}${Number(v).toFixed(2)}`);
+
+/** Horizontal bars, one or two series per row (dataviz: same scale, labelled values). */
+function BarRows({ rows, legend }: { rows: { label: string; a: number; b?: number; note?: string }[]; legend?: [string, string] }) {
+  const max = Math.max(1, ...rows.flatMap((r) => [Math.abs(r.a), Math.abs(r.b ?? 0)]));
+  return (
+    <div className="dist">
+      {legend && <div className="dist-legend"><span className="sw out" />{legend[0]} <span className="sw accent" />{legend[1]}</div>}
+      {rows.map((r) => (
+        <div className="dist-row abc-row" key={r.label}>
+          <span className="dist-label">{r.label}</span>
+          <div className="dist-bars">
+            <div className="bar-track thin"><div className={`bar ${legend ? 'out' : 'accent'}`} style={{ width: `${(Math.abs(r.a) / max) * 100}%` }} /></div>
+            {r.b !== undefined && <div className="bar-track thin"><div className="bar accent" style={{ width: `${(Math.abs(r.b) / max) * 100}%` }} /></div>}
+          </div>
+          <span className="dist-n">{r.note ?? (r.b !== undefined ? `${r.a} · ${r.b}` : r.a)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Warm vs cold outreach and connection strength, filterable by experiment and group. */
+function AbcPanel({ refreshKey }: { refreshKey: number }) {
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
+  const [exp, setExp] = useState('');
+  const [cls, setCls] = useState('');
+  const [st, setSt] = useState<AdminAbcStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { void api.adminExperiments().then(setExperiments).catch(() => undefined); }, [refreshKey]);
+  useEffect(() => {
+    setError(null);
+    api.adminAbcStats(exp || null, cls || null).then(setSt).catch((e: Error) => setError(e.message));
+  }, [exp, cls, refreshKey]);
+
+  const groups = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of experiments) for (const g of e.abc_scenarios ?? []) if (!m.has(g.key)) m.set(g.key, g.label);
+    return [...m.entries()];
+  }, [experiments]);
+  const groupLabel = (k: string) => groups.find(([key]) => key === k)?.[1] ?? k;
+
+  return (
+    <Panel
+      title="ABC experiment"
+      note="Would people answer Jane/John more readily through an introduction than a cold LinkedIn message, and does that depend on how close they are to the person who introduces them? These are self-reported answers, so read differences as associations, not causes. Previews are never stored, and test experiments are left out unless you pick one here."
+    >
+      <div className="abc-filters">
+        <select className="input" value={exp} onChange={(e) => setExp(e.target.value)} aria-label="Filter by experiment">
+          <option value="">All experiments</option>
+          {experiments.map((e) => <option key={e.id} value={e.id}>{e.name}{e.is_test ? ' (test)' : ''}</option>)}
+        </select>
+        <select className="input" value={cls} onChange={(e) => setCls(e.target.value)} aria-label="Filter by participant group">
+          <option value="">Students and alumni</option>
+          {groups.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+      </div>
+      <ErrorText error={error} />
+      {st && (
+        <>
+          <div className="tiles compact">
+            <Tile label="Eligible" value={st.participation.eligible} sub={`${st.participation.started} started`} />
+            <Tile label="Completed" value={st.participation.completed} sub={`${pct(st.participation.completed, st.participation.eligible)} of eligible`} />
+            <Tile label="Cold (LinkedIn)" value={num(st.outreach.avg_cold)} sub="average, 1–5" />
+            <Tile label="Warm (introduced)" value={num(st.outreach.avg_warm)} sub="average, 1–5" />
+            <Tile label="Introduction advantage" value={signed(st.outreach.avg_advantage)} sub="warm − cold, average" />
+            <Tile label="Connection strength" value={num(st.strength.avg_closeness)} sub={`average of ${st.strength.ratings_n} ratings, 1–5`} />
+          </div>
+
+          <div className="dist-grid">
+            <div>
+              <h3 className="abc-h">Responses, 1 = very unlikely … 5 = very likely</h3>
+              <BarRows
+                legend={['Cold', 'Warm']}
+                rows={[1, 2, 3, 4, 5].map((k) => ({ label: String(k), a: st.outreach.cold_dist?.[k - 1] ?? 0, b: st.outreach.warm_dist?.[k - 1] ?? 0 }))}
+              />
+            </div>
+            <div>
+              <h3 className="abc-h">Introduction advantage (warm − cold), per person</h3>
+              <BarRows rows={(st.outreach.advantage_dist ?? []).map((d) => ({ label: d.advantage > 0 ? `+${d.advantage}` : String(d.advantage), a: d.n }))} />
+            </div>
+            <div>
+              <h3 className="abc-h">Connection strength to the inviter</h3>
+              <BarRows rows={CLOSENESS_LABELS.map((l, i) => ({ label: `${i + 1} · ${l}`, a: st.strength.closeness_dist?.[i] ?? 0 }))} />
+            </div>
+            <div>
+              <h3 className="abc-h">Introduction advantage by connection strength</h3>
+              <BarRows
+                rows={(st.strength.advantage_by_closeness ?? []).map((r) => ({
+                  label: `${r.closeness} · ${CLOSENESS_LABELS[r.closeness - 1]}`,
+                  a: Number(r.avg_advantage ?? 0),
+                  note: r.n ? `${signed(r.avg_advantage)} (n=${r.n})` : '—',
+                }))}
+              />
+            </div>
+          </div>
+
+          <h3 className="abc-h">Connection strength vs comfort asking for an introduction</h3>
+          <Table
+            head={['Strength', 'Ratings', 'Avg comfort (1–5)', 'Comfort 1 · 2 · 3 · 4 · 5']}
+            rows={(st.strength.comfort_by_closeness ?? []).map((r) => [
+              `${r.closeness} · ${CLOSENESS_LABELS[r.closeness - 1]}`, r.n, num(r.avg_comfort), (r.comfort_dist ?? []).join(' · '),
+            ])}
+          />
+          <h3 className="abc-h">By experiment</h3>
+          <Table
+            head={['Experiment', 'Eligible', 'Completed', 'Rate', 'Cold', 'Warm', 'Advantage']}
+            rows={st.by_experiment.map((e) => [e.name, e.eligible, e.completed, pct(e.completed, e.eligible), num(e.avg_cold), num(e.avg_warm), signed(e.avg_advantage)])}
+          />
+          <h3 className="abc-h">Students and alumni</h3>
+          <Table
+            head={['Group', 'ABC answers', 'Cold', 'Warm', 'Advantage', 'Strength ratings', 'Avg strength']}
+            rows={st.by_classification.map((c) => [groupLabel(c.classification), c.abc_n ?? 0, num(c.avg_cold), num(c.avg_warm), signed(c.avg_advantage), c.ratings_n ?? 0, num(c.avg_closeness)])}
+          />
+          <h3 className="abc-h">By generation</h3>
+          <Table
+            head={['Generation', 'Strength ratings', 'Avg strength', 'ABC answers', 'Advantage']}
+            rows={st.by_depth.map((d) => [d.depth, d.ratings_n ?? 0, num(d.avg_closeness), d.abc_n ?? 0, signed(d.avg_advantage)])}
+          />
+          <h3 className="abc-h">Checks for presentation effects</h3>
+          <Table
+            head={['Asked first', 'Answers', 'Cold', 'Warm']}
+            rows={st.outreach.by_order.map((o) => [o.order === 'cold_first' ? 'Cold (LinkedIn)' : 'Warm (introduction)', o.n, num(o.avg_cold), num(o.avg_warm)])}
+          />
+          <Table head={['Name shown', 'Answers', 'Advantage']} rows={st.outreach.by_name.map((n) => [n.name, n.n, signed(n.avg_advantage)])} />
+          <div className="export-row">
+            <ExportButton kind="abc" />
+            <ExportButton kind="relationships" />
+          </div>
+          <p className="muted small">abc.csv and relationships.csv contain random ids only (no names or emails). Generation 1 = joined from a seed link; the ABC questions start at the generation set per experiment (default 3).</p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * Admin-only preview of what participants see: the connection-strength meter,
+ * the comfort question and the ABC questionnaire, for any group, name, order
+ * and generation. Runs entirely in this browser; nothing is saved, so real
+ * analytics stay clean. Open /admin on a phone to try it there.
+ */
+function AbcPreviewPanel() {
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
+  const [expId, setExpId] = useState('');
+  const [group, setGroup] = useState('');
+  const [name, setName] = useState<'Jane' | 'John'>('Jane');
+  const [order, setOrder] = useState<'cold_first' | 'warm_first'>('cold_first');
+  const [depth, setDepth] = useState(3);
+  const [inviter, setInviter] = useState('Alex');
+  const [askComfort, setAskComfort] = useState(true);
+  const [step, setStep] = useState<null | 'closeness' | 'comfort' | 'abc' | 'summary'>(null);
+  const [answers, setAnswers] = useState<{ closeness?: number; comfort?: number; cold?: number; warm?: number }>({});
+
+  useEffect(() => { void api.adminExperiments().then(setExperiments).catch(() => undefined); }, []);
+  const e = experiments.find((x) => x.id === expId) ?? experiments[0];
+  const scenarios = e?.abc_scenarios ?? [];
+  const g = scenarios.find((x) => x.key === group) ?? scenarios[0];
+  const minDepth = e?.abc_min_depth ?? 3;
+  const eligible = Boolean(e?.abc_enabled) && depth >= minDepth;
+  const abcState: AbcState = {
+    eligible: true, name, order, classification: g?.key, inviter_name: inviter || null,
+    scenario: (g?.scenario ?? '').replace('{name}', name), cold: null, warm: null, completed: false,
+  };
+  const start = () => { setAnswers({}); setStep('closeness'); };
+
+  return (
+    <Panel title="Preview participant questions" note="Try the questions exactly as participants see them. Nothing is saved, so previews never reach the analytics.">
+      <div className="preview-controls">
+        <label>Experiment
+          <select className="input" value={e?.id ?? ''} onChange={(ev) => setExpId(ev.target.value)} aria-label="Preview experiment">
+            {experiments.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        </label>
+        <label>Group
+          <select className="input" value={g?.key ?? ''} onChange={(ev) => setGroup(ev.target.value)} aria-label="Preview group">
+            {scenarios.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+          </select>
+        </label>
+        <label>Name
+          <select className="input" value={name} onChange={(ev) => setName(ev.target.value as 'Jane' | 'John')} aria-label="Preview name">
+            <option>Jane</option><option>John</option>
+          </select>
+        </label>
+        <label>Question order
+          <select className="input" value={order} onChange={(ev) => setOrder(ev.target.value as 'cold_first' | 'warm_first')} aria-label="Preview order">
+            <option value="cold_first">Cold first</option><option value="warm_first">Warm first</option>
+          </select>
+        </label>
+        <label>Generation
+          <input className="input" type="number" min={1} max={12} value={depth} onChange={(ev) => setDepth(Math.max(1, Number(ev.target.value) || 1))} aria-label="Preview generation" />
+        </label>
+        <label>Inviter’s first name
+          <input className="input" value={inviter} maxLength={30} onChange={(ev) => setInviter(ev.target.value)} aria-label="Preview inviter name" />
+        </label>
+      </div>
+      <label className="preview-check">
+        <input type="checkbox" checked={askComfort} onChange={(ev) => setAskComfort(ev.target.checked)} />
+        Ask the comfort question too (skipped when it was their assigned relationship question)
+      </label>
+      <p className="muted small" data-testid="preview-eligibility">
+        Generation {depth} {eligible ? 'gets' : 'doesn’t get'} the ABC questions in {e?.name ?? 'this experiment'} (from generation {minDepth}
+        {e && !e.abc_enabled ? ', currently switched off' : ''}). Generation 1 joined from a seed link.
+      </p>
+      <Button onClick={start}>Start preview</Button>
+
+      {(step === 'closeness' || step === 'comfort') && (
+        <div className="preview-layer" role="dialog" aria-modal="true" aria-label="Preview">
+          <Screen className="question-screen">
+            <p className="eyebrow">Preview · nothing is saved</p>
+            {step === 'closeness' ? (
+              <ClosenessMeter
+                name={inviter || 'the person who invited you'}
+                onConfirm={(v) => { setAnswers((a) => ({ ...a, closeness: v })); setStep(askComfort ? 'comfort' : eligible ? 'abc' : 'summary'); }}
+              />
+            ) : (
+              <ScaleQuestion
+                question={COMFORT_QUESTION(inviter || 'the person who invited you')}
+                low="Not at all"
+                high="Completely"
+                onSelect={(v) => { setAnswers((a) => ({ ...a, comfort: v })); setStep(eligible ? 'abc' : 'summary'); }}
+              />
+            )}
+            <button type="button" className="link center-link" onClick={() => setStep(null)}>Exit preview</button>
+          </Screen>
+        </div>
+      )}
+      {step === 'abc' && (
+        <AbcFlow
+          state={abcState}
+          onClassify={async () => undefined}
+          onAnswer={async (q, v) => { setAnswers((a) => ({ ...a, [q]: v })); }}
+          onClose={() => setStep('summary')}
+          onDone={() => setStep('summary')}
+        />
+      )}
+      {step === 'summary' && (
+        <div className="preview-summary" data-testid="preview-summary">
+          <h3 className="abc-h">Preview answers (not saved)</h3>
+          <Table
+            head={['Question', 'Answer']}
+            rows={[
+              ['Connection strength', answers.closeness ? `${answers.closeness} · ${CLOSENESS_LABELS[answers.closeness - 1]}` : '—'],
+              ['Comfort asking for an introduction', answers.comfort ?? '—'],
+              ['Cold (LinkedIn)', answers.cold ?? (eligible ? '—' : 'not shown at this generation')],
+              ['Warm (introduction)', answers.warm ?? (eligible ? '—' : 'not shown at this generation')],
+              ['Introduction advantage', answers.cold && answers.warm ? signed(answers.warm - answers.cold) : '—'],
+            ]}
+          />
+          <button type="button" className="link" onClick={() => setStep(null)}>Close</button>
+        </div>
+      )}
+    </Panel>
   );
 }
 

@@ -9,19 +9,20 @@ import { captchaToken } from '../lib/captcha';
 import { NAME_FORMAT_HELP, NAME_REJECTED, formatName, nameAcceptable } from '../lib/names';
 import { BRAND, COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
+import { COMFORT_QUESTION, ClosenessMeter, ScaleQuestion } from '../components/Relationship';
 import { LandingIntro } from '../components/LandingIntro';
 import { TypedHint } from '../components/TypedHint';
 import { DemoLinks } from './HomePage';
 import { Button, Check, Constellation, ErrorText, Loading, Screen } from '../components/ui';
 
-type Step = 'loading' | 'intro' | 'classify' | 'join' | 'joining' | 'message';
+type Step = 'loading' | 'intro' | 'classify' | 'closeness' | 'comfort' | 'join' | 'joining' | 'message';
 type JoinMode = 'confirm' | 'correct' | 'enter';
 
 /**
  * Onboarding progress for one invitation, kept on this device so a refresh
  * returns to the same step (answered question, name choice, consent).
  */
-interface Progress { answered?: boolean; mode?: JoinMode; name?: string; research?: boolean; category?: string }
+interface Progress { answered?: boolean; rated?: boolean; closeness?: number; mode?: JoinMode; name?: string; research?: boolean; category?: string }
 const progressKey = (token: string) => `px.join.${token}`;
 const progress = {
   get(token: string): Progress {
@@ -122,15 +123,18 @@ export function InvitePage({ token, session }: { token: string; session: Session
           setName(p.name);
           setResearch(p.research);
         }
-        if (r.answered && progress.get(token).answered) restoreProgress();
-        return setStep(r.answered && progress.get(token).answered ? 'join' : 'intro');
+        if (r.answered && progress.get(token).answered) {
+          restoreProgress();
+          return setStep(afterAnswer());
+        }
+        return setStep('intro');
       }
       // Refresh mid-onboarding: go back to where this device left off. (The
       // invitation-level "answered" flag alone isn't enough: a forwarded copy
       // of the link may have been answered by someone else.)
       if (r.answered && progress.get(token).answered) {
         restoreProgress();
-        return setStep('join');
+        return setStep(afterAnswer());
       }
       setStep((s) => (s === 'loading' ? 'intro' : s));
     })();
@@ -167,8 +171,32 @@ export function InvitePage({ token, session }: { token: string; session: Session
     } catch (e) {
       setError((e as Error).message);
     }
-    if (session && info?.already_participant) return setStep('joining');
-    setStep('join');
+    setStep('closeness');
+  };
+
+  /** Where to go once the relationship questions are done (or after a refresh). */
+  function afterAnswer(): Step {
+    if (!progress.get(token).rated) return 'closeness';
+    return session && info?.already_participant ? 'joining' : 'join';
+  }
+
+  // Closeness (1–5), then comfort asking them for an introduction (1–5) unless
+  // that was already their assigned question. Saved against this invitation.
+  const [closeness, setCloseness] = useState<number | null>(null);
+  const saveRating = async (c: number, comfort: number | null) => {
+    try {
+      await api.rateRelationship(token, c, comfort);
+    } catch {
+      /* never block joining on this; the server validates what it stores */
+    }
+    progress.set(token, { rated: true });
+    setStep(session && info?.already_participant ? 'joining' : 'join');
+  };
+  const onCloseness = (c: number) => {
+    setCloseness(c);
+    progress.set(token, { closeness: c });
+    if (info?.method === 'comfort') return void saveRating(c, null);
+    setStep('comfort');
   };
 
   const invitedName = info?.invited_name ?? null;
@@ -253,9 +281,37 @@ export function InvitePage({ token, session }: { token: string; session: Session
     );
   }
 
+  if (step === 'closeness') {
+    return (
+      <Screen className="question-screen">
+        <p className="eyebrow fade-up">One more</p>
+        <div className="fade-up">
+          <ClosenessMeter name={senderName} onConfirm={onCloseness} />
+        </div>
+      </Screen>
+    );
+  }
+
+  if (step === 'comfort') {
+    return (
+      <Screen className="question-screen">
+        <p className="eyebrow fade-up">Last one</p>
+        <div className="fade-up">
+          <ScaleQuestion
+            testId="comfort"
+            question={COMFORT_QUESTION(senderName)}
+            low="Not at all"
+            high="Completely"
+            onSelect={(v) => void saveRating(closeness ?? progress.get(token).closeness ?? 0, v)}
+          />
+        </div>
+      </Screen>
+    );
+  }
+
   if (step === 'classify' && info?.method) {
     return (
-      <Screen className="center">
+      <Screen className="question-screen">
         <p className="eyebrow fade-up">First, one question</p>
         <Classifier method={info.method} name={senderName} onSelect={onClassified} track={{ direction: 'inbound', token }} />
       </Screen>
@@ -280,6 +336,25 @@ export function InvitePage({ token, session }: { token: string; session: Session
           </p>
         </header>
         <div className="join-fields stack">
+          {categories.length > 0 && (
+            <div className="category-choice" role="radiogroup" aria-label={COPY.categoryQuestion}>
+              <p className="fine">{COPY.categoryQuestion}</p>
+              <div className="category-options">
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={category === c}
+                    className={`chip ${category === c ? 'is-selected' : ''}`}
+                    onClick={() => { setCategory(c); setError(null); }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {mode !== 'confirm' && (
             <div className="name-field">
               <TypedHint id="name-hint" text={COPY.nameInstruction} start={nameFocused} />
@@ -300,25 +375,6 @@ export function InvitePage({ token, session }: { token: string; session: Session
             </div>
           )}
           <NameDisclosure />
-          {categories.length > 0 && (
-            <div className="category-choice" role="radiogroup" aria-label={COPY.categoryQuestion}>
-              <p className="fine">{COPY.categoryQuestion}</p>
-              <div className="category-options">
-                {categories.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    aria-checked={category === c}
-                    className={`chip ${category === c ? 'is-selected' : ''}`}
-                    onClick={() => { setCategory(c); setError(null); }}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           {session?.user.email && <p className="muted small">Signed in as {session.user.email}</p>}
           <div className="consents">
             <Check checked={research} onChange={setResearch}>

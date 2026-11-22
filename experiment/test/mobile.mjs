@@ -73,6 +73,21 @@ function fakeKeyboard(kbHeight) {
   }, 60), true);
 }
 
+/** Invitee questions: the assigned relationship question, the strength meter, then comfort (if not already asked). */
+async function answerInvitee(p) {
+  const method = await p.locator('.classifier').getAttribute('data-method');
+  if (await p.locator('.classifier .circular').count()) {
+    await p.locator('.circular-input').focus();
+    await p.keyboard.press('ArrowRight');
+    await p.locator('.classifier').getByRole('button', { name: 'Continue', exact: true }).click();
+  } else {
+    await p.locator('.classifier .option, .classifier .scale-dot').first().click();
+  }
+  await p.locator('.closeness-bar').nth(3).click();
+  await p.locator('.closeness').getByRole('button', { name: 'Continue' }).click();
+  if (method !== 'comfort') await p.getByTestId('comfort').locator('.scale-dot').nth(2).click();
+}
+
 async function keyboardCheck(browser) {
   console.log('Keyboard: each field and its button stay above the keyboard');
   const ctx = await browser.newContext({ ...devices['iPhone 13'] });
@@ -102,15 +117,11 @@ async function keyboardCheck(browser) {
 
   await p.getByText('Fresh invite as a new visitor').click();
   await p.getByRole('button', { name: 'Enter the Experiment' }).click({ timeout: 60000 });
-  if (await p.locator('.classifier .circular').count()) {
-    await p.locator('.circular-input').focus();
-    await p.keyboard.press('ArrowRight');
-    await p.locator('.classifier').getByRole('button', { name: 'Continue', exact: true }).click();
-  } else {
-    await p.locator('.classifier .option, .classifier .scale-dot').first().click();
-  }
+  await p.locator('.classifier').waitFor();
+  await answerInvitee(p);
   await p.getByPlaceholder('First name and last initial').waitFor();
   await p.getByText('I agree to take part in this research on how people are connected.').click();
+  await p.getByRole('radio', { name: 'Current Harvard student' }).click();
   await check('join-name', p.getByPlaceholder('First name and last initial'), p.getByRole('button', { name: 'Continue' }));
   await p.getByPlaceholder('First name and last initial').fill('Maya R.');
   await p.getByRole('button', { name: 'Continue' }).click();
@@ -149,24 +160,35 @@ async function keyboardCheck(browser) {
 }
 
 async function typingCheck(browser) {
-  console.log('Typing: steady letters, caret always visible');
+  console.log('Typing: steady letters; the caret only exists while typing, at the end of the text');
   const ctx = await browser.newContext({ ...devices['iPhone 13'] });
   const p = await ctx.newPage();
   await p.addInitScript(() => {
     window.__ticks = [];
-    window.__caretOff = 0;
     window.__samples = 0;
+    window.__misplaced = 0;
+    window.__caretWhenDone = 0;
     const sample = () => {
-      const typed = document.querySelector('.landing-body [aria-hidden]');
-      const caret = document.querySelector('.landing-body .tw-caret');
-      const full = document.querySelector('.landing-body .sr-only');
-      if (typed && caret && full) {
+      for (const box of document.querySelectorAll('.landing-intro .typewriter')) {
+        const typed = box.querySelector('[aria-hidden]');
+        const full = box.querySelector('.sr-only');
+        const caret = box.querySelector('.tw-caret');
+        if (!typed || !full) continue;
         const n = typed.firstChild?.nodeType === 3 ? typed.firstChild.textContent.length : 0;
-        if (n > 0 && n < full.textContent.length) {
+        const done = n >= full.textContent.length;
+        if (done && caret) window.__caretWhenDone++;
+        if (box.classList.contains('landing-body') && n > 0 && !done) {
           window.__samples++;
-          if (parseFloat(getComputedStyle(caret, '::after').opacity) < 0.3) window.__caretOff++;
-          const last = window.__ticks[window.__ticks.length - 1];
-          if (!last || last[1] !== n) window.__ticks.push([performance.now(), n]);
+          // the caret must sit right after the last typed letter
+          const range = document.createRange();
+          range.setStart(typed.firstChild, n - 1);
+          range.setEnd(typed.firstChild, n);
+          const rects = range.getClientRects();
+          const last = rects[rects.length - 1];
+          const c = caret?.getBoundingClientRect();
+          if (!c || !last || Math.abs(c.left - last.right) > 3 || Math.abs(c.top + c.height / 2 - (last.top + last.height / 2)) > last.height) window.__misplaced++;
+          const prev = window.__ticks[window.__ticks.length - 1];
+          if (!prev || prev[1] !== n) window.__ticks.push([performance.now(), n]);
         }
       }
       requestAnimationFrame(sample);
@@ -179,12 +201,47 @@ async function typingCheck(browser) {
   await p.waitForFunction(() => window.__ticks.length > 15, null, { timeout: 10000 });
   // A busy phone: freeze the main thread for 300ms partway through typing.
   await p.evaluate(() => { const t = performance.now(); while (performance.now() - t < 300) { /* busy */ } });
-  await p.waitForTimeout(4000);
-  const r = await p.evaluate(() => ({ ticks: window.__ticks, off: window.__caretOff, samples: window.__samples }));
+  await p.waitForFunction(() => document.querySelectorAll('.landing-meta.is-shown').length === 1, null, { timeout: 12000 });
+  await p.waitForTimeout(600);
+  const r = await p.evaluate(() => ({ ticks: window.__ticks, samples: window.__samples, misplaced: window.__misplaced, doneCaret: window.__caretWhenDone }));
   const maxJump = Math.max(...r.ticks.slice(1).map((t, i) => t[1] - r.ticks[i][1]));
   report(maxJump <= 1, `never more than one new letter at a time, even after a 300ms freeze (largest: ${maxJump})`);
-  report(r.off === 0, `caret visible in every frame while typing (${r.samples - r.off}/${r.samples})`);
+  report(r.misplaced === 0, `caret right after the last typed letter in every frame (${r.samples - r.misplaced}/${r.samples})`);
+  report(r.doneCaret === 0 && (await p.locator('.tw-caret').count()) === 0, 'no caret left once the text is typed');
   await ctx.close();
+
+  // An in-app browser that pauses the page mid-typing: the sentence completes, no caret is left.
+  const ctx2 = await browser.newContext({ ...devices['iPhone 13'] });
+  const p2 = await ctx2.newPage();
+  await p2.goto(BASE);
+  await p2.getByText('Fresh invite as a new visitor').click({ timeout: 60000 });
+  await p2.waitForFunction(() => document.querySelector('.landing-body .tw-caret'), null, { timeout: 60000 });
+  await p2.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await p2.waitForTimeout(200);
+  const full = await p2.locator('.landing-body .sr-only').innerText();
+  const typed = await p2.evaluate(() => document.querySelector('.landing-body [aria-hidden]').firstChild.textContent);
+  report(typed === full && (await p2.locator('.landing-body .tw-caret').count()) === 0, 'page paused mid-typing: the sentence completes and the caret is gone');
+  await ctx2.close();
+
+  // Small screens: nothing overlaps or is cut off.
+  for (const vp of [{ width: 320, height: 568 }, { width: 375, height: 560 }]) {
+    // An iPhone user agent (a bare headless browser is treated as a link-preview bot).
+    const ctx3 = await browser.newContext({ ...devices['iPhone 13'], viewport: vp, screen: vp });
+    const p3 = await ctx3.newPage();
+    await p3.goto(BASE);
+    await p3.getByText('Fresh invite as a new visitor').click({ timeout: 60000 });
+    await p3.waitForFunction(() => document.querySelector('.landing-meta.is-shown'), null, { timeout: 60000 }); // the in-browser demo database starts first
+    const boxes = await p3.evaluate(() => ['.landing-title', '.landing-body', '.landing-cta', '.landing-follow', '.landing-meta']
+      .map((sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { sel, top: b.top + scrollY, bottom: b.bottom + scrollY, right: b.right }; }));
+    const overlaps = boxes.slice(1).filter((b, i) => b.top < boxes[i].bottom - 1).map((b) => b.sel);
+    const clipped = boxes.filter((b) => b.right > vp.width + 1).map((b) => b.sel);
+    const scrollW = await p3.evaluate(() => document.documentElement.scrollWidth);
+    report(!overlaps.length && !clipped.length && scrollW <= vp.width, `${vp.width}×${vp.height}: typed text never overlaps the button or gets cut off${overlaps.length ? ` (overlap: ${overlaps})` : ''}${clipped.length ? ` (clipped: ${clipped})` : ''}`);
+    await ctx3.close();
+  }
 }
 
 /** The name instruction: types once on first focus (~1.2s), never blocks typing, instant with reduced motion. */
@@ -194,13 +251,8 @@ async function nameHintCheck(browser) {
     await p.goto(BASE);
     await p.getByText('Fresh invite as a new visitor').click({ timeout: 60000 });
     await p.getByRole('button', { name: 'Enter the Experiment' }).click({ timeout: 60000 });
-    if (await p.locator('.classifier .circular').count()) {
-      await p.locator('.circular-input').focus();
-      await p.keyboard.press('ArrowRight');
-      await p.locator('.classifier').getByRole('button', { name: 'Continue', exact: true }).click();
-    } else {
-      await p.locator('.classifier .option, .classifier .scale-dot').first().click();
-    }
+    await p.locator('.classifier').waitFor();
+    await answerInvitee(p);
     await p.getByPlaceholder('First name and last initial').waitFor();
     await p.waitForTimeout(2000); // entrance animation
   };
