@@ -54,6 +54,7 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
     updated_at: u.created_at,
   });
 
+  const passwords = new Map();
   const session = (u) => {
     const now = Math.floor(Date.now() / 1000);
     const access_token = signJwt({
@@ -187,6 +188,13 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
         if (!u) return send(400, { error: 'invalid_grant', error_description: 'Invalid Refresh Token' });
         return send(200, session(u));
       }
+      // Email + password (users created in the dashboard with "Auto Confirm"; no email is sent).
+      if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
+        const email = String(body.email ?? '').toLowerCase();
+        const u = passwords.get(email) === body.password && (await userRow('email', email));
+        if (!u) return send(400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' });
+        return send(200, session(u));
+      }
       if (url.pathname === '/auth/v1/logout') return send(204);
 
       // ---------------- rest rpc ----------------
@@ -222,6 +230,13 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
           `insert into public.invitations (token, sender_name, admin_note)
            values (public.px_new_token(), 'Truman', 'demo') returning token`);
         return send(200, { token: r.rows[0].token });
+      }
+      // Like Supabase → Authentication → Users → Add user (password, auto-confirmed).
+      if (url.pathname === '/__test/create-user' && req.method === 'POST') {
+        const email = String(body.email).toLowerCase();
+        await pool.query(`insert into auth.users (email, email_confirmed_at) values ($1, now()) on conflict (email) do nothing`, [email]);
+        passwords.set(email, body.password);
+        return send(200, { ok: true });
       }
       if (url.pathname === '/__test/code') {
         const phone = url.searchParams.get('phone');

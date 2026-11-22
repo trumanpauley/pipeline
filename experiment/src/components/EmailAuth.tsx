@@ -112,13 +112,21 @@ export function SignIn({
   heading,
   sub,
   allowPhone = true,
+  allowPassword = false,
 }: {
   heading: ReactNode;
   sub?: ReactNode;
   /** Offer "Use phone number instead" (only when phone verification is enabled). */
   allowPhone?: boolean;
+  /**
+   * Offer "Use a password instead" (admins). The account is created in the
+   * Supabase dashboard with a password and "Auto Confirm User", so signing in
+   * never sends an email (and never hits the email rate limit).
+   */
+  allowPassword?: boolean;
 }) {
-  const [mode, setMode] = useState<'email' | 'phone'>('email');
+  const [mode, setMode] = useState<'email' | 'phone' | 'password'>('email');
+  const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
   const [phone, setPhone] = useState('');
@@ -153,6 +161,18 @@ export function SignIn({
       return setSent(true);
     }
     if (!isEmail(email)) return setError('Enter a valid email.');
+    if (mode === 'password') {
+      if (!password) return setError('Enter your password.');
+      setBusy(true);
+      const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+      setBusy(false);
+      if (err) {
+        setError(/invalid login|invalid_credentials/i.test(err.message)
+          ? 'Wrong email or password.'
+          : /rate limit/i.test(err.message) ? 'Too many attempts. Try again in a few minutes.' : err.message);
+      }
+      return; // on success the parent reacts to the new session
+    }
     setBusy(true);
     try {
       await sendCode(email);
@@ -168,12 +188,12 @@ export function SignIn({
     <form className="stack fade-up" onSubmit={submit}>
       <h1 className="title">{heading}</h1>
       {sub && <p className="muted">{sub}</p>}
-      {mode === 'email' ? (
+      {mode !== 'phone' ? (
         <input
           className="input"
           type="email"
           inputMode="email"
-          autoComplete="email"
+          autoComplete={mode === 'password' ? 'username' : 'email'}
           placeholder="you@school.edu"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -191,11 +211,31 @@ export function SignIn({
           aria-label="Phone number"
         />
       )}
+      {mode === 'password' && (
+        <input
+          className="input"
+          type="password"
+          autoComplete="current-password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          aria-label="Password"
+        />
+      )}
       <ErrorText error={error} />
       <Button type="submit" busy={busy}>
-        {mode === 'email' ? 'Email me a sign-in link' : 'Text me a code'}
+        {mode === 'email' ? 'Email me a sign-in link' : mode === 'password' ? 'Sign in' : 'Text me a code'}
       </Button>
-      {canUsePhone && (
+      {allowPassword && mode !== 'phone' && (
+        <button
+          type="button"
+          className="link center-link"
+          onClick={() => { setMode(mode === 'password' ? 'email' : 'password'); setError(null); }}
+        >
+          {mode === 'password' ? 'Email me a sign-in link instead' : 'Use a password instead'}
+        </button>
+      )}
+      {canUsePhone && mode !== 'password' && (
         <button
           type="button"
           className="link center-link"

@@ -172,6 +172,11 @@ project still works if you have to.
    ```sql
    insert into public.admins (email) values ('you@example.com');
    ```
+   **Sign in without emails (recommended):** in **Authentication → Users → Add user → Create new
+   user**, enter the same email and a password and tick **Auto Confirm User**. On `/admin`, tap
+   **Use a password instead**. No email is sent, so Supabase's email limit never gets in the way,
+   and the browser stays signed in. The admin page has a tab per experiment (plus Overview), each
+   showing that group's seed links, tree, numbers, ABC results and question preview.
 3. **Authentication → Sign In / Providers:**
    - Turn on **Allow anonymous sign-ins**. This is what makes onboarding email-free.
    - Keep **Email** enabled with "Confirm email" on (used for optional linking and sign-in).
