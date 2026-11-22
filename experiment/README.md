@@ -156,7 +156,11 @@ trigger that creates a `profiles` row for every new auth user, so sharing a proj
 Pipeline profiles for experiment participants. Table and function names don't collide, so sharing a
 project still works if you have to.
 
-1. **SQL Editor:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
+1. **SQL Editor, new project:** paste all of `supabase/setup.sql` and click **Run**. It's every
+   migration below in one file and one transaction, so it either installs completely or changes
+   nothing. (Regenerate it with `sh scripts/build-setup-sql.sh` after adding a migration.)
+
+   **SQL Editor, existing project:** paste and run, in order, `supabase/migrations/001_experiment_schema.sql`,
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
    `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
    `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
