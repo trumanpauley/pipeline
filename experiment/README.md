@@ -164,8 +164,10 @@ project still works if you have to.
    `002_anonymous_onboarding.sql`, `003_share_tracking.sql`, `004_phone_ready.sql` and
    `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
    `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
-   `010_multi_experiment.sql`, `011_early_access.sql` and `012_connection_strength_abc.sql`. If
-   you've already run some, run only the ones after them.
+   `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
+   `013_copy_safe_name_check.sql`. If you've already run some, run only the ones after them.
+   (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
+   characters and break every name check with "invalid regular expression".)
 2. **Make yourself an admin:**
    ```sql
    insert into public.admins (email) values ('you@example.com');

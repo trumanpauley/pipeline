@@ -126,9 +126,9 @@ begin
   -- digits and ASCII symbols other than ' - .
   if v ~ '[0-9!"#$%&()*+,/:;<=>?@\[\\\]^_`{|}~]' then return 'characters'; end if;
   -- control / invisible / formatting characters
-  if v ~ '[\u0000-\u001F\u007F-\u009F­​-‏ - ⁠-⁯﻿︀-️]' then return 'characters'; end if;
+  if v ~ '[\u0000-\u001F\u007F-\u009F\u00AD\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF\uFE00-\uFE0F]' then return 'characters'; end if;
   -- quote marks other than apostrophes, bullets, arrows, symbols, emoji, full-width ASCII
-  if v ~ '[‚-‟†-‧‰-⁞℀-⯿　-〿！-～\U0001F000-\U0001FFFF]' then return 'characters'; end if;
+  if v ~ '[\u201A-\u201F\u2020-\u2027\u2030-\u205E\u2100-\u2BFF\u3000-\u303F\uFF01-\uFF5E\U0001F000-\U0001FFFF]' then return 'characters'; end if;
   -- must contain a letter, and start with one
   if v ~ '^[\s''’ʼ.\-]' or v !~ '[^\s''’ʼ.\-]' then return 'characters'; end if;
   if v ~ '(.)\1{4,}' then return 'repeat'; end if;
