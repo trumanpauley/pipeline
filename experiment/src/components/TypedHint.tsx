@@ -20,11 +20,14 @@ export function TypedHint({
   start,
   id,
   duration = 1200,
+  className = 'type-hint',
 }: {
   text: string;
   start: boolean;
   id?: string;
   duration?: number;
+  /** Styling hook (the welcome line uses its own). */
+  className?: string;
 }) {
   const [shown, setShown] = useState(0);
 
@@ -76,7 +79,7 @@ export function TypedHint({
   const chars = [...text];
   const typing = start && shown < chars.length;
   return (
-    <p className={`type-hint ${start ? 'is-started' : ''}`} id={id} data-done={shown >= chars.length ? 'true' : 'false'}>
+    <p className={`${className} typed-line ${start ? 'is-started' : ''}`} id={id} data-done={shown >= chars.length ? 'true' : 'false'}>
       <span className="sr-only">{text}</span>
       <span aria-hidden="true">
         {chars.slice(0, shown).join('')}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { api, type OpenResult } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -6,23 +6,21 @@ import { pending, pendingFromSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import { deviceId } from '../lib/device';
 import { captchaToken } from '../lib/captcha';
-import { NAME_FORMAT_HELP, NAME_REJECTED, formatName, nameAcceptable } from '../lib/names';
 import { BRAND, COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
 import { COMFORT_QUESTION, ClosenessMeter, ScaleQuestion } from '../components/Relationship';
 import { LandingIntro } from '../components/LandingIntro';
-import { TypedHint } from '../components/TypedHint';
+import { JoinForm, type Eligibility, type JoinFormState, type JoinMode, type JoinSubmit } from '../components/JoinForm';
 import { DemoLinks } from './HomePage';
-import { Button, Check, Constellation, ErrorText, Loading, Screen } from '../components/ui';
+import { Button, Constellation, Loading, Screen } from '../components/ui';
 
 type Step = 'loading' | 'intro' | 'classify' | 'closeness' | 'comfort' | 'join' | 'joining' | 'message';
-type JoinMode = 'confirm' | 'correct' | 'enter';
 
 /**
  * Onboarding progress for one invitation, kept on this device so a refresh
  * returns to the same step (answered question, name choice, consent).
  */
-interface Progress { answered?: boolean; rated?: boolean; closeness?: number; mode?: JoinMode; name?: string; research?: boolean; category?: string }
+interface Progress { answered?: boolean; rated?: boolean; closeness?: number; mode?: JoinMode; name?: string; research?: boolean; category?: string; eligibility?: Eligibility }
 const progressKey = (token: string) => `px.join.${token}`;
 const progress = {
   get(token: string): Progress {
@@ -42,20 +40,8 @@ export function InvitePage({ token, session }: { token: string; session: Session
   const [message, setMessage] = useState<{ title: string; body?: string; cta?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [name, setName] = useState('');
-  const [research, setResearch] = useState(false);
-  const [joinMode, setJoinMode] = useState<JoinMode>('confirm');
-  const [showData, setShowData] = useState(false);
-  const [category, setCategory] = useState('');
-  // The typed instruction starts the first time the name field is focused, or
-  // on its own after a few seconds on the name screen, whichever comes first.
-  const [nameFocused, setNameFocused] = useState(false);
-  const [hintTimeUp, setHintTimeUp] = useState(false);
-  useEffect(() => {
-    if (step !== 'join' || hintTimeUp) return;
-    const t = window.setTimeout(() => setHintTimeUp(true), 3000);
-    return () => window.clearTimeout(t);
-  }, [step, hintTimeUp]);
+  // What the join form starts with (restored after a refresh, or from a sign-in).
+  const [joinInitial, setJoinInitial] = useState<Partial<JoinFormState>>({});
   const [busy, setBusy] = useState(false);
   const accepting = useRef(false);
   // One open per visit (and per session change): React's dev mode runs effects
@@ -76,12 +62,12 @@ export function InvitePage({ token, session }: { token: string; session: Session
   };
 
   const accept = useCallback(
-    async (p: { name: string; research: boolean; category?: string | null }) => {
+    async (p: { name: string; research: boolean; category?: string | null; eligible?: boolean | null }) => {
       if (accepting.current) return;
       accepting.current = true;
       setStep('joining');
       try {
-        const r = await api.acceptInvitation(token, p.name, p.research, deviceId(), p.category);
+        const r = await api.acceptInvitation(token, p.name, p.research, deviceId(), p.category, p.eligible);
         pending.clear();
         progress.clear(token);
         navigate(r.state === 'already_participant' ? '/?already=1' : '/?welcome=1', true);
@@ -126,10 +112,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
         if (r.already_participant) return setStep(r.answered ? 'joining' : 'intro');
         const p = pendingFromSession(session, token);
         if (p && r.answered) return void accept(p);
-        if (p) {
-          setName(p.name);
-          setResearch(p.research);
-        }
+        if (p) setJoinInitial((j) => ({ ...j, name: p.name, research: p.research }));
         if (r.answered && progress.get(token).answered) {
           restoreProgress();
           return setStep(afterAnswer());
@@ -160,16 +143,10 @@ export function InvitePage({ token, session }: { token: string; session: Session
 
   function restoreProgress() {
     const saved = progress.get(token);
-    if (saved.mode) setJoinMode(saved.mode);
-    if (saved.name) setName(saved.name);
-    if (saved.research) setResearch(true);
-    if (saved.category) setCategory(saved.category);
+    setJoinInitial({
+      mode: saved.mode, name: saved.name, research: saved.research, category: saved.category, eligibility: saved.eligibility,
+    });
   }
-
-  // Remember the name choice and consent as they change (survives a refresh).
-  useEffect(() => {
-    if (step === 'join') progress.set(token, { mode: joinMode, name, research, category });
-  }, [step, joinMode, name, research, category, token]);
 
   const onClassified = async (value: string, ms: number) => {
     try {
@@ -207,14 +184,6 @@ export function InvitePage({ token, session }: { token: string; session: Session
   };
 
   const invitedName = info?.invited_name ?? null;
-  // Links from before "First L." names may carry a first name only: the
-  // recipient then adds their initial (the name field starts filled in).
-  const invitedComplete = invitedName ? formatName(invitedName) : null;
-  const mode: JoinMode = invitedName ? (invitedComplete ? joinMode : 'correct') : 'enter';
-  const categories = info?.experiment?.categories ?? [];
-  useEffect(() => {
-    if (step === 'join' && invitedName && !invitedComplete && !name) setName(`${invitedName} `);
-  }, [step, invitedName, invitedComplete, name]);
 
   // "This invite wasn't meant for me": record it, don't accept, leave the link
   // open for the person it was meant for.
@@ -228,23 +197,12 @@ export function InvitePage({ token, session }: { token: string; session: Session
     );
   };
 
-  const submitJoin = async (e: FormEvent) => {
-    e.preventDefault();
+  // The form has validated everything (name, group, eligibility, consent).
+  const submitJoin = async (v: JoinSubmit) => {
     setError(null);
-    // Confirming uses the inviter's suggestion; otherwise the name they typed.
-    const n = formatName(mode === 'confirm' ? invitedName ?? '' : name);
-    if (!n) return setError(NAME_FORMAT_HELP);
-    if (categories.length && !category) return setError('Choose the option that describes you.');
-    if (!research) return setError('Please agree to take part in the research to continue.');
-    // Check the name before creating anything; the server checks it again on join.
-    setBusy(true);
-    const nameOk = await nameAcceptable(n);
-    setBusy(false);
-    if (!nameOk) return setError(NAME_REJECTED);
-    if (mode !== 'confirm') setName(n);
-    const p = { token, name: n, research, marketing: false, category: categories.length ? category : null };
+    const p = { token, name: v.name, research: v.research, marketing: false, category: v.category };
     pending.set(p);
-    if (signedIn) return void accept(p);
+    if (signedIn) return void accept({ ...p, eligible: v.eligible });
     // No account needed: an anonymous Supabase identity is created silently and
     // kept in this browser, so the participant can come back without signing in.
     setBusy(true);
@@ -252,11 +210,11 @@ export function InvitePage({ token, session }: { token: string; session: Session
       const { error: authError } = await supabase.auth.signInAnonymously({
         options: {
           captchaToken: await captchaToken(),
-          data: { display_name: n, research_consent: true, invite_token: token },
+          data: { display_name: v.name, research_consent: true, invite_token: token },
         },
       });
       if (authError) throw new Error('We couldn’t start your session. Please try again.');
-      await accept(p);
+      await accept({ ...p, eligible: v.eligible });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -325,154 +283,25 @@ export function InvitePage({ token, session }: { token: string; session: Session
     );
   }
 
-  // join: confirm the invited name, correct it, or (seed links) enter one
-  const senderFirst = info?.sender_name ?? null;
-  const ready = research && (categories.length === 0 || Boolean(category)) && (mode === 'confirm' || Boolean(name.trim()));
+  // join: the community's welcome, its membership question (if any), the
+  // participant type, name and consent. Shared with the admin simulator.
   return (
     <Screen className="join-screen">
-      <form className="join-form" onSubmit={submitJoin} data-mode={mode}>
-        <header className="join-intro">
-          <p className="stealth">
-            <span className="stealth-dot" aria-hidden="true" />
-            {COPY.joinEyebrow}
-          </p>
-          <h1 className="join-title">
-            {mode === 'enter' ? COPY.joinSeedTitle : COPY.joinConfirmTitle(invitedName!)}
-          </h1>
-          <p className="muted join-body">
-            {mode === 'enter' ? COPY.joinBody : COPY.joinConfirmBody(senderFirst)}
-          </p>
-        </header>
-
-        <div className="join-fields">
-          {categories.length > 0 && (
-            <div
-              className="segmented"
-              role="radiogroup"
-              aria-label={COPY.categoryQuestion}
-              style={{ ['--n' as string]: categories.length }}
-            >
-              {categories.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  role="radio"
-                  aria-checked={category === c}
-                  className={category === c ? 'is-selected' : ''}
-                  onClick={() => { setCategory(c); setError(null); }}
-                >
-                  {/* allow a line break after "/" ("alumnus/alumna") on narrow screens */}
-                  {c.split('/').map((part, i, all) => (
-                    <span key={i}>{part}{i < all.length - 1 && <>/<wbr /></>}</span>
-                  ))}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {mode !== 'confirm' && (
-            <div className="name-field">
-              <TypedHint id="name-hint" text={COPY.nameInstruction} start={nameFocused || hintTimeUp} />
-              <input
-                key={mode}
-                className={`input ${mode === 'correct' ? 'fade-up' : ''}`}
-                placeholder={COPY.namePlaceholder}
-                autoComplete="name"
-                autoCapitalize="words"
-                autoFocus={mode === 'correct'}
-                enterKeyHint="go"
-                value={name}
-                maxLength={40}
-                onFocus={() => setNameFocused(true)}
-                onChange={(e) => { setName(e.target.value); setError(null); }}
-                aria-label="First name and last initial"
-                aria-describedby="name-hint"
-              />
-            </div>
-          )}
-
-          <div className="join-consent consents">
-            <Check checked={research} onChange={setResearch}>
-              <span className="consent-text">{COPY.joinConsent}</span>{' '}
-              <button
-                type="button"
-                className="link inline"
-                aria-controls="join-about"
-                onClick={(e) => { e.preventDefault(); setShowData(true); }}
-              >
-                Details
-              </button>
-            </Check>
-            <AboutDisclosure open={showData} onToggle={setShowData} />
-          </div>
-
-          <ErrorText error={error} />
-
-          <div className="join-actions">
-            {mode === 'confirm' ? (
-              <>
-                {/* Enabled once the research consent is ticked (and the group chosen, if asked). */}
-                <Button type="submit" busy={busy} disabled={!ready}>{COPY.joinConfirmYes}</Button>
-                <Button variant="secondary" onClick={() => { setJoinMode('correct'); setName(''); setError(null); }}>
-                  {COPY.joinConfirmNo}
-                </Button>
-              </>
-            ) : (
-              <>
-                {/* Enabled once there's a name (and group, if asked) and the research consent is ticked. */}
-                <Button type="submit" busy={busy} disabled={!ready}>Continue</Button>
-                {mode === 'correct' && (
-                  <div className="row-links fade-up">
-                    {invitedComplete && (
-                      <button type="button" className="link" onClick={() => { setJoinMode('confirm'); setError(null); }}>
-                        I’m {invitedName}
-                      </button>
-                    )}
-                    <button type="button" className="link" onClick={wrongRecipient}>{COPY.joinWrongPerson}</button>
-                  </div>
-                )}
-              </>
-            )}
-            {/* Signed in already (e.g. joining a second experiment): say who, quietly. Otherwise nobody signs up. */}
-            <p className="fine text-center join-footer">
-              {session?.user.email ? `Signed in as ${session.user.email}` : COPY.joinFooter}
-            </p>
-          </div>
-        </div>
-      </form>
+      <JoinForm
+        experiment={info?.experiment}
+        invitedName={invitedName}
+        senderFirst={info?.sender_name ?? null}
+        initial={joinInitial}
+        onChange={(st) => { if (step === 'join') progress.set(token, st); }}
+        onSubmit={submitJoin}
+        onWrongRecipient={wrongRecipient}
+        busy={busy}
+        error={error}
+        // Signed in already (e.g. joining a second experiment): say who, quietly. Otherwise nobody signs up.
+        footer={session?.user.email ? `Signed in as ${session.user.email}` : COPY.joinFooter}
+      />
     </Screen>
   );
 }
 
-/**
- * The full research and privacy disclosure, collapsed by default. The consent
- * checkbox covers everything here, and its "Details" link opens it.
- */
-function AboutDisclosure({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
-  return (
-    <details
-      id="join-about"
-      className="about"
-      open={open}
-      onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary>
-        {COPY.aboutTitle}
-        <svg className="about-chevron" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </summary>
-      <div className="about-body">
-        {COPY.about.map((sec) => (
-          <section key={sec.title}>
-            <h2>{sec.title}</h2>
-            <ul>
-              {sec.lines.map((l) => <li key={l}>{l}</li>)}
-            </ul>
-          </section>
-        ))}
-      </div>
-    </details>
-  );
-}
 

@@ -117,6 +117,17 @@ export interface ExperimentInfo {
   invites_per_participant: number;
   status: 'active' | 'paused';
   is_default: boolean;
+  /** One line under "And you are?", e.g. "A small experiment exploring … Harvard Baseball players." */
+  welcome_message?: string | null;
+  /** Optional membership question asked before joining (null = not asked). */
+  eligibility?: EligibilityInfo | null;
+}
+
+export interface EligibilityInfo {
+  question: string;
+  eligible_label: string;
+  ineligible_label: string;
+  ineligible_message: string;
 }
 
 export interface AbcScenario {
@@ -127,6 +138,12 @@ export interface AbcScenario {
 }
 
 export interface Experiment extends ExperimentInfo {
+  // Onboarding settings as stored (the public `eligibility` is derived from these).
+  eligibility_enabled: boolean;
+  eligibility_question: string | null;
+  eligible_label: string;
+  ineligible_label: string;
+  ineligible_message: string | null;
   /** Rehearsal experiment: left out of the ABC / connection-strength analytics. */
   is_test: boolean;
   abc_enabled: boolean;
@@ -261,6 +278,9 @@ const MESSAGES: Record<string, string> = {
   self_invite: 'You can’t accept your own invitation.',
   consent_required: 'Please agree to take part in the research to continue.',
   invalid_name: 'Please enter a different name.',
+  not_eligible: 'This experiment is only for members of this community.',
+  eligibility_question_required: 'Add the eligibility question, or turn screening off.',
+  eligibility_labels_same: 'The two answers need different labels.',
   abc_completed: 'You’ve already answered these. Thank you!',
   abc_started: 'Your group can’t be changed now.',
   invalid_name_format: 'Enter a first name and last initial, like “James P.”',
@@ -332,7 +352,7 @@ export const api = {
   openInvitation: (token: string, device?: string) => rpc<OpenResult>('open_invitation', { p_token: token, p_device: device ?? null }),
   answerInvitation: (token: string, value: string, ms: number) =>
     rpc('answer_invitation', { p_token: token, p_value: value, p_response_ms: ms }),
-  acceptInvitation: (token: string, name: string, research: boolean, device: string, category?: string | null) =>
+  acceptInvitation: (token: string, name: string, research: boolean, device: string, category?: string | null, eligible?: boolean | null) =>
     rpc<{ state: 'joined' | 'already_participant' }>('accept_invitation', {
       p_token: token,
       p_display_name: name,
@@ -340,6 +360,7 @@ export const api = {
       p_marketing_consent: false, // never collected at join; see the waitlist instead
       p_device: device,
       p_category: category ?? null,
+      p_eligible: eligible ?? null,
     }),
   /** The invitee's closeness to their inviter (and comfort asking them for an introduction). */
   rateRelationship: (token: string, closeness: number, comfort: number | null) =>
@@ -417,6 +438,23 @@ export const api = {
       p_invites_per_participant: e.invites_per_participant,
       p_categories: e.categories,
       p_status: e.status,
+    }),
+  adminSaveExperimentOnboarding: (experimentId: string, o: {
+    welcome_message: string;
+    eligibility_enabled: boolean;
+    eligibility_question: string;
+    eligible_label: string;
+    ineligible_label: string;
+    ineligible_message: string;
+  }) =>
+    rpc<ExperimentInfo>('admin_save_experiment_onboarding', {
+      p_experiment_id: experimentId,
+      p_welcome_message: o.welcome_message,
+      p_eligibility_enabled: o.eligibility_enabled,
+      p_eligibility_question: o.eligibility_question,
+      p_eligible_label: o.eligible_label,
+      p_ineligible_label: o.ineligible_label,
+      p_ineligible_message: o.ineligible_message,
     }),
   adminCreateExperimentSeeds: (experimentId: string, count: number, senderName: string, note: string) =>
     rpc<{ id: string; token: string }[]>('admin_create_experiment_seeds', {

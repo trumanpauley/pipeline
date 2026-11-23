@@ -165,7 +165,8 @@ project still works if you have to.
    `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
    `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
    `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
-   `013_copy_safe_name_check.sql`. If you've already run some, run only the ones after them.
+   `013_copy_safe_name_check.sql` and `014_community_onboarding.sql`. If you've already run some,
+   run only the ones after them.
    (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
    characters and break every name check with "invalid regular expression".)
 2. **Make yourself an admin:**
@@ -477,6 +478,31 @@ in `participants.csv` and `invitations.csv`.
 (`px_require_admin`). The `experiments` table and `connections` view aren't readable by
 participants or anonymous visitors. Participants only ever receive their own experiment's public
 details (name, description, instruction, categories).
+
+## Community onboarding (per experiment)
+
+Migration `014`. Each experiment's join screen can speak to its own community. Set this up in the
+admin experiment form under **Join screen**:
+- **Welcome message:** one line under "And you are?", typed in briefly.
+- **Eligibility question (optional):** e.g. "Have you played for Harvard Baseball?". You choose
+  the answer that continues, the answer that stops, and the message shown for "No".
+- **Participant types:** e.g. "Current player, Former player / alumnus".
+
+Experiments without these settings keep their current join screen.
+
+On the join screen, the eligibility question comes first, with nothing pre-selected:
+- **No:** shows the message, with no way to continue.
+- **Yes:** shows the participant types, then the name and consent.
+
+The server re-checks eligibility: a new participant in a screening experiment can't join (and so
+can't create links) without the eligible answer. Only these display settings go into the public
+invitation data. Participant types map to the ABC scenario groups (anything with "alum" →
+alumni; "current" or "student" → student).
+
+The admin **Participant experience simulator** runs the real screens for the chosen group,
+without saving anything: landing, relationship question, connection strength and comfort, the
+join screen (welcome, eligibility, types, name, consent), and the ABC questions when the chosen
+generation qualifies.
 
 ## Connection strength and the ABC experiment
 
