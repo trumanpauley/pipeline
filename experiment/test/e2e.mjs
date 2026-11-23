@@ -95,6 +95,7 @@ psql('supabase/migrations/010_multi_experiment.sql');
 psql('supabase/migrations/011_early_access.sql');
 psql('supabase/migrations/012_connection_strength_abc.sql');
 psql('supabase/migrations/013_copy_safe_name_check.sql');
+psql('supabase/migrations/014_community_onboarding.sql');
 {
   // SQL is pasted into the Supabase editor from a browser, which drops invisible characters:
   // the migrations must not rely on any (013 fixed one that broke every name check).
@@ -254,11 +255,12 @@ async function startJoin(page, link, name, { shots = false, checks = false } = {
       if (shots) await page.waitForTimeout(400), await shot(page, `02c-comfort`);
       await page.getByTestId('comfort').locator('.scale-dot').nth(2).click();
     }
-    // First-name + consent page ("stealth mode")
-    await page.getByText('We’re in stealth mode.').waitFor();
+    // First-name + consent page
+    await page.getByRole('heading', { name: 'And you are?' }).waitFor();
     if (shots) await page.waitForTimeout(1500), await shot(page, `03-name-consent-empty`);
     ok(await page.getByRole('heading', { name: 'And you are?' }).isVisible(), 'seed link (no invited name): "And you are?"');
-    ok(await page.getByText('A quick experiment about how we’re connected.', { exact: true }).isVisible(), 'join page: one short supporting sentence');
+    ok(await page.getByText('We’re in stealth mode.').count() === 0 && await page.getByText('A quick experiment about how we’re connected.').count() === 0
+      && await page.locator('.join-welcome').count() === 0, 'join page: no stealth label or generic sentence (this group has no welcome line)');
     ok(await page.getByText('No sign-up, email or password.', { exact: true }).isVisible(), 'join page: accurate footer (anonymous session, nobody signs up)');
     const about = page.locator('details.about');
     ok(!(await about.evaluate((d) => d.open)) && (await about.locator('summary').innerText()).trim() === 'About this experiment & privacy'
@@ -1113,31 +1115,39 @@ try {
     const abcCsv = fs.readFileSync(await dl.path(), 'utf8');
     ok(abcCsv.split('\n').length === 2 && !/Dave|Bob|@/.test(abcCsv) && ['fictional_name', 'question_order', 'cold', 'warm', 'advantage', 'closeness', 'comfort', 'classification', 'depth', 'inviter_id']
       .every((c) => abcCsv.split('\n')[0].split(',').includes(c)), 'abc.csv: anonymised (no names or emails), one row with every field');
-    // Preview: the participant screens, nothing saved
-    const before = (await q(`select (select count(*) from abc_responses)::int a, (select count(*) from relationship_ratings)::int r`))[0];
-    const prev = adminPage.locator('.panel', { has: adminPage.getByRole('heading', { name: 'Preview participant questions' }) });
+    // Simulator: the real participant screens, in order, nothing saved
+    const before = (await q(`select (select count(*) from abc_responses)::int a, (select count(*) from relationship_ratings)::int r, (select count(*) from participants)::int p, (select count(*) from classification_events)::int e`))[0];
+    const prev = adminPage.locator('.panel', { has: adminPage.getByRole('heading', { name: 'Participant experience simulator' }) });
     await prev.getByLabel('Preview generation').fill('2');
-    ok((await prev.getByTestId('preview-eligibility').innerText()).includes('Generation 2 doesn’t get'), 'preview: generation 2 doesn’t get the ABC questions');
+    ok((await prev.getByTestId('preview-eligibility').innerText()).includes('Generation 2 doesn’t get'), 'simulator: generation 2 doesn’t get the ABC questions');
     await prev.getByLabel('Preview generation').fill('3');
-    await prev.getByLabel('Preview group').selectOption('student');
     await prev.getByLabel('Preview name').selectOption('John');
     await prev.getByLabel('Preview order').selectOption('warm_first');
     await prev.getByLabel('Preview inviter name').fill('Sam');
-    await prev.getByRole('button', { name: 'Start preview' }).click();
+    await prev.getByLabel('Preview relationship question').selectOption('context');
+    await prev.getByRole('button', { name: 'Start simulator' }).click();
+    await adminPage.getByRole('heading', { name: 'Sam invited you.' }).waitFor();
+    await adminPage.getByRole('button', { name: 'Enter the Experiment' }).click();
+    await adminPage.locator('.classifier .option').first().click();
     await adminPage.getByRole('heading', { name: 'How close are you to Sam?' }).waitFor();
     await adminPage.locator('.closeness-bar').nth(4).click();
     await adminPage.locator('.closeness').getByRole('button', { name: 'Continue' }).click();
-    await adminPage.locator('.scale-dot').nth(3).click();
-    await adminPage.locator('.sheet .abc[data-step="intro"]').waitFor();
-    ok((await adminPage.locator('.abc-scenario').innerText()) === 'Imagine John is an incoming Harvard student looking for advice on which classes to take.', 'preview: student scenario with John');
+    await adminPage.getByTestId('comfort').locator('.scale-dot').nth(3).click();
+    await adminPage.getByRole('heading', { name: 'And you are?' }).waitFor();
+    await adminPage.getByPlaceholder(NAME_PH).fill('Sim S.');
+    await adminPage.locator('.preview-layer .consents .check-box').click();
     await adminPage.getByRole('button', { name: 'Continue' }).click();
-    ok((await adminPage.getByTestId('abc-warm').locator('.question').innerText()) === 'How likely would you be to respond if Sam personally introduced John to you?', 'preview: warm question first, as chosen');
+    await adminPage.locator('.sheet .abc[data-step="intro"]').waitFor();
+    ok((await adminPage.locator('.abc-scenario').innerText()) === 'Imagine John is an incoming Harvard student looking for advice on which classes to take.', 'simulator: landing → questions → join → ABC scenario with John');
+    await adminPage.getByRole('button', { name: 'Continue' }).click();
+    ok((await adminPage.getByTestId('abc-warm').locator('.question').innerText()) === 'How likely would you be to respond if Sam personally introduced John to you?', 'simulator: warm question first, as chosen');
     await adminPage.getByTestId('abc-warm').locator('.scale-dot').nth(4).click();
     await adminPage.getByTestId('abc-cold').locator('.scale-dot').nth(0).click();
     await adminPage.getByRole('button', { name: 'Continue' }).click();
     await prev.getByTestId('preview-summary').waitFor();
-    ok((await prev.getByTestId('preview-summary').innerText()).includes('+4.00'), 'preview summary: warm 5, cold 1 → +4');
-    const after = (await q(`select (select count(*) from abc_responses)::int a, (select count(*) from relationship_ratings)::int r`))[0];
+    ok((await prev.getByTestId('preview-summary').innerText()).includes('+4.00') && (await prev.getByTestId('preview-summary').innerText()).includes('Sim S.'), 'simulator summary: name, answers, warm 5 − cold 1 = +4');
+    const after = (await q(`select (select count(*) from abc_responses)::int a, (select count(*) from relationship_ratings)::int r, (select count(*) from participants)::int p, (select count(*) from classification_events)::int e`))[0];
+    ok(after.p === before.p && after.e === before.e, 'simulator creates no participant and logs no question events');
     ok(after.a === before.a && after.r === before.r, 'preview answers are never saved (analytics untouched)');
   }
 
@@ -1416,7 +1426,7 @@ try {
     await VALUE_D(40)(sarah);
     await rate(sarah, 'circular', { closeness: 5, comfort: 4 });
     await sarah.getByRole('heading', { name: 'Are you Sarah S.?' }).waitFor();
-    ok(await sarah.getByText('That’s who Nadia invited.').isVisible() && await sarah.getByText('We’re in stealth mode.').isVisible(), 'confirmation screen: "Are you Sarah S.?" / "That’s who Nadia invited."');
+    ok(await sarah.getByText('That’s who Nadia invited.').isVisible(), 'confirmation screen: "Are you Sarah S.?" / "That’s who Nadia invited."');
     const yes = sarah.getByRole('button', { name: 'Yes, that’s me' });
     ok(await yes.isDisabled() && await sarah.getByRole('button', { name: 'That’s not my name' }).isVisible(), 'two options; "Yes, that’s me" needs consent first');
     await sarah.waitForTimeout(1200);
@@ -1637,6 +1647,7 @@ try {
       await answer(page);
       const form = page.locator('form.join-form');
       await form.waitFor();
+      if (await page.locator('#eligibility-q').count()) await page.getByRole('radio', { name: 'Yes', exact: true }).click();
       if ((await form.getAttribute('data-mode')) === 'enter') await page.getByPlaceholder(NAME_PH).fill(name);
       await page.getByText(CONSENT).click();
       await page.getByRole('radio', { name: category }).click();
@@ -1652,13 +1663,20 @@ try {
     await form.getByLabel('Group description').fill('Current and former Harvard Baseball players.');
     await form.getByLabel('Invitation instruction').fill('Invite two Harvard Baseball players, current or alumni.');
     await form.getByLabel('Invites per participant').fill('2');
-    await form.getByLabel('Participant categories').fill('Current Student, Alumni');
+    await form.getByLabel('Participant categories').fill('Current player, Former player / alumnus');
+    await form.getByLabel('Welcome message').fill('A small experiment exploring the connections between current and former Harvard Baseball players.');
+    await form.getByLabel('Ask an eligibility question').check();
+    await form.getByLabel('Eligibility question', { exact: true }).fill('Have you played for Harvard Baseball?');
+    await form.getByLabel('Ineligible message').fill('This experiment is currently for Harvard Baseball players and alumni. Thanks for your interest.');
     await form.getByRole('button', { name: 'Create experiment' }).click();
     const card = adminPage.locator('.experiment-card[data-experiment="Harvard Baseball"]');
     await card.waitFor();
     const [hb] = await q(`select * from experiments where name = 'Harvard Baseball'`);
-    ok(hb && hb.status === 'active' && hb.invites_per_participant === 2 && JSON.stringify(hb.categories) === '["Current Student","Alumni"]' && !hb.is_default,
-      'admin creates "Harvard Baseball" (description, instruction, 2 invites, Current Student / Alumni) without code changes');
+    ok(hb && hb.status === 'active' && hb.invites_per_participant === 2 && JSON.stringify(hb.categories) === '["Current player","Former player / alumnus"]' && !hb.is_default,
+      'admin creates "Harvard Baseball" (description, instruction, 2 invites, Current player / Former player) without code changes');
+    ok(hb.welcome_message.startsWith('A small experiment exploring') && hb.eligibility_enabled && hb.eligibility_question === 'Have you played for Harvard Baseball?'
+      && hb.eligible_label === 'Yes' && hb.ineligible_label === 'No' && hb.ineligible_message.startsWith('This experiment is currently for Harvard Baseball'),
+      'onboarding settings saved in Supabase: welcome line, eligibility question, answers, message');
     const hs = (await rpcAs(adminJwtE, 'admin_save_experiment', { p_id: null, p_name: 'Harvard Students', p_description: 'Harvard students and alumni.', p_invite_instruction: 'Invite two Harvard students or alumni.', p_invites_per_participant: 2, p_categories: ['Current Student', 'Alumni'], p_status: 'active' })).body;
     ok(hs.id && hs.name === 'Harvard Students' && hs.status === 'active', 'a second experiment: "Harvard Students"');
     ok((await rpcAs(adminJwtE, 'admin_save_experiment', { p_id: null, p_name: 'harvard baseball', p_description: '', p_invite_instruction: '', p_invites_per_participant: 2, p_categories: [], p_status: 'active' })).body.message === 'experiment_name_taken', 'experiment names are unique');
@@ -1686,17 +1704,38 @@ try {
     await james.getByRole('button', { name: 'Enter the Experiment' }).click();
     await answer(james);
     await james.getByRole('heading', { name: 'And you are?' }).waitFor();
+    await james.waitForFunction(() => document.querySelector('.join-welcome')?.getAttribute('data-done') === 'true', null, { timeout: 4000 });
+    ok((await james.locator('.join-welcome [aria-hidden]').innerText()).trim() === 'A small experiment exploring the connections between current and former Harvard Baseball players.'
+      && await james.locator('.join-welcome .type-hint-caret').count() === 0, 'the group’s welcome line types in, and the cursor is gone after');
+    ok(await james.getByText('Have you played for Harvard Baseball?').isVisible() && await james.getByPlaceholder(NAME_PH).count() === 0
+      && await james.getByRole('radio', { name: 'Yes', exact: true }).getAttribute('aria-checked') === 'false'
+      && await james.getByRole('radio', { name: 'No', exact: true }).getAttribute('aria-checked') === 'false', 'eligibility question first, nothing pre-selected');
+    await james.waitForTimeout(400);
+    await shot(james, '49-eligibility-question');
+    await james.getByRole('radio', { name: 'No', exact: true }).click();
+    await james.getByText('This experiment is currently for Harvard Baseball players and alumni. Thanks for your interest.').waitFor();
+    ok(await james.getByPlaceholder(NAME_PH).count() === 0 && await james.getByRole('button', { name: 'Continue' }).count() === 0, '“No”: a short message, and no way to continue');
+    await shot(james, '49b-ineligible');
+    {
+      // The server refuses too: a new participant in a screening group must confirm eligibility.
+      const anonTok = (await (await fetch(`${API}/auth/v1/signup`, { method: 'POST', body: '{}' })).json()).access_token;
+      const r0 = await rpcAs(anonTok, 'accept_invitation', { p_token: hbSeeds[0].token, p_display_name: 'Ivy I.', p_research_consent: true, p_device: 'ineligible-1', p_category: 'Current player' }, '7.7.7.9');
+      const r1 = await rpcAs(anonTok, 'accept_invitation', { p_token: hbSeeds[0].token, p_display_name: 'Ivy I.', p_research_consent: true, p_device: 'ineligible-1', p_category: 'Current player', p_eligible: false }, '7.7.7.9');
+      ok(r0.body.error === 'not_eligible' && r1.body.error === 'not_eligible'
+        && (await q(`select count(*)::int n from participants where display_name = 'Ivy I.'`))[0].n === 0, 'server: no join (and so no links) without the eligible answer');
+    }
+    await james.getByRole('radio', { name: 'Yes', exact: true }).click();
     await james.getByPlaceholder(NAME_PH).fill('james p');
     await james.getByText(CONSENT).click();
     const cont = james.getByRole('button', { name: 'Continue' });
-    ok(await cont.isDisabled() && await james.getByRole('radiogroup', { name: 'Which describes you?' }).isVisible(), 'categories: Continue waits for “Current Student” / “Alumni”');
-    await james.getByRole('radio', { name: 'Alumni' }).click();
+    ok(await cont.isDisabled() && await james.getByRole('radiogroup', { name: 'Which describes you?' }).isVisible(), '“Yes”: participant types appear; Continue waits for one');
+    await james.getByRole('radio', { name: 'Former player / alumnus' }).click();
     await james.waitForTimeout(500);
     await shot(james, '50-experiment-join-category');
     await cont.click();
     await james.locator('.home').waitFor();
     const jamesP = await byName('James P.');
-    ok(jamesP.display_name === 'James P.' && jamesP.category === 'Alumni' && jamesP.experiment_id === hb.id && jamesP.depth === 1 && jamesP.parent_id === null,
+    ok(jamesP.display_name === 'James P.' && jamesP.category === 'Former player / alumnus' && jamesP.classification === 'alumni' && jamesP.experiment_id === hb.id && jamesP.depth === 1 && jamesP.parent_id === null,
       'James P. joined Harvard Baseball from a seed: generation 1, Alumni ("james p" tidied to "James P.")');
     ok(await james.getByText('Harvard Baseball', { exact: true }).isVisible() && await james.getByText('Invite two Harvard Baseball players, current or alumni.').isVisible()
       && await james.getByText('Current and former Harvard Baseball players.').isVisible(), 'home: experiment name, group description and invitation instruction');
@@ -1718,17 +1757,18 @@ try {
     await sarahM.getByRole('button', { name: 'Enter the Experiment' }).click();
     await answer(sarahM);
     await sarahM.getByRole('heading', { name: 'Are you Sarah M.?' }).waitFor();
+    await sarahM.getByRole('radio', { name: 'Yes', exact: true }).click();
     await sarahM.getByText(CONSENT).click();
     ok(await sarahM.getByRole('button', { name: 'Yes, that’s me' }).isDisabled(), 'confirming the invited name also waits for the category');
-    await sarahM.getByRole('radio', { name: 'Current Student' }).click();
+    await sarahM.getByRole('radio', { name: 'Current player' }).click();
     await sarahM.getByRole('button', { name: 'Yes, that’s me' }).click();
     await sarahM.locator('.home').waitFor();
     const sarahMP = (await q(`select * from participants where display_name = 'Sarah M.' and experiment_id = $1`, [hb.id]))[0];
-    ok(sarahMP.parent_id === jamesP.id && sarahMP.depth === 2 && sarahMP.category === 'Current Student', 'Sarah M. joined through James: generation 2, Current Student');
+    ok(sarahMP.parent_id === jamesP.id && sarahMP.depth === 2 && sarahMP.category === 'Current player' && sarahMP.classification === 'student', 'Sarah M. joined through James: generation 2, Current player');
 
     // 5. A second invitation to someone already in: a separate connection, not a second participant
     const ken = await newPhone();
-    await joinExp(ken, `${APP}/join/${hbSeeds[1].token}`, 'Ken L.', 'Current Student');
+    await joinExp(ken, `${APP}/join/${hbSeeds[1].token}`, 'Ken L.', 'Current player');
     const [kenP] = await q(`select * from participants where display_name = 'Ken L.'`);
     const kenJwt = await jwtOf(ken);
     const kenLink = await invite(ken, 'Sarah M.', { share: false });
@@ -1744,7 +1784,7 @@ try {
     // Same name, different person: never merged
     const ken2 = (await rpcAs(kenJwt, 'create_invitation', { p_value: VAL[kenP.method], p_recipient_label: 'Sarah M.' })).body.token;
     const otherSarah = await newPhone();
-    await joinExp(otherSarah, `${APP}/join/${ken2}`, 'Sarah M.', 'Alumni', 'Ken');
+    await joinExp(otherSarah, `${APP}/join/${ken2}`, 'Sarah M.', 'Former player / alumnus', 'Ken');
     const sarahs = await q(`select * from participants where display_name = 'Sarah M.' and experiment_id = $1 order by created_at`, [hb.id]);
     ok(sarahs.length === 2 && sarahs[0].user_id !== sarahs[1].user_id && sarahs[1].parent_id === kenP.id, 'two different people both named “Sarah M.” stay two participants (names are never used to match people)');
     const conns = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'connections' })).body.filter((c) => c.invitee_id === sarahMP.id);
@@ -1816,19 +1856,19 @@ try {
     const st = exps.find((e) => e.id === hb.id).stats;
     ok(st.participants === 4 && st.links_created === 5 && st.seed_links === 2 && st.opened === 5 && st.accepted === 4 && st.secondary_connections === 1 && st.max_depth === 2,
       `Harvard Baseball: ${st.participants} participants, ${st.links_created} links, ${st.opened} opened, ${st.accepted} accepted (+${st.secondary_connections} repeat), depth ${st.max_depth}`);
-    ok(st.categories['Current Student'] === 2 && st.categories.Alumni === 2 && typeof st.median_response_s === 'number', `categories: ${JSON.stringify(st.categories)}; median response ${st.median_response_s}s`);
+    ok(st.categories['Current player'] === 2 && st.categories['Former player / alumnus'] === 2 && typeof st.median_response_s === 'number', `categories: ${JSON.stringify(st.categories)}; median response ${st.median_response_s}s`);
     ok(exps.find((e) => e.is_default).stats.participants >= 5 && exps.length === 3, 'the original experiment keeps all earlier participants');
     const det = (await rpcAs(adminJwtE, 'admin_experiment_detail', { p_experiment_id: hb.id })).body;
     ok(det.tree.length === 4 && det.tree.filter((n) => n.parent === null).length === 2 && det.secondary.length === 1 && det.seeds.length === 2, 'referral tree: 4 people, 2 seed branches, 1 extra connection');
     await adminPage.getByRole('button', { name: 'Refresh' }).click();
     await card.locator('.tile-stat', { hasText: 'Participants' }).getByText('4', { exact: true }).waitFor();
-    ok((await card.locator('.category-split').innerText()).includes('2 Current Student'), 'dashboard card shows the numbers and the student/alumni split');
+    ok((await card.locator('.category-split').innerText()).includes('2 Current player'), 'dashboard card shows the numbers and the student/alumni split');
     if (!(await card.locator('.experiment-detail').count())) await card.getByRole('button', { name: 'Seed links & tree' }).click();
     await card.locator('.experiment-detail svg').waitFor();
     await adminPage.waitForTimeout(800);
     await card.screenshot({ path: path.join(SHOTS, '54-admin-experiment-analytics.png') });
     const pexp = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'participants' })).body.find((r) => r.participant_id === jamesP.id);
-    ok(pexp.experiment_id === hb.id && pexp.category === 'Alumni' && pexp.person_key, 'participants export: experiment, category and a cross-experiment person key');
+    ok(pexp.experiment_id === hb.id && pexp.category === 'Former player / alumnus' && pexp.person_key, 'participants export: experiment, category and a cross-experiment person key');
     const aliceKeys = (await rpcAs(adminJwtE, 'admin_export', { p_kind: 'participants' })).body.filter((r) => r.user_id === alice.user_id).map((r) => r.person_key);
     ok(aliceKeys.length === 2 && aliceKeys[0] === aliceKeys[1], 'the same person has the same key in both experiments');
 
@@ -1850,6 +1890,25 @@ try {
       && await adminPage.getByLabel('Filter by experiment').count() === 0
       && (await adminPage.getByLabel('Preview experiment').inputValue()) === hb.id, 'group tab: only that group (seed links and tree open), its ABC results and preview');
     ok(await adminTabs.getByRole('tab', { name: 'Harvard Students' }).isVisible() && await adminTabs.getByRole('tab', { name: 'The Pipeline Experiment' }).isVisible(), 'a tab for every group saved in Supabase');
+    {
+      // The simulator on this tab shows this group's join screen
+      const sim = adminPage.locator('.panel', { has: adminPage.getByRole('heading', { name: 'Participant experience simulator' }) });
+      await sim.getByLabel('Preview relationship question').selectOption('comfort');
+      await sim.getByRole('button', { name: 'Start simulator' }).click();
+      await adminPage.getByRole('button', { name: 'Enter the Experiment' }).click();
+      await adminPage.locator('.classifier .scale-dot').first().click();
+      await adminPage.locator('.closeness-bar').nth(2).click();
+      await adminPage.locator('.closeness').getByRole('button', { name: 'Continue' }).click();
+      await adminPage.locator('.preview-layer #eligibility-q').waitFor();
+      ok(await adminPage.locator('.join-welcome .sr-only').innerText() === 'A small experiment exploring the connections between current and former Harvard Baseball players.',
+        'simulator (Harvard Baseball tab): the group’s welcome line and eligibility question');
+      await adminPage.getByRole('radio', { name: 'No', exact: true }).click();
+      await adminPage.getByText('This experiment is currently for Harvard Baseball players and alumni. Thanks for your interest.').waitFor();
+      await adminPage.getByRole('radio', { name: 'Yes', exact: true }).click();
+      ok(await adminPage.getByRole('radio', { name: 'Current player' }).isVisible() && await adminPage.getByRole('radio', { name: 'Former player / alumnus' }).isVisible(),
+        'simulator: “No” shows the message; “Yes” shows the group’s participant types');
+      await adminPage.getByRole('button', { name: 'Exit simulator' }).click();
+    }
     await adminPage.waitForTimeout(500);
     await adminPage.screenshot({ path: path.join(SHOTS, '55-admin-group-tab.png') });
     await adminPage.reload();

@@ -17,12 +17,13 @@ import m010 from '../../supabase/migrations/010_multi_experiment.sql?raw';
 import m011 from '../../supabase/migrations/011_early_access.sql?raw';
 import m012 from '../../supabase/migrations/012_connection_strength_abc.sql?raw';
 import m013 from '../../supabase/migrations/013_copy_safe_name_check.sql?raw';
+import m014 from '../../supabase/migrations/014_community_onboarding.sql?raw';
 
 // Like PostgREST: arrays and objects are passed as JSON (not as Postgres arrays).
 const jsonArg = (v: unknown) => (v !== null && typeof v === 'object' ? JSON.stringify(v) : v);
 const CODE = '123456';
 const ADMIN = 'admin@demo.dev';
-const SQL = [shimSql, m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013];
+const SQL = [shimSql, m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014];
 // A new schema gets a new database, so an old demo can't break a newer build.
 const DB_KEY = `pipeline-demo-${SQL.reduce((n, s) => n + s.length, 0)}`;
 

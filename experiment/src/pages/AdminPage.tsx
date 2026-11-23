@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { adminErrorText, api, inviteUrl, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail } from '../lib/api';
+import { adminErrorText, api, inviteUrl, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
 import { AbcFlow } from '../components/Abc';
 import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, ScaleQuestion } from '../components/Relationship';
+import { JoinForm } from '../components/JoinForm';
+import { LandingIntro } from '../components/LandingIntro';
+import { Classifier } from '../components/Classifier';
 import { supabase } from '../lib/supabase';
 import { navigate } from '../lib/router';
-import { labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
+import { COPY, labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
 import { SignIn } from '../components/EmailAuth';
 import { ModerationPanel } from '../components/ModerationPanel';
 import { Tree, type TreeNode } from '../components/Tree';
@@ -471,6 +474,13 @@ type ExperimentDraft = {
   invites_per_participant: number;
   categories: string;
   status: 'active' | 'paused';
+  // Onboarding (shown on the join screen)
+  welcome_message: string;
+  eligibility_enabled: boolean;
+  eligibility_question: string;
+  eligible_label: string;
+  ineligible_label: string;
+  ineligible_message: string;
 };
 
 const draftOf = (e?: Experiment): ExperimentDraft => ({
@@ -481,14 +491,23 @@ const draftOf = (e?: Experiment): ExperimentDraft => ({
   invites_per_participant: e?.invites_per_participant ?? 2,
   categories: e ? e.categories.join(', ') : 'Current Harvard student, Harvard alumnus/alumna',
   status: e?.status ?? 'active',
+  welcome_message: e?.welcome_message ?? '',
+  eligibility_enabled: e?.eligibility_enabled ?? false,
+  eligibility_question: e?.eligibility_question ?? '',
+  eligible_label: e?.eligible_label ?? 'Yes',
+  ineligible_label: e?.ineligible_label ?? 'No',
+  ineligible_message: e?.ineligible_message ?? '',
 });
 
-const saveDraft = (d: ExperimentDraft) =>
-  api.adminSaveExperiment({
+const saveDraft = async (d: ExperimentDraft) => {
+  const saved = await api.adminSaveExperiment({
     ...d,
     invites_per_participant: Number(d.invites_per_participant),
     categories: d.categories.split(',').map((c) => c.trim()).filter(Boolean),
   });
+  await api.adminSaveExperimentOnboarding(saved.id, d);
+  return saved;
+};
 
 /**
  * Experiments: create and edit them, pause/resume, make seed links, and see
@@ -577,7 +596,11 @@ function ExperimentsPanel({ refreshKey, only, onChanged }: { refreshKey: number;
                 {e.description && (<><dt>Group</dt><dd>{e.description}</dd></>)}
                 <dt>Instruction</dt><dd>{e.invite_instruction || <span className="muted">Default (“Invite two people…”)</span>}</dd>
                 <dt>Invites each</dt><dd>{e.invites_per_participant}</dd>
-                <dt>Categories</dt><dd>{e.categories.length ? e.categories.join(' · ') : <span className="muted">Not asked</span>}</dd>
+                <dt>Welcome</dt><dd>{e.welcome_message || <span className="muted">None</span>}</dd>
+                <dt>Eligibility</dt><dd>{e.eligibility_enabled && e.eligibility_question
+                  ? <>{e.eligibility_question} <span className="muted">({e.eligible_label} continues · {e.ineligible_label} stops)</span></>
+                  : <span className="muted">Not asked</span>}</dd>
+                <dt>Participant types</dt><dd>{e.categories.length ? e.categories.join(' · ') : <span className="muted">Not asked</span>}</dd>
               </dl>
             )}
             <div className="tiles compact">
@@ -637,9 +660,42 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
           </select>
         </label>
       </div>
-      <label>Participant categories <span className="muted">(comma-separated; leave empty to not ask)</span>
-        <input className="input" value={d.categories} placeholder="Current Student, Alumni" onChange={(e) => set('categories', e.target.value)} aria-label="Participant categories" />
+      <label>Participant types <span className="muted">(comma-separated, e.g. “Current player, Former player / alumnus”; leave empty to not ask)</span>
+        <input className="input" value={d.categories} placeholder="Current player, Former player / alumnus" onChange={(e) => set('categories', e.target.value)} aria-label="Participant categories" />
       </label>
+      <fieldset className="experiment-onboarding">
+        <legend>Join screen</legend>
+        <label>Welcome message <span className="muted">(one line under “And you are?”)</span>
+          <textarea className="input" rows={2} value={d.welcome_message} maxLength={240}
+            placeholder="A small experiment exploring the connections between current and former Harvard Baseball players."
+            onChange={(e) => set('welcome_message', e.target.value)} aria-label="Welcome message" />
+        </label>
+        <label className="preview-check">
+          <input type="checkbox" checked={d.eligibility_enabled} onChange={(e) => set('eligibility_enabled', e.target.checked)} aria-label="Ask an eligibility question" />
+          Ask an eligibility question first
+        </label>
+        {d.eligibility_enabled && (
+          <>
+            <label>Eligibility question
+              <input className="input" value={d.eligibility_question} maxLength={160} placeholder="Have you played for Harvard Baseball?"
+                onChange={(e) => set('eligibility_question', e.target.value)} aria-label="Eligibility question" />
+            </label>
+            <div className="experiment-form-row">
+              <label>Answer that continues
+                <input className="input" value={d.eligible_label} maxLength={40} onChange={(e) => set('eligible_label', e.target.value)} aria-label="Eligible answer" />
+              </label>
+              <label>Answer that stops
+                <input className="input" value={d.ineligible_label} maxLength={40} onChange={(e) => set('ineligible_label', e.target.value)} aria-label="Ineligible answer" />
+              </label>
+            </div>
+            <label>Message for people who can’t take part
+              <textarea className="input" rows={2} value={d.ineligible_message} maxLength={300}
+                placeholder="This experiment is currently for Harvard Baseball players and alumni. Thanks for your interest."
+                onChange={(e) => set('ineligible_message', e.target.value)} aria-label="Ineligible message" />
+            </label>
+          </>
+        )}
+      </fieldset>
       <ErrorText error={error} />
       <div className="row-actions">
         <Button type="submit" busy={busy}>{d.id ? 'Save changes' : 'Create experiment'}</Button>
@@ -826,58 +882,78 @@ function AbcPanel({ refreshKey, fixedExperiment }: { refreshKey: number; fixedEx
   );
 }
 
+/** The public onboarding settings, as the invitation page receives them. */
+const publicInfo = (e: Experiment): ExperimentInfo => ({
+  ...e,
+  eligibility: e.eligibility_enabled && e.eligibility_question
+    ? {
+        question: e.eligibility_question,
+        eligible_label: e.eligible_label,
+        ineligible_label: e.ineligible_label,
+        ineligible_message: e.ineligible_message || `This experiment is currently for ${e.name} members. Thanks for your interest.`,
+      }
+    : null,
+});
+
+/** Same mapping as the server's px_classify: a participant type → the ABC scenario group. */
+const scenarioKeyFor = (e: Experiment | undefined, label: string | null) => {
+  const scenarios = e?.abc_scenarios ?? [];
+  if (!label) return scenarios[0]?.key;
+  const exact = scenarios.find((s) => s.label.toLowerCase() === label.toLowerCase());
+  if (exact) return exact.key;
+  if (/alum/i.test(label)) return 'alumni';
+  if (/student|undergrad|current/i.test(label)) return 'student';
+  return scenarios[0]?.key;
+};
+
+type SimStep = null | 'landing' | 'classify' | 'closeness' | 'comfort' | 'join' | 'abc' | 'summary';
+
 /**
- * Admin-only preview of what participants see: the connection-strength meter,
- * the comfort question and the ABC questionnaire, for any group, name, order
- * and generation. Runs entirely in this browser; nothing is saved, so real
- * analytics stay clean. Open /admin on a phone to try it there.
+ * Participant experience simulator (admin only): the real invitation screens,
+ * in order, for any group: landing, relationship question, connection
+ * strength, comfort, the join screen with the group's welcome line,
+ * eligibility question and participant types, then the ABC questions when the
+ * chosen generation gets them. Runs entirely in this browser; nothing is
+ * saved, so it never reaches the analytics. Works on a phone at /admin.
  */
 function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [expId, setExpId] = useState(experimentId ?? '');
   useEffect(() => { if (experimentId) setExpId(experimentId); }, [experimentId]);
-  const [group, setGroup] = useState('');
   const [name, setName] = useState<'Jane' | 'John'>('Jane');
   const [order, setOrder] = useState<'cold_first' | 'warm_first'>('cold_first');
   const [depth, setDepth] = useState(3);
   const [inviter, setInviter] = useState('Alex');
-  const [askComfort, setAskComfort] = useState(true);
-  const [step, setStep] = useState<null | 'closeness' | 'comfort' | 'abc' | 'summary'>(null);
-  const [answers, setAnswers] = useState<{ closeness?: number; comfort?: number; cold?: number; warm?: number }>({});
+  const [invitedName, setInvitedName] = useState('');
+  const [method, setMethod] = useState<string>('context');
+  const [step, setStep] = useState<SimStep>(null);
+  const [answers, setAnswers] = useState<{
+    relationship?: string; closeness?: number; comfort?: number; name?: string; category?: string | null; cold?: number; warm?: number;
+  }>({});
 
   useEffect(() => { void api.adminExperiments().then(setExperiments).catch(() => undefined); }, []);
   const e = experiments.find((x) => x.id === expId) ?? experiments[0];
-  const scenarios = e?.abc_scenarios ?? [];
-  const g = scenarios.find((x) => x.key === group) ?? scenarios[0];
   const minDepth = e?.abc_min_depth ?? 3;
   const eligible = Boolean(e?.abc_enabled) && depth >= minDepth;
+  const inviterFirst = inviter.trim() || 'the person who invited you';
+  const key = scenarioKeyFor(e, answers.category ?? null);
+  const scenario = e?.abc_scenarios.find((x) => x.key === key) ?? e?.abc_scenarios[0];
   const abcState: AbcState = {
-    eligible: true, name, order, classification: g?.key, inviter_name: inviter || null,
-    scenario: (g?.scenario ?? '').replace('{name}', name), cold: null, warm: null, completed: false,
+    eligible: true, name, order, classification: scenario?.key, inviter_name: inviter.trim() || null,
+    scenario: (scenario?.scenario ?? '').replace('{name}', name), cold: null, warm: null, completed: false,
   };
-  const start = () => { setAnswers({}); setStep('closeness'); };
+  const start = () => { setAnswers({}); setStep('landing'); };
+  const afterRating = () => setStep('join');
 
   return (
-    <Panel title="Preview participant questions" note="Try the questions exactly as participants see them. Nothing is saved, so previews never reach the analytics.">
+    <Panel
+      title="Participant experience simulator"
+      note="The real invitation screens for the chosen group: landing, relationship questions, the join screen (welcome line, eligibility question, participant types, name, consent) and the ABC questions. Nothing is saved, so it never reaches the analytics."
+    >
       <div className="preview-controls">
-        <label>Experiment
+        <label>Group
           <select className="input" value={e?.id ?? ''} onChange={(ev) => setExpId(ev.target.value)} aria-label="Preview experiment">
             {experiments.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-          </select>
-        </label>
-        <label>Group
-          <select className="input" value={g?.key ?? ''} onChange={(ev) => setGroup(ev.target.value)} aria-label="Preview group">
-            {scenarios.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
-          </select>
-        </label>
-        <label>Name
-          <select className="input" value={name} onChange={(ev) => setName(ev.target.value as 'Jane' | 'John')} aria-label="Preview name">
-            <option>Jane</option><option>John</option>
-          </select>
-        </label>
-        <label>Question order
-          <select className="input" value={order} onChange={(ev) => setOrder(ev.target.value as 'cold_first' | 'warm_first')} aria-label="Preview order">
-            <option value="cold_first">Cold first</option><option value="warm_first">Warm first</option>
           </select>
         </label>
         <label>Generation
@@ -886,36 +962,77 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
         <label>Inviter’s first name
           <input className="input" value={inviter} maxLength={30} onChange={(ev) => setInviter(ev.target.value)} aria-label="Preview inviter name" />
         </label>
+        <label>Name the inviter typed <span className="muted">(empty = seed link)</span>
+          <input className="input" value={invitedName} maxLength={40} placeholder="e.g. Sam K." onChange={(ev) => setInvitedName(ev.target.value)} aria-label="Preview invited name" />
+        </label>
+        <label>Relationship question
+          <select className="input" value={method} onChange={(ev) => setMethod(ev.target.value)} aria-label="Preview relationship question">
+            {(Object.keys(METHODS) as MethodKey[]).map((m) => <option key={m} value={m}>{methodDef(m).adminName}</option>)}
+          </select>
+        </label>
+        <label>ABC name
+          <select className="input" value={name} onChange={(ev) => setName(ev.target.value as 'Jane' | 'John')} aria-label="Preview name">
+            <option>Jane</option><option>John</option>
+          </select>
+        </label>
+        <label>ABC question order
+          <select className="input" value={order} onChange={(ev) => setOrder(ev.target.value as 'cold_first' | 'warm_first')} aria-label="Preview order">
+            <option value="cold_first">Cold first</option><option value="warm_first">Warm first</option>
+          </select>
+        </label>
       </div>
-      <label className="preview-check">
-        <input type="checkbox" checked={askComfort} onChange={(ev) => setAskComfort(ev.target.checked)} />
-        Ask the comfort question too (skipped when it was their assigned relationship question)
-      </label>
       <p className="muted small" data-testid="preview-eligibility">
-        Generation {depth} {eligible ? 'gets' : 'doesn’t get'} the ABC questions in {e?.name ?? 'this experiment'} (from generation {minDepth}
+        Generation {depth} {eligible ? 'gets' : 'doesn’t get'} the ABC questions in {e?.name ?? 'this group'} (from generation {minDepth}
         {e && !e.abc_enabled ? ', currently switched off' : ''}). Generation 1 joined from a seed link.
+        {e?.eligibility_enabled && e.eligibility_question ? ` Eligibility question: “${e.eligibility_question}”` : ' No eligibility question.'}
       </p>
-      <Button onClick={start}>Start preview</Button>
+      <Button onClick={start}>Start simulator</Button>
 
-      {(step === 'closeness' || step === 'comfort') && (
-        <div className="preview-layer" role="dialog" aria-modal="true" aria-label="Preview">
-          <Screen className="question-screen">
-            <p className="eyebrow">Preview · nothing is saved</p>
-            {step === 'closeness' ? (
-              <ClosenessMeter
-                name={inviter || 'the person who invited you'}
-                onConfirm={(v) => { setAnswers((a) => ({ ...a, closeness: v })); setStep(askComfort ? 'comfort' : eligible ? 'abc' : 'summary'); }}
+      {step && step !== 'summary' && step !== 'abc' && (
+        <div className="preview-layer" role="dialog" aria-modal="true" aria-label="Simulator">
+          <button type="button" className="chip preview-exit" onClick={() => setStep(null)}>Exit simulator</button>
+          {step === 'landing' && (
+            <Screen className="center landing">
+              <LandingIntro senderName={inviter.trim() || null} onEnter={() => setStep('classify')} />
+            </Screen>
+          )}
+          {step === 'classify' && (
+            <Screen className="question-screen">
+              <p className="eyebrow fade-up">First, one question</p>
+              <Classifier method={method} name={inviterFirst} onSelect={(v) => { setAnswers((a) => ({ ...a, relationship: v })); setStep('closeness'); }} />
+            </Screen>
+          )}
+          {(step === 'closeness' || step === 'comfort') && (
+            <Screen className="question-screen">
+              <p className="eyebrow">{step === 'closeness' ? 'One more' : 'Last one'}</p>
+              {step === 'closeness' ? (
+                <ClosenessMeter
+                  name={inviterFirst}
+                  onConfirm={(v) => { setAnswers((a) => ({ ...a, closeness: v })); if (method === 'comfort') afterRating(); else setStep('comfort'); }}
+                />
+              ) : (
+                <ScaleQuestion
+                  testId="comfort"
+                  question={COMFORT_QUESTION(inviterFirst)}
+                  low="Not at all"
+                  high="Completely"
+                  onSelect={(v) => { setAnswers((a) => ({ ...a, comfort: v })); afterRating(); }}
+                />
+              )}
+            </Screen>
+          )}
+          {step === 'join' && e && (
+            <Screen className="join-screen">
+              <JoinForm
+                preview
+                experiment={publicInfo(e)}
+                invitedName={invitedName.trim() || null}
+                senderFirst={inviter.trim() || null}
+                footer={COPY.joinFooter}
+                onSubmit={(v) => { setAnswers((a) => ({ ...a, name: v.name, category: v.category })); setStep(eligible ? 'abc' : 'summary'); }}
               />
-            ) : (
-              <ScaleQuestion
-                question={COMFORT_QUESTION(inviter || 'the person who invited you')}
-                low="Not at all"
-                high="Completely"
-                onSelect={(v) => { setAnswers((a) => ({ ...a, comfort: v })); setStep(eligible ? 'abc' : 'summary'); }}
-              />
-            )}
-            <button type="button" className="link center-link" onClick={() => setStep(null)}>Exit preview</button>
-          </Screen>
+            </Screen>
+          )}
         </div>
       )}
       {step === 'abc' && (
@@ -929,12 +1046,15 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
       )}
       {step === 'summary' && (
         <div className="preview-summary" data-testid="preview-summary">
-          <h3 className="abc-h">Preview answers (not saved)</h3>
+          <h3 className="abc-h">Simulator answers (not saved)</h3>
           <Table
             head={['Question', 'Answer']}
             rows={[
+              ['Relationship question', answers.relationship ?? '—'],
               ['Connection strength', answers.closeness ? `${answers.closeness} · ${CLOSENESS_LABELS[answers.closeness - 1]}` : '—'],
-              ['Comfort asking for an introduction', answers.comfort ?? '—'],
+              ['Comfort asking for an introduction', answers.comfort ?? (method === 'comfort' ? 'their assigned question' : '—')],
+              ['Name', answers.name ?? '—'],
+              ['Participant type', answers.category ?? '—'],
               ['Cold (LinkedIn)', answers.cold ?? (eligible ? '—' : 'not shown at this generation')],
               ['Warm (introduction)', answers.warm ?? (eligible ? '—' : 'not shown at this generation')],
               ['Introduction advantage', answers.cold && answers.warm ? signed(answers.warm - answers.cold) : '—'],
