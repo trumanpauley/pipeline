@@ -75,7 +75,13 @@ $$;
 -- Joining: eligibility is confirmed on the server too
 -- ---------------------------------------------------------------------------
 
-alter function public.accept_invitation(text, text, boolean, boolean, text, text) rename to px_accept_invitation_v13;
+-- Safe to run twice: only rename the 013 version if that hasn't happened yet.
+do $$
+begin
+  if to_regprocedure('public.px_accept_invitation_v13(text, text, boolean, boolean, text, text)') is null then
+    alter function public.accept_invitation(text, text, boolean, boolean, text, text) rename to px_accept_invitation_v13;
+  end if;
+end $$;
 
 create or replace function public.accept_invitation(
   p_token text,
