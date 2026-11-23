@@ -446,7 +446,7 @@ tr:last-child td { border-bottom: 0; }
 }
 
 /* ---------- first name + consent ("stealth mode") ---------- */
-.join-form { gap: 28px; }
+.join-form { display: flex; flex-direction: column; gap: 30px; }
 .join-intro { display: flex; flex-direction: column; gap: 14px; }
 .stealth {
   margin: 0; display: inline-flex; align-items: center; gap: 10px;
@@ -463,7 +463,7 @@ tr:last-child td { border-bottom: 0; }
   text-wrap: balance; animation: blurIn 1s var(--ease) 0.35s both;
 }
 .join-body { font-size: 17px; line-height: 1.45; animation: fadeUp 0.8s var(--ease) 0.7s both; }
-.join-fields { gap: 16px; animation: fadeUp 0.8s var(--ease) 0.95s both; }
+.join-fields { display: flex; flex-direction: column; gap: 18px; animation: fadeUp 0.8s var(--ease) 0.95s both; }
 /* Name entry: the instruction types itself in above the field on first focus.
    Its line is reserved up front, so the field never moves while it types. */
 .name-field { display: flex; flex-direction: column; gap: 8px; }
@@ -627,3 +627,53 @@ tr:last-child td { border-bottom: 0; }
 .admin-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: -4px 0 4px; position: sticky; top: 0; z-index: 5; background: var(--bg); padding-block: 8px; }
 .admin-tabs::-webkit-scrollbar { display: none; }
 .admin-tabs .chip { white-space: nowrap; flex: none; }
+
+/* ---------- join screen: minimal ---------- */
+/* Content starts a little below the top (not floating mid-screen), so the
+   name field and Continue stay together above the keyboard on small iPhones. */
+.screen.join-screen .screen-inner { justify-content: flex-start; padding-top: clamp(4px, calc(var(--vv-h, 100dvh) * 0.09 - 12px), 80px); }
+.join-body { font-size: 17px; }
+
+/* Group: two equal, compact options */
+.segmented {
+  display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 4px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+}
+.segmented button {
+  appearance: none; border: 0; background: transparent; color: var(--text-2); cursor: pointer;
+  min-height: 48px; padding: 8px 10px; border-radius: 12px; font: inherit; font-size: 15px; font-weight: 520; line-height: 1.2;
+  text-wrap: balance; transition: background 0.2s var(--ease), color 0.2s;
+}
+.segmented button.is-selected { background: var(--text); color: var(--bg); }
+.segmented button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.join-consent { display: flex; flex-direction: column; gap: 10px; }
+
+/* "About this experiment & privacy": collapsed by default, quiet chevron */
+.about { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.about summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 44px; font-size: 14px; color: var(--text-2);
+}
+.about summary::-webkit-details-marker { display: none; }
+.about-chevron { color: var(--text-3); transition: transform 0.25s var(--ease); flex: none; }
+.about[open] .about-chevron { transform: rotate(180deg); }
+.about-body { display: flex; flex-direction: column; gap: 14px; padding: 2px 0 16px; animation: fadeUp 0.35s var(--ease) both; }
+.about-body h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: var(--text); }
+.about-body ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+
+.join-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.join-footer { color: var(--text-3); overflow-wrap: anywhere; }
+@media (max-width: 360px) { .segmented button { font-size: 14px; padding: 8px 6px; } }
+/* Short screens (iPhone SE, browser bars showing): tighter, so Continue stays in view. */
+@media (max-height: 640px) {
+  .screen.join-screen { padding-top: max(14px, env(safe-area-inset-top)); }
+  .screen.join-screen .screen-inner { padding-top: 0; }
+  .join-form { gap: 20px; }
+  .join-intro { gap: 10px; }
+  .join-fields { gap: 14px; }
+  .join-title { font-size: 30px; }
+  .join-body { font-size: 16px; }
+  .segmented button { min-height: 44px; }
+  .join-actions { margin-top: 2px; }
+}

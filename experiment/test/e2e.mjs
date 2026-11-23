@@ -165,7 +165,7 @@ const visibleBrand = (page) => page.evaluate(() => [
 const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 /** "Alice" → "Alice A." (participants now give a first name and last initial). */
 const full = (n) => (/ \S\.?$/u.test(n) ? n : `${n} ${[...n][0].toUpperCase()}.`);
-const NAME_PH = 'First name and last initial';
+const NAME_PH = 'First name, last initial';
 const byName = async (name) => (await q(`select * from participants where display_name in ($1, $2) and deleted_at is null order by created_at`, [name, full(name)]))[0];
 const authUser = async (id) => (await q(`select * from auth.users where id = $1`, [id]))[0];
 const jwtOf = (page) => page.evaluate(() => {
@@ -210,7 +210,7 @@ async function rate(page, method, { closeness = 4, comfort = 3 } = {}) {
 }
 
 /** Landing → relationship question → name + consent. Returns at the join result. */
-const CONSENT = 'I agree to take part in this research on how people are connected.';
+const CONSENT = 'I agree to take part in this research.';
 async function startJoin(page, link, name, { shots = false, checks = false } = {}) {
   await page.goto(link);
   await page.getByRole('heading', { name: /invited you\.$/ }).waitFor();
@@ -258,8 +258,13 @@ async function startJoin(page, link, name, { shots = false, checks = false } = {
     await page.getByText('We’re in stealth mode.').waitFor();
     if (shots) await page.waitForTimeout(1500), await shot(page, `03-name-consent-empty`);
     ok(await page.getByRole('heading', { name: 'And you are?' }).isVisible(), 'seed link (no invited name): "And you are?"');
-    ok(await page.getByText('Participate in our experiment to discover our name and what we’re building.').isVisible(), 'join page: supporting text');
-    ok(await page.getByText('No account needed.', { exact: true }).isVisible(), 'join page: "No account needed." footer');
+    ok(await page.getByText('A quick experiment about how we’re connected.', { exact: true }).isVisible(), 'join page: one short supporting sentence');
+    ok(await page.getByText('No sign-up, email or password.', { exact: true }).isVisible(), 'join page: accurate footer (anonymous session, nobody signs up)');
+    const about = page.locator('details.about');
+    ok(!(await about.evaluate((d) => d.open)) && (await about.locator('summary').innerText()).trim() === 'About this experiment & privacy'
+      && !(await page.getByText('We record how people describe their connections').first().isVisible()), 'details collapsed by default under "About this experiment & privacy"');
+    const words = (await page.locator('form.join-form').innerText()).split(/\s+/).filter(Boolean).length;
+    ok(words <= 45, `main screen kept short (${words} words visible)`);
     ok(await page.getByText('Invite two people. Find out what this is.').count() === 0, 'old headline removed');
     const cont = page.getByRole('button', { name: 'Continue' });
     const field = page.getByPlaceholder(NAME_PH);
@@ -267,7 +272,7 @@ async function startJoin(page, link, name, { shots = false, checks = false } = {
     ok(await cont.isDisabled(), 'Continue disabled with no name and no consent');
     // Typed instruction: waits for the first focus, types once, then stays.
     ok(!(await hint.getAttribute('class')).includes('is-started') && (await hint.locator('[aria-hidden]').innerText()).trim() === '', 'name instruction hidden until the field is focused');
-    ok(await page.getByText('We use your first name and last initial to identify you within this networking experiment. Your name may be visible to people participating in your invitation chain.').isVisible(), 'name disclosure shown');
+    ok(await page.getByText('We use your first name and last initial to identify you within this networking experiment. Your name may be visible to people participating in your invitation chain.').count() === 1, 'name disclosure kept (inside the details)');
     const boxBefore = await field.boundingBox();
     await field.click();
     await page.waitForTimeout(350);
@@ -281,15 +286,20 @@ async function startJoin(page, link, name, { shots = false, checks = false } = {
     await page.locator('.join-title').click();
     await field.click();
     ok((await hint.getAttribute('data-done')) === 'true' && (await hint.locator('.type-hint-caret').count()) === 0, 'refocusing does not restart the animation');
-    await page.getByRole('button', { name: 'More about privacy' }).click();
-    ok(await page.getByText('Other participants don’t see your name. The network view shows people as anonymous dots.').isVisible(), 'longer privacy explanation available');
+    await page.locator('details.about summary').click();
+    ok(await page.getByText('Other participants don’t see your name. The network view shows people as anonymous dots.').isVisible()
+      && await page.getByText('We use your first name and last initial to identify you within this networking experiment. Your name may be visible to people participating in your invitation chain.').isVisible()
+      && await page.getByText('You can delete your data at any time from “Your data”.').isVisible(), 'tapping it shows the full research and privacy details');
+    if (shots) await page.waitForTimeout(400), await shot(page, `03-about-open`);
+    await page.locator('details.about summary').click();
     await field.fill(name);
     ok(await cont.isDisabled(), 'Continue still disabled with a name but no consent');
     await field.fill('   ');
     await page.getByText(CONSENT).click();
     ok(await cont.isDisabled(), 'Continue disabled with consent but a blank name');
-    await page.getByRole('button', { name: 'How data is used' }).click();
-    ok(await page.getByText('We record how people describe their connections and how invitations spread.').isVisible(), 'consent details still accessible');
+    await page.getByRole('button', { name: 'Details' }).click();
+    ok(await page.locator('details.about').evaluate((d) => d.open) && await page.getByText('Analysis is aggregate. Nobody sees how you described them.').isVisible()
+      && await page.locator('.join-consent input[type=checkbox]').isChecked(), 'the consent’s "Details" link opens the disclosures (without unticking consent)');
     ok(!(await visibleBrand(page)).includes('Pipeline'), 'join page: no "Pipeline" anywhere (page, tab, share tags)');
     // First name + last initial only.
     for (const bad of [name, `${name} Anderson`]) {
@@ -1293,7 +1303,7 @@ try {
     ok(theoPct >= 59 && theoPct <= 61 && (await theo.locator('.circular-label').innerText()) === 'Well', `mouse drag → ${theoPct}% · Well`);
     await theo.locator('.circular').getByRole('button', { name: 'Continue', exact: true }).click();
     await rate(theo, 'circular');
-    await completeJoin(theo, 'Theo', { consentBox: true }); // wide screen: click the box, not the sentence (it holds the "How data is used" link)
+    await completeJoin(theo, 'Theo', { consentBox: true }); // wide screen: click the box, not the sentence (it holds the "Details" link)
     await theo.locator('.home').waitFor();
 
     // --- 0% is a valid, deliberate answer ---

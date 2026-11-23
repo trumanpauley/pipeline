@@ -107,9 +107,11 @@ export const COPY = {
   // First-name + consent page (after the relationship question). Never name the company here.
   joinEyebrow: 'We’re in stealth mode.',
   joinTitle: 'The more you connect, the more we reveal.',
-  joinBody: 'Participate in our experiment to discover our name and what we’re building.',
-  joinConsent: 'I agree to take part in this research on how people are connected.',
-  joinFooter: 'No account needed.',
+  joinBody: 'A quick experiment about how we’re connected.',
+  joinConsent: 'I agree to take part in this research.',
+  // Accurate: a private anonymous session is created in this browser; nobody signs up.
+  joinFooter: 'No sign-up, email or password.',
+  aboutTitle: 'About this experiment & privacy',
   // When the inviter gave a name: the recipient confirms or corrects it.
   joinConfirmTitle: (invited: string) => `Are you ${invited}?`,
   joinConfirmBody: (sender: string | null) => (sender ? `That’s who ${sender} invited.` : 'That’s who this invitation is for.'),
@@ -120,7 +122,7 @@ export const COPY = {
   joinSeedTitle: 'And you are?',
   // Name entry: first name and last initial ("James P.").
   nameInstruction: 'Enter your first name and last initial.',
-  namePlaceholder: 'First name and last initial',
+  namePlaceholder: 'First name, last initial',
   nameDisclosure:
     'We use your first name and last initial to identify you within this networking experiment. Your name may be visible to people participating in your invitation chain.',
   namePrivacy: [
@@ -136,7 +138,40 @@ export const COPY = {
   research: [
     'We record how people describe their connections and how invitations spread.',
     'Analysis is aggregate. Nobody sees how you described them.',
-    'Your name is shown only to people you invite.',
     'You can delete your data at any time.',
+  ],
+  /** The full disclosure behind "About this experiment & privacy" (the consent covers all of it). */
+  about: [
+    {
+      title: 'The experiment',
+      lines: [
+        'We’re a Harvard student startup studying how people are connected. You’ll discover our name and what we’re building as you take part.',
+        'It takes about two minutes and is voluntary. You can stop at any point.',
+      ],
+    },
+    {
+      title: 'What we record',
+      lines: [
+        'How you describe your connection to the person who invited you, the people you invite, how invitations spread, and which experiment you’re in.',
+        'Analysis is aggregate. Nobody sees how you described them.',
+      ],
+    },
+    {
+      title: 'Your name',
+      lines: [
+        'We use your first name and last initial to identify you within this networking experiment. Your name may be visible to people participating in your invitation chain.',
+        'People you invite see your first name when they open your link. Whoever invited you typed your name, and sees when you join.',
+        'Other participants don’t see your name. The network view shows people as anonymous dots.',
+        'The research team sees names and the invitation network to run and study the experiment.',
+        'If you join more than one experiment, your participations are linked through this browser’s sign-in, never by matching names.',
+      ],
+    },
+    {
+      title: 'Your choices',
+      lines: [
+        'We never ask for a full surname, an email or a password.',
+        'You can delete your data at any time from “Your data”.',
+      ],
+    },
   ],
 };

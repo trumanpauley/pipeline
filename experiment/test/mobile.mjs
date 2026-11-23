@@ -119,11 +119,11 @@ async function keyboardCheck(browser) {
   await p.getByRole('button', { name: 'Enter the Experiment' }).click({ timeout: 60000 });
   await p.locator('.classifier').waitFor();
   await answerInvitee(p);
-  await p.getByPlaceholder('First name and last initial').waitFor();
-  await p.getByText('I agree to take part in this research on how people are connected.').click();
+  await p.getByPlaceholder('First name, last initial').waitFor();
+  await p.getByText('I agree to take part in this research.').click();
   await p.getByRole('radio', { name: 'Current Harvard student' }).click();
-  await check('join-name', p.getByPlaceholder('First name and last initial'), p.getByRole('button', { name: 'Continue' }));
-  await p.getByPlaceholder('First name and last initial').fill('Maya R.');
+  await check('join-name', p.getByPlaceholder('First name, last initial'), p.getByRole('button', { name: 'Continue' }));
+  await p.getByPlaceholder('First name, last initial').fill('Maya R.');
   await p.getByRole('button', { name: 'Continue' }).click();
   await p.locator('.home').waitFor({ timeout: 30000 });
 
@@ -253,7 +253,7 @@ async function nameHintCheck(browser) {
     await p.getByRole('button', { name: 'Enter the Experiment' }).click({ timeout: 60000 });
     await p.locator('.classifier').waitFor();
     await answerInvitee(p);
-    await p.getByPlaceholder('First name and last initial').waitFor();
+    await p.getByPlaceholder('First name, last initial').waitFor();
     await p.waitForTimeout(2000); // entrance animation
   };
   const visible = (p) => p.evaluate(() => {
@@ -275,9 +275,9 @@ async function nameHintCheck(browser) {
       if (!last || last[1] !== n) window.__hint.push([performance.now() - t0, n]);
       if (document.querySelector('.type-hint')?.dataset.done !== 'true') requestAnimationFrame(sample);
     };
-    document.querySelector('input[placeholder="First name and last initial"]').addEventListener('focus', () => requestAnimationFrame(sample), { once: true });
+    document.querySelector('input[placeholder="First name, last initial"]').addEventListener('focus', () => requestAnimationFrame(sample), { once: true });
   });
-  await p.getByPlaceholder('First name and last initial').tap();
+  await p.getByPlaceholder('First name, last initial').tap();
   await p.keyboard.type('Maya R.', { delay: 60 });
   await p.waitForFunction(() => document.querySelector('.type-hint')?.dataset.done === 'true', null, { timeout: 4000 });
   const ticks = await p.evaluate(() => window.__hint);
@@ -285,9 +285,9 @@ async function nameHintCheck(browser) {
   const maxJump = Math.max(...ticks.slice(1).map((t, i) => t[1] - ticks[i][1]));
   report(total >= 900 && total <= 1600, `types in about ${(total / 1000).toFixed(2)}s`);
   report(maxJump <= 2, `smooth: at most ${maxJump} letters appear at once`);
-  report((await p.getByPlaceholder('First name and last initial').inputValue()) === 'Maya R.', 'typing in the field while it animates is unaffected');
+  report((await p.getByPlaceholder('First name, last initial').inputValue()) === 'Maya R.', 'typing in the field while it animates is unaffected');
   await p.locator('.join-title').tap();
-  await p.getByPlaceholder('First name and last initial').tap();
+  await p.getByPlaceholder('First name, last initial').tap();
   await p.waitForTimeout(300);
   report((await visible(p)) === 'Enter your first name and last initial.'.length, 'stays visible and does not restart on refocus');
   await ctx.close();
@@ -295,7 +295,7 @@ async function nameHintCheck(browser) {
   ctx = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
   p = await ctx.newPage();
   await toForm(p);
-  await p.getByPlaceholder('First name and last initial').tap();
+  await p.getByPlaceholder('First name, last initial').tap();
   await p.waitForTimeout(60);
   report((await visible(p)) === 'Enter your first name and last initial.'.length, 'reduced motion: shown at once');
   await ctx.close();
