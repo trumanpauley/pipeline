@@ -320,9 +320,10 @@ export function InvitePage({ token, session }: { token: string; session: Session
 
   // join: confirm the invited name, correct it, or (seed links) enter one
   const senderFirst = info?.sender_name ?? null;
+  const ready = research && (categories.length === 0 || Boolean(category)) && (mode === 'confirm' || Boolean(name.trim()));
   return (
-    <Screen className="center">
-      <form className="stack join-form" onSubmit={submitJoin} data-mode={mode}>
+    <Screen className="join-screen">
+      <form className="join-form" onSubmit={submitJoin} data-mode={mode}>
         <header className="join-intro">
           <p className="stealth">
             <span className="stealth-dot" aria-hidden="true" />
@@ -335,26 +336,33 @@ export function InvitePage({ token, session }: { token: string; session: Session
             {mode === 'enter' ? COPY.joinBody : COPY.joinConfirmBody(senderFirst)}
           </p>
         </header>
-        <div className="join-fields stack">
+
+        <div className="join-fields">
           {categories.length > 0 && (
-            <div className="category-choice" role="radiogroup" aria-label={COPY.categoryQuestion}>
-              <p className="fine">{COPY.categoryQuestion}</p>
-              <div className="category-options">
-                {categories.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    aria-checked={category === c}
-                    className={`chip ${category === c ? 'is-selected' : ''}`}
-                    onClick={() => { setCategory(c); setError(null); }}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
+            <div
+              className="segmented"
+              role="radiogroup"
+              aria-label={COPY.categoryQuestion}
+              style={{ ['--n' as string]: categories.length }}
+            >
+              {categories.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  role="radio"
+                  aria-checked={category === c}
+                  className={category === c ? 'is-selected' : ''}
+                  onClick={() => { setCategory(c); setError(null); }}
+                >
+                  {/* allow a line break after "/" ("alumnus/alumna") on narrow screens */}
+                  {c.split('/').map((part, i, all) => (
+                    <span key={i}>{part}{i < all.length - 1 && <>/<wbr /></>}</span>
+                  ))}
+                </button>
+              ))}
             </div>
           )}
+
           {mode !== 'confirm' && (
             <div className="name-field">
               <TypedHint id="name-hint" text={COPY.nameInstruction} start={nameFocused} />
@@ -365,80 +373,99 @@ export function InvitePage({ token, session }: { token: string; session: Session
                 autoComplete="name"
                 autoCapitalize="words"
                 autoFocus={mode === 'correct'}
+                enterKeyHint="go"
                 value={name}
                 maxLength={40}
                 onFocus={() => setNameFocused(true)}
                 onChange={(e) => { setName(e.target.value); setError(null); }}
-                aria-label={COPY.namePlaceholder}
-                aria-describedby="name-hint name-disclosure"
+                aria-label="First name and last initial"
+                aria-describedby="name-hint"
               />
             </div>
           )}
-          <NameDisclosure />
-          {session?.user.email && <p className="muted small">Signed in as {session.user.email}</p>}
-          <div className="consents">
+
+          <div className="join-consent consents">
             <Check checked={research} onChange={setResearch}>
-              {COPY.joinConsent}{' '}
-              <button type="button" className="link inline" onClick={() => setShowData((v) => !v)}>
-                How data is used
+              <span className="consent-text">{COPY.joinConsent}</span>{' '}
+              <button
+                type="button"
+                className="link inline"
+                aria-controls="join-about"
+                onClick={(e) => { e.preventDefault(); setShowData(true); }}
+              >
+                Details
               </button>
             </Check>
-            {showData && (
-              <ul className="data-notes fade-up">
-                {COPY.research.map((l) => (
-                  <li key={l}>{l}</li>
-                ))}
-              </ul>
-            )}
+            <AboutDisclosure open={showData} onToggle={setShowData} />
           </div>
+
           <ErrorText error={error} />
-          {mode === 'confirm' ? (
-            <>
-              {/* Enabled once the research consent is ticked. */}
-              <Button type="submit" busy={busy} disabled={!research || (categories.length > 0 && !category)}>{COPY.joinConfirmYes}</Button>
-              <Button variant="secondary" onClick={() => { setJoinMode('correct'); setName(''); setError(null); }}>
-                {COPY.joinConfirmNo}
-              </Button>
-            </>
-          ) : (
-            <>
-              {/* Enabled once there's a name (and category, if asked) and the research consent is ticked. */}
-              <Button type="submit" busy={busy} disabled={!name.trim() || !research || (categories.length > 0 && !category)}>Continue</Button>
-              {mode === 'correct' && (
-                <div className="row-links fade-up">
-                  {invitedComplete && (
-                    <button type="button" className="link" onClick={() => { setJoinMode('confirm'); setError(null); }}>
-                      I’m {invitedName}
-                    </button>
-                  )}
-                  <button type="button" className="link" onClick={wrongRecipient}>{COPY.joinWrongPerson}</button>
-                </div>
-              )}
-            </>
-          )}
-          <p className="fine text-center">{COPY.joinFooter}</p>
+
+          <div className="join-actions">
+            {mode === 'confirm' ? (
+              <>
+                {/* Enabled once the research consent is ticked (and the group chosen, if asked). */}
+                <Button type="submit" busy={busy} disabled={!ready}>{COPY.joinConfirmYes}</Button>
+                <Button variant="secondary" onClick={() => { setJoinMode('correct'); setName(''); setError(null); }}>
+                  {COPY.joinConfirmNo}
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* Enabled once there's a name (and group, if asked) and the research consent is ticked. */}
+                <Button type="submit" busy={busy} disabled={!ready}>Continue</Button>
+                {mode === 'correct' && (
+                  <div className="row-links fade-up">
+                    {invitedComplete && (
+                      <button type="button" className="link" onClick={() => { setJoinMode('confirm'); setError(null); }}>
+                        I’m {invitedName}
+                      </button>
+                    )}
+                    <button type="button" className="link" onClick={wrongRecipient}>{COPY.joinWrongPerson}</button>
+                  </div>
+                )}
+              </>
+            )}
+            {/* Signed in already (e.g. joining a second experiment): say who, quietly. Otherwise nobody signs up. */}
+            <p className="fine text-center join-footer">
+              {session?.user.email ? `Signed in as ${session.user.email}` : COPY.joinFooter}
+            </p>
+          </div>
         </div>
       </form>
     </Screen>
   );
 }
 
-/** What the name is used for, with a longer explanation on request. */
-function NameDisclosure() {
-  const [more, setMore] = useState(false);
+/**
+ * The full research and privacy disclosure, collapsed by default. The consent
+ * checkbox covers everything here, and its "Details" link opens it.
+ */
+function AboutDisclosure({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
   return (
-    <div className="name-disclosure">
-      <p className="fine" id="name-disclosure">
-        {COPY.nameDisclosure}{' '}
-        <button type="button" className="link inline" aria-expanded={more} onClick={() => setMore((v) => !v)}>
-          {more ? 'Show less' : 'More about privacy'}
-        </button>
-      </p>
-      {more && (
-        <ul className="data-notes fade-up">
-          {COPY.namePrivacy.map((l) => <li key={l}>{l}</li>)}
-        </ul>
-      )}
-    </div>
+    <details
+      id="join-about"
+      className="about"
+      open={open}
+      onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary>
+        {COPY.aboutTitle}
+        <svg className="about-chevron" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </summary>
+      <div className="about-body">
+        {COPY.about.map((sec) => (
+          <section key={sec.title}>
+            <h2>{sec.title}</h2>
+            <ul>
+              {sec.lines.map((l) => <li key={l}>{l}</li>)}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </details>
   );
 }
+
