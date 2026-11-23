@@ -292,6 +292,33 @@ async function nameHintCheck(browser) {
   report((await visible(p)) === 'Enter your first name and last initial.'.length, 'stays visible and does not restart on refocus');
   await ctx.close();
 
+  // Without a tap, it starts on its own after about 3 seconds.
+  ctx = await browser.newContext({ ...devices['iPhone 13'] });
+  p = await ctx.newPage();
+  await toForm(p); // ~2s on the form
+  const early = await visible(p);
+  await p.waitForFunction(() => document.querySelector('.type-hint')?.dataset.done === 'true', null, { timeout: 4000 });
+  report(early === 0, 'no tap: still hidden at 2s, then types on its own (by ~4.5s)');
+  await ctx.close();
+
+  // Nothing on the form moves when the keyboard opens or closes, or while the instruction types.
+  ctx = await browser.newContext({ ...devices['iPhone 13'] });
+  await ctx.addInitScript(fakeKeyboard, KB);
+  p = await ctx.newPage();
+  await toForm(p);
+  const pageY = () => p.evaluate(() => ['.join-title', '.name-field input', '.join-actions button']
+    .map((sel) => Math.round(document.querySelector(sel).getBoundingClientRect().top + window.scrollY)));
+  const before = await pageY();
+  await p.getByPlaceholder('First name, last initial').tap();
+  await p.waitForTimeout(1500); // keyboard open, instruction typing/typed
+  const open = await pageY();
+  await p.locator('.join-title').tap();
+  await p.waitForTimeout(800); // keyboard closed
+  const closed = await pageY();
+  const same = (x, y) => x.every((v, i) => Math.abs(v - y[i]) <= 1);
+  report(same(before, open) && same(before, closed), `layout stays put with the keyboard open and closed (title, field, button at ${before.join('/')}px)`);
+  await ctx.close();
+
   ctx = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
   p = await ctx.newPage();
   await toForm(p);

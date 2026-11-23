@@ -47,8 +47,15 @@ export function InvitePage({ token, session }: { token: string; session: Session
   const [joinMode, setJoinMode] = useState<JoinMode>('confirm');
   const [showData, setShowData] = useState(false);
   const [category, setCategory] = useState('');
-  // The typed instruction starts the first time the name field is focused.
+  // The typed instruction starts the first time the name field is focused, or
+  // on its own after a few seconds on the name screen, whichever comes first.
   const [nameFocused, setNameFocused] = useState(false);
+  const [hintTimeUp, setHintTimeUp] = useState(false);
+  useEffect(() => {
+    if (step !== 'join' || hintTimeUp) return;
+    const t = window.setTimeout(() => setHintTimeUp(true), 3000);
+    return () => window.clearTimeout(t);
+  }, [step, hintTimeUp]);
   const [busy, setBusy] = useState(false);
   const accepting = useRef(false);
   // One open per visit (and per session change): React's dev mode runs effects
@@ -365,7 +372,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
 
           {mode !== 'confirm' && (
             <div className="name-field">
-              <TypedHint id="name-hint" text={COPY.nameInstruction} start={nameFocused} />
+              <TypedHint id="name-hint" text={COPY.nameInstruction} start={nameFocused || hintTimeUp} />
               <input
                 key={mode}
                 className={`input ${mode === 'correct' ? 'fade-up' : ''}`}

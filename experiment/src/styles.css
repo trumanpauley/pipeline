@@ -578,7 +578,9 @@ tr:last-child td { border-bottom: 0; }
    the bottom edge. */
 .screen.question-screen .screen-inner {
   justify-content: flex-start;
-  padding-top: clamp(8px, calc(var(--vv-h, 100dvh) * 0.16 - 28px), 150px);
+  /* svh = the viewport with browser bars shown: stable, so nothing moves when the keyboard opens */
+  padding-top: clamp(8px, calc(100vh * 0.16 - 28px), 150px);
+  padding-top: clamp(8px, calc(100svh * 0.16 - 28px), 150px);
 }
 
 /* ---------- connection-strength meter ---------- */
@@ -631,7 +633,8 @@ tr:last-child td { border-bottom: 0; }
 /* ---------- join screen: minimal ---------- */
 /* Content starts a little below the top (not floating mid-screen), so the
    name field and Continue stay together above the keyboard on small iPhones. */
-.screen.join-screen .screen-inner { justify-content: flex-start; padding-top: clamp(4px, calc(var(--vv-h, 100dvh) * 0.09 - 12px), 80px); }
+/* Stable spacing (svh, not the visible area): the form must not jump when the keyboard opens or closes. */
+.screen.join-screen .screen-inner { justify-content: flex-start; padding-top: clamp(4px, calc(100vh * 0.09 - 12px), 80px); padding-top: clamp(4px, calc(100svh * 0.09 - 12px), 80px); }
 .join-body { font-size: 17px; }
 
 /* Group: two equal, compact options */
