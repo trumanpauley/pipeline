@@ -344,6 +344,7 @@ function Home({ session }: { session: Session }) {
         <InviteSheet
           method={p.method}
           instruction={instruction}
+          askRelationship={exp?.ask_relationship_question !== false}
           first={invites.length === 0}
           onClose={() => {
             setSheet(null);

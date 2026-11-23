@@ -119,6 +119,8 @@ export interface ExperimentInfo {
   is_default: boolean;
   /** One line under "And you are?", e.g. "A small experiment exploring … Harvard Baseball players." */
   welcome_message?: string | null;
+  /** false: no "Where do you know them from?" question for invitees or inviters (default true). */
+  ask_relationship_question?: boolean;
   /** Optional membership question asked before joining (null = not asked). */
   eligibility?: EligibilityInfo | null;
 }
@@ -139,6 +141,7 @@ export interface AbcScenario {
 
 export interface Experiment extends ExperimentInfo {
   // Onboarding settings as stored (the public `eligibility` is derived from these).
+  ask_relationship_question?: boolean;
   eligibility_enabled: boolean;
   eligibility_question: string | null;
   eligible_label: string;
@@ -374,7 +377,8 @@ export const api = {
     rpc<AdminAbcStats>('admin_abc_stats', { p_experiment_id: experimentId, p_classification: classification }),
   /** Show another experiment this person is in on the home screen. */
   switchExperiment: (experimentId: string) => rpc('switch_experiment', { p_experiment_id: experimentId }),
-  createInvitation: (value: string, label: string | null, ms: number) =>
+  /** value: null when the experiment doesn't ask the relationship question. */
+  createInvitation: (value: string | null, label: string | null, ms: number) =>
     rpc<{ id: string; token: string }>('create_invitation', {
       p_value: value,
       p_recipient_label: label,
@@ -439,6 +443,8 @@ export const api = {
       p_categories: e.categories,
       p_status: e.status,
     }),
+  adminSetRelationshipQuestion: (experimentId: string, enabled: boolean) =>
+    rpc<ExperimentInfo>('admin_set_relationship_question', { p_experiment_id: experimentId, p_enabled: enabled }),
   adminSaveExperimentOnboarding: (experimentId: string, o: {
     welcome_message: string;
     eligibility_enabled: boolean;

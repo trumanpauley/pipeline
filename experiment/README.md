@@ -165,7 +165,8 @@ project still works if you have to.
    `005_name_moderation.sql`, `006_circular_strength.sql`, `007_invited_names.sql` and
    `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
    `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
-   `013_copy_safe_name_check.sql` and `014_community_onboarding.sql`. If you've already run some,
+   `013_copy_safe_name_check.sql`, `014_community_onboarding.sql` and
+   `015_optional_relationship_question.sql`. If you've already run some,
    run only the ones after them.
    (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
    characters and break every name check with "invalid regular expression".)
@@ -503,6 +504,16 @@ The admin **Participant experience simulator** runs the real screens for the cho
 without saving anything: landing, relationship question, connection strength and comfort, the
 join screen (welcome, eligibility, types, name, consent), and the ABC questions when the chosen
 generation qualifies.
+
+**Skipping "Where do you know them from?"** (migration `015`). In a community where everyone
+knows each other the same way (one team, one chapter), untick **Ask "Where do you know them
+from?"** under **Join screen**. Then:
+- invitees go from the landing screen straight to connection strength and comfort;
+- inviters get their link right after typing the name.
+
+No answer is stored for the skipped question (not a placeholder), and the server still requires
+one in experiments that ask it. Answers given earlier are kept. Migration 015 switches it off for
+Harvard Baseball and PSK.
 
 ## Connection strength and the ABC experiment
 
