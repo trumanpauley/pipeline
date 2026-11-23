@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { COPY } from '../config/experiment';
-import { Button, Constellation } from './ui';
+import { Button } from './ui';
+import { NetworkBackground } from './NetworkBackground';
 
 // Timeline (ms). The whole sequence takes ~5.5s; the button works throughout and
 // any tap skips straight to the end.
@@ -136,16 +137,22 @@ export function LandingIntro({ senderName, onEnter }: { senderName: string | nul
     };
   }, [bodyDone, instant]);
 
+  // A tap anywhere on the page (the background included) or any key finishes it too.
   useEffect(() => {
     if (instant) return;
-    const onKey = () => setInstant(true);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const finish = () => setInstant(true);
+    window.addEventListener('keydown', finish);
+    window.addEventListener('pointerdown', finish);
+    return () => {
+      window.removeEventListener('keydown', finish);
+      window.removeEventListener('pointerdown', finish);
+    };
   }, [instant]);
 
   return (
-    <div className={`landing-intro ${instant ? 'is-instant' : ''}`} onPointerDown={skip}>
-      <Constellation />
+    <div className={`landing-intro ${instant ? 'is-instant' : ''}`}>
+      {/* A quiet, slowly moving network behind the invitation (replaces the static illustration). */}
+      <NetworkBackground />
       <div className="stack text-center">
         <h1 className="display landing-title fade-up" style={{ animationDelay: instant ? '0s' : '.35s' }}>
           {COPY.landingTitle(firstName)}

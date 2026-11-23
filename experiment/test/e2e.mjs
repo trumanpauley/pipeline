@@ -628,6 +628,10 @@ try {
     await sk.mouse.click(200, 120);
     await sk.waitForTimeout(100);
     ok((await sk.locator('.landing-meta').getAttribute('class')).includes('is-shown'), 'a tap anywhere skips to the end');
+    ok(await sk.locator('.network-bg canvas.network-canvas').count() === 1
+      && (await sk.locator('.network-bg').evaluate((el) => getComputedStyle(el).pointerEvents)) === 'none', 'animated network background: a canvas behind the page that never takes taps');
+    const hit = await sk.evaluate(() => { const b = document.querySelector('.landing-cta button').getBoundingClientRect(); return document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)?.closest('.landing-cta') !== null; });
+    ok(hit, 'the invitation text and button sit above the network');
   }
 
   // ---------- generation 2 ----------
