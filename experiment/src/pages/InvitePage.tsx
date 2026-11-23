@@ -8,7 +8,7 @@ import { deviceId } from '../lib/device';
 import { captchaToken } from '../lib/captcha';
 import { BRAND, COPY } from '../config/experiment';
 import { Classifier } from '../components/Classifier';
-import { COMFORT_QUESTION, ClosenessMeter, ScaleQuestion } from '../components/Relationship';
+import { COMFORT_QUESTION, ClosenessMeter, PRIVATE_NOTE, ScaleQuestion } from '../components/Relationship';
 import { LandingIntro } from '../components/LandingIntro';
 import { JoinForm, type Eligibility, type JoinFormState, type JoinMode, type JoinSubmit } from '../components/JoinForm';
 import { DemoLinks } from './HomePage';
@@ -276,6 +276,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
           <ScaleQuestion
             testId="comfort"
             question={COMFORT_QUESTION(senderName)}
+            note={PRIVATE_NOTE(senderName)}
             low="Not at all"
             high="Completely"
             onSelect={(v) => void saveRating(closeness ?? progress.get(token).closeness ?? 0, v)}

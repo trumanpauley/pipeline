@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import type { Session } from '@supabase/supabase-js';
 import { adminErrorText, api, inviteUrl, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
 import { AbcFlow } from '../components/Abc';
-import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, ScaleQuestion } from '../components/Relationship';
+import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, PRIVATE_NOTE, ScaleQuestion } from '../components/Relationship';
 import { JoinForm } from '../components/JoinForm';
 import { LandingIntro } from '../components/LandingIntro';
 import { Classifier } from '../components/Classifier';
@@ -1026,6 +1026,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
                 <ScaleQuestion
                   testId="comfort"
                   question={COMFORT_QUESTION(inviterFirst)}
+            note={PRIVATE_NOTE(inviterFirst)}
                   low="Not at all"
                   high="Completely"
                   onSelect={(v) => { setAnswers((a) => ({ ...a, comfort: v })); afterRating(); }}

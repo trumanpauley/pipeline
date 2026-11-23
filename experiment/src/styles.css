@@ -708,3 +708,9 @@ tr:last-child td { border-bottom: 0; }
 
 .preview-exit { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 40; }
 .preview-layer .landing-intro > :not(.network-bg) { z-index: 1; }
+
+/* Small reassurance under the relationship questions */
+.answer-note {
+  margin: 2px 0 0; text-align: center; font-size: 12.5px; line-height: 1.4; color: var(--text-3);
+}
+.layout-scale .answer-note { margin-top: 22px; }
