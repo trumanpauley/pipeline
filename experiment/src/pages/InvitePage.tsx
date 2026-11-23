@@ -21,6 +21,9 @@ type Step = 'loading' | 'intro' | 'classify' | 'closeness' | 'comfort' | 'join' 
  * returns to the same step (answered question, name choice, consent).
  */
 interface Progress { answered?: boolean; rated?: boolean; closeness?: number; mode?: JoinMode; name?: string; research?: boolean; category?: string; eligibility?: Eligibility }
+/** Communities where everyone knows each other the same way skip "Where do you know them from?". */
+const skipsQuestion = (r: OpenResult | null) => r?.experiment?.ask_relationship_question === false;
+
 const progressKey = (token: string) => `px.join.${token}`;
 const progress = {
   get(token: string): Progress {
@@ -111,9 +114,9 @@ export function InvitePage({ token, session }: { token: string; session: Session
       if (session) {
         if (r.already_participant) return setStep(r.answered ? 'joining' : 'intro');
         const p = pendingFromSession(session, token);
-        if (p && r.answered) return void accept(p);
+        if (p && (r.answered || skipsQuestion(r))) return void accept(p);
         if (p) setJoinInitial((j) => ({ ...j, name: p.name, research: p.research }));
-        if (r.answered && progress.get(token).answered) {
+        if ((r.answered || skipsQuestion(r)) && progress.get(token).answered) {
           restoreProgress();
           return setStep(afterAnswer());
         }
@@ -122,7 +125,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
       // Refresh mid-onboarding: go back to where this device left off. (The
       // invitation-level "answered" flag alone isn't enough: a forwarded copy
       // of the link may have been answered by someone else.)
-      if (r.answered && progress.get(token).answered) {
+      if ((r.answered || skipsQuestion(r)) && progress.get(token).answered) {
         restoreProgress();
         return setStep(afterAnswer());
       }
@@ -179,7 +182,8 @@ export function InvitePage({ token, session }: { token: string; session: Session
   const onCloseness = (c: number) => {
     setCloseness(c);
     progress.set(token, { closeness: c });
-    if (info?.method === 'comfort') return void saveRating(c, null);
+    // Comfort was already their assigned first question (unless that question is skipped here).
+    if (info?.method === 'comfort' && !skipsQuestion(info)) return void saveRating(c, null);
     setStep('comfort');
   };
 
@@ -241,7 +245,14 @@ export function InvitePage({ token, session }: { token: string; session: Session
   if (step === 'intro') {
     return (
       <Screen className="center landing">
-        <LandingIntro senderName={info?.sender_name ?? null} onEnter={() => setStep('classify')} />
+        <LandingIntro
+          senderName={info?.sender_name ?? null}
+          onEnter={() => {
+            if (!skipsQuestion(info)) return setStep('classify');
+            progress.set(token, { answered: true });
+            setStep('closeness');
+          }}
+        />
       </Screen>
     );
   }
@@ -249,7 +260,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
   if (step === 'closeness') {
     return (
       <Screen className="question-screen">
-        <p className="eyebrow fade-up">One more</p>
+        <p className="eyebrow fade-up">{skipsQuestion(info) ? 'Two quick questions' : 'One more'}</p>
         <div className="fade-up">
           <ClosenessMeter name={senderName} onConfirm={onCloseness} />
         </div>

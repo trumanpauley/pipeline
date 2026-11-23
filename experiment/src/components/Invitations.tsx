@@ -213,10 +213,13 @@ export function InviteSheet({
   method,
   first,
   instruction,
+  askRelationship = true,
   onClose,
 }: {
   method: string;
   first: boolean;
+  /** false: the experiment skips "Where do you know them from?"; the link is made right after the name. */
+  askRelationship?: boolean;
   /** The experiment's invitation instruction, e.g. "Invite two Harvard students or alumni." */
   instruction?: string | null;
   onClose: () => void;
@@ -228,9 +231,9 @@ export function InviteSheet({
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
 
-  const create = async (value: string, ms: number) => {
+  const create = async (value: string | null, ms: number, label = name.trim()) => {
     try {
-      const r = await api.createInvitation(value, name.trim(), ms);
+      const r = await api.createInvitation(value, label, ms);
       setInvite({ id: r.id, url: inviteUrl(r.token) });
       setStep('ready');
     } catch (e) {
@@ -258,6 +261,12 @@ export function InviteSheet({
     const ok = await nameAcceptable(formatted);
     setChecking(false);
     if (!ok) return setError(NAME_REJECTED);
+    if (!askRelationship) {
+      setChecking(true);
+      await create(null, 0, formatted);
+      setChecking(false);
+      return;
+    }
     setStep('classify');
   };
 

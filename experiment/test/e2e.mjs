@@ -96,6 +96,7 @@ psql('supabase/migrations/011_early_access.sql');
 psql('supabase/migrations/012_connection_strength_abc.sql');
 psql('supabase/migrations/013_copy_safe_name_check.sql');
 psql('supabase/migrations/014_community_onboarding.sql');
+psql('supabase/migrations/015_optional_relationship_question.sql');
 {
   // SQL is pasted into the Supabase editor from a browser, which drops invisible characters:
   // the migrations must not rely on any (013 fixed one that broke every name check).
@@ -1928,6 +1929,55 @@ try {
       && (await asUser(jamesP.user_id, 'select * from connections')).error, 'experiments and connections are not readable by participants');
     const jamesState = (await rpcAs(jamesJwt, 'get_my_state')).body;
     ok(jamesState.experiment.name === 'Harvard Baseball' && !('stats' in jamesState.experiment) && jamesState.experiments.length === 1, 'participants see only their own experiment’s public details');
+
+    // 10b. A community without "Where do you know them from?" (e.g. one team)
+    {
+      const psk = (await rpcAs(adminJwtE, 'admin_save_experiment', { p_id: null, p_name: 'PSK', p_description: 'PSK members.', p_invite_instruction: 'Invite two PSK members.', p_invites_per_participant: 2, p_categories: [], p_status: 'active' })).body;
+      ok((await rpcAs(jamesJwt, 'admin_set_relationship_question', { p_experiment_id: psk.id, p_enabled: false })).body.message === 'forbidden', 'only admins can switch the relationship question');
+      await rpcAs(adminJwtE, 'admin_set_relationship_question', { p_experiment_id: psk.id, p_enabled: false });
+      ok((await q(`select ask_relationship_question a from experiments where id = $1`, [psk.id]))[0].a === false
+        && (await q(`select ask_relationship_question a from experiments where id = $1`, [hb.id]))[0].a === true, 'switched off for PSK only (on by default)');
+      const pskSeed = (await rpcAs(adminJwtE, 'admin_create_experiment_seeds', { p_experiment_id: psk.id, p_count: 1, p_sender_name: 'Truman', p_note: 'psk' })).body[0].token;
+      const before = (await q(`select count(*)::int n from classifications`))[0].n;
+      const pat = await newPhone();
+      await pat.goto(`${APP}/join/${pskSeed}`);
+      await pat.getByRole('button', { name: 'Enter the Experiment' }).click();
+      await pat.locator('.closeness-meter').waitFor();
+      ok(await pat.locator('.classifier').count() === 0 && await pat.getByText('Two quick questions').isVisible(), 'invitee: straight from the landing screen to connection strength');
+      await rate(pat, 'context');
+      await pat.locator('form.join-form').waitFor();
+      await pat.getByPlaceholder(NAME_PH).fill('Pat Q.');
+      await pat.getByText(CONSENT).click();
+      await pat.getByRole('button', { name: 'Continue' }).click();
+      await pat.locator('.home').waitFor();
+      const patP = await byName('Pat Q.');
+      ok(patP.experiment_id === psk.id && patP.depth === 1, 'Pat Q. joined PSK without the relationship question');
+      await pat.getByRole('button', { name: 'Invite someone' }).first().click();
+      await pat.getByLabel('Their first name and last initial').fill('Quinn R.');
+      await pat.getByRole('button', { name: 'Continue' }).click();
+      await pat.getByRole('heading', { name: 'Quinn R.’s link is ready.' }).waitFor();
+      ok(await pat.locator('.sheet .classifier').count() === 0, 'inviter: the link is ready right after the name');
+      const quinnLink = 'http://' + (await pat.locator('.sheet .url').innerText());
+      await pat.locator('.sheet').getByRole('button', { name: 'Later' }).click();
+      const [qInv] = await q(`select * from invitations where token = $1`, [quinnLink.split('/join/')[1]]);
+      ok(qInv.experiment_id === psk.id && qInv.sender_id === patP.id && qInv.recipient_label === 'Quinn R.'
+        && (await q(`select count(*)::int n from classifications where invitation_id = $1`, [qInv.id]))[0].n === 0
+        && (await q(`select count(*)::int n from classifications`))[0].n === before, 'no made-up answer is stored for the skipped question');
+      ok((await rpcAs(jamesJwt, 'create_invitation', { p_value: null, p_recipient_label: 'Zed Z.' })).body.message === 'invalid_value',
+        'groups that ask the question still require an answer');
+      const quinn = await newPhone();
+      await quinn.goto(quinnLink);
+      await quinn.getByRole('button', { name: 'Enter the Experiment' }).click();
+      await rate(quinn, 'context');
+      await quinn.getByRole('button', { name: 'Yes, that’s me' }).waitFor();
+      await quinn.getByText(CONSENT).click();
+      await quinn.getByRole('button', { name: 'Yes, that’s me' }).click();
+      await quinn.locator('.home').waitFor();
+      const quinnP = await byName('Quinn R.');
+      ok(quinnP.parent_id === patP.id && quinnP.depth === 2
+        && (await q(`select count(*)::int n from relationship_ratings where invitation_id = $1`, [qInv.id]))[0].n === 1,
+        'generation 2 joins through the referral; closeness and comfort are still recorded');
+    }
 
     // 11. Erasure covers every experiment
     await alicePage.getByLabel('Your data').click();

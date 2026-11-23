@@ -475,6 +475,7 @@ type ExperimentDraft = {
   categories: string;
   status: 'active' | 'paused';
   // Onboarding (shown on the join screen)
+  ask_relationship_question: boolean;
   welcome_message: string;
   eligibility_enabled: boolean;
   eligibility_question: string;
@@ -491,6 +492,7 @@ const draftOf = (e?: Experiment): ExperimentDraft => ({
   invites_per_participant: e?.invites_per_participant ?? 2,
   categories: e ? e.categories.join(', ') : 'Current Harvard student, Harvard alumnus/alumna',
   status: e?.status ?? 'active',
+  ask_relationship_question: e?.ask_relationship_question ?? true,
   welcome_message: e?.welcome_message ?? '',
   eligibility_enabled: e?.eligibility_enabled ?? false,
   eligibility_question: e?.eligibility_question ?? '',
@@ -506,6 +508,7 @@ const saveDraft = async (d: ExperimentDraft) => {
     categories: d.categories.split(',').map((c) => c.trim()).filter(Boolean),
   });
   await api.adminSaveExperimentOnboarding(saved.id, d);
+  await api.adminSetRelationshipQuestion(saved.id, d.ask_relationship_question);
   return saved;
 };
 
@@ -596,6 +599,9 @@ function ExperimentsPanel({ refreshKey, only, onChanged }: { refreshKey: number;
                 {e.description && (<><dt>Group</dt><dd>{e.description}</dd></>)}
                 <dt>Instruction</dt><dd>{e.invite_instruction || <span className="muted">Default (“Invite two people…”)</span>}</dd>
                 <dt>Invites each</dt><dd>{e.invites_per_participant}</dd>
+                <dt>Relationship question</dt><dd>{e.ask_relationship_question === false
+                  ? <span className="muted">Not asked (everyone knows each other the same way)</span>
+                  : 'Asked (“Where do you know them from?” or its variant)'}</dd>
                 <dt>Welcome</dt><dd>{e.welcome_message || <span className="muted">None</span>}</dd>
                 <dt>Eligibility</dt><dd>{e.eligibility_enabled && e.eligibility_question
                   ? <>{e.eligibility_question} <span className="muted">({e.eligible_label} continues · {e.ineligible_label} stops)</span></>
@@ -665,6 +671,10 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
       </label>
       <fieldset className="experiment-onboarding">
         <legend>Join screen</legend>
+        <label className="preview-check">
+          <input type="checkbox" checked={d.ask_relationship_question} onChange={(e) => set('ask_relationship_question', e.target.checked)} aria-label="Ask where they know each other from" />
+          Ask “Where do you know them from?” <span className="muted">(turn off when everyone knows each other the same way, e.g. one team; invitees and inviters both skip it)</span>
+        </label>
         <label>Welcome message <span className="muted">(one line under “And you are?”)</span>
           <textarea className="input" rows={2} value={d.welcome_message} maxLength={240}
             placeholder="A small experiment exploring the connections between current and former Harvard Baseball players."
@@ -944,6 +954,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
   };
   const start = () => { setAnswers({}); setStep('landing'); };
   const afterRating = () => setStep('join');
+  const asksRelationship = e?.ask_relationship_question !== false;
 
   return (
     <Panel
@@ -984,6 +995,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
       <p className="muted small" data-testid="preview-eligibility">
         Generation {depth} {eligible ? 'gets' : 'doesn’t get'} the ABC questions in {e?.name ?? 'this group'} (from generation {minDepth}
         {e && !e.abc_enabled ? ', currently switched off' : ''}). Generation 1 joined from a seed link.
+        {e?.ask_relationship_question === false ? ' “Where do you know them from?” is skipped.' : ''}
         {e?.eligibility_enabled && e.eligibility_question ? ` Eligibility question: “${e.eligibility_question}”` : ' No eligibility question.'}
       </p>
       <Button onClick={start}>Start simulator</Button>
@@ -993,7 +1005,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
           <button type="button" className="chip preview-exit" onClick={() => setStep(null)}>Exit simulator</button>
           {step === 'landing' && (
             <Screen className="center landing">
-              <LandingIntro senderName={inviter.trim() || null} onEnter={() => setStep('classify')} />
+              <LandingIntro senderName={inviter.trim() || null} onEnter={() => setStep(asksRelationship ? 'classify' : 'closeness')} />
             </Screen>
           )}
           {step === 'classify' && (
@@ -1004,11 +1016,11 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
           )}
           {(step === 'closeness' || step === 'comfort') && (
             <Screen className="question-screen">
-              <p className="eyebrow">{step === 'closeness' ? 'One more' : 'Last one'}</p>
+              <p className="eyebrow">{step === 'closeness' ? (asksRelationship ? 'One more' : 'Two quick questions') : 'Last one'}</p>
               {step === 'closeness' ? (
                 <ClosenessMeter
                   name={inviterFirst}
-                  onConfirm={(v) => { setAnswers((a) => ({ ...a, closeness: v })); if (method === 'comfort') afterRating(); else setStep('comfort'); }}
+                  onConfirm={(v) => { setAnswers((a) => ({ ...a, closeness: v })); if (method === 'comfort' && asksRelationship) afterRating(); else setStep('comfort'); }}
                 />
               ) : (
                 <ScaleQuestion
@@ -1050,9 +1062,9 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
           <Table
             head={['Question', 'Answer']}
             rows={[
-              ['Relationship question', answers.relationship ?? '—'],
+              ['Relationship question', answers.relationship ?? (asksRelationship ? '—' : 'not asked in this group')],
               ['Connection strength', answers.closeness ? `${answers.closeness} · ${CLOSENESS_LABELS[answers.closeness - 1]}` : '—'],
-              ['Comfort asking for an introduction', answers.comfort ?? (method === 'comfort' ? 'their assigned question' : '—')],
+              ['Comfort asking for an introduction', answers.comfort ?? (method === 'comfort' && asksRelationship ? 'their assigned question' : '—')],
               ['Name', answers.name ?? '—'],
               ['Participant type', answers.category ?? '—'],
               ['Cold (LinkedIn)', answers.cold ?? (eligible ? '—' : 'not shown at this generation')],
