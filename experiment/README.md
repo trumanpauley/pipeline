@@ -534,6 +534,19 @@ depth 2. The threshold is set per experiment in `abc_min_depth`, and `abc_enable
 the upper third. They're sized to the visible screen (safe areas, browser bars, keyboard), so
 options never sit under the toolbar. Full-page questions use the same placement.
 
+## Invitation landing background
+
+The "{Name} invited you." page has a slow, sparse network drawn on a full-screen canvas behind
+the text (`src/components/NetworkBackground.tsx`). It uses no library: plain Canvas with
+`requestAnimationFrame`, about 4 KB.
+- About 20–35 nodes on phones, a few blue accents and thin, gently curved lines.
+- It fades behind the centred text, with a soft dark gradient for contrast.
+- It pauses when the page is hidden, caps the pixel ratio and draws a still frame with reduced
+  motion. It falls back to a static picture without Canvas and never takes taps.
+
+Every visual setting (density, speed, opacities, colours, centre fade, glow) is in the
+`NETWORK` object at the top of that file.
+
 ## Early access
 
 Optional email signup at the end of the invitation experiment (migrations `009` and `011`; the
