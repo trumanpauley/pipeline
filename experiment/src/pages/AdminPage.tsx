@@ -508,7 +508,15 @@ const saveDraft = async (d: ExperimentDraft) => {
     categories: d.categories.split(',').map((c) => c.trim()).filter(Boolean),
   });
   await api.adminSaveExperimentOnboarding(saved.id, d);
-  await api.adminSetRelationshipQuestion(saved.id, d.ask_relationship_question);
+  try {
+    await api.adminSetRelationshipQuestion(saved.id, d.ask_relationship_question);
+  } catch (err) {
+    // The rest is saved; this one setting needs migration 015.
+    if (/could not find the function|admin_set_relationship_question/i.test((err as Error).message)) {
+      throw new Error('Saved, except “Where do you know them from?”: run migration 015 in the Supabase SQL Editor first, then save again.');
+    }
+    throw err;
+  }
   return saved;
 };
 
@@ -670,11 +678,19 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
         <input className="input" value={d.categories} placeholder="Current player, Former player / alumnus" onChange={(e) => set('categories', e.target.value)} aria-label="Participant categories" />
       </label>
       <fieldset className="experiment-onboarding">
-        <legend>Join screen</legend>
+        <legend>Relationship question</legend>
         <label className="preview-check">
           <input type="checkbox" checked={d.ask_relationship_question} onChange={(e) => set('ask_relationship_question', e.target.checked)} aria-label="Ask where they know each other from" />
-          Ask “Where do you know them from?” <span className="muted">(turn off when everyone knows each other the same way, e.g. one team; invitees and inviters both skip it)</span>
+          Ask “Where do you know them from?” first
         </label>
+        <p className="muted small">
+          {d.ask_relationship_question
+            ? 'Invitees answer it right after opening their link, and inviters answer it when they create a link.'
+            : 'Skipped: invitees go straight to “How close are you to …?”, and inviters get their link right after typing the name. Good for one team or chapter, where everyone knows each other the same way.'}
+        </p>
+      </fieldset>
+      <fieldset className="experiment-onboarding">
+        <legend>Join screen</legend>
         <label>Welcome message <span className="muted">(one line under “And you are?”)</span>
           <textarea className="input" rows={2} value={d.welcome_message} maxLength={240}
             placeholder="A small experiment exploring the connections between current and former Harvard Baseball players."
@@ -995,7 +1011,9 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
       <p className="muted small" data-testid="preview-eligibility">
         Generation {depth} {eligible ? 'gets' : 'doesn’t get'} the ABC questions in {e?.name ?? 'this group'} (from generation {minDepth}
         {e && !e.abc_enabled ? ', currently switched off' : ''}). Generation 1 joined from a seed link.
-        {e?.ask_relationship_question === false ? ' “Where do you know them from?” is skipped.' : ''}
+        {e ? (e.ask_relationship_question === false
+          ? ' “Where do you know them from?” is skipped.'
+          : ' “Where do you know them from?” is asked (untick it in the group’s settings to skip it).') : ''}
         {e?.eligibility_enabled && e.eligibility_question ? ` Eligibility question: “${e.eligibility_question}”` : ' No eligibility question.'}
       </p>
       <Button onClick={start}>Start simulator</Button>

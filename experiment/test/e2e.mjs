@@ -1909,6 +1909,27 @@ try {
       ok(await adminPage.getByRole('radio', { name: 'Current player' }).isVisible() && await adminPage.getByRole('radio', { name: 'Former player / alumnus' }).isVisible(),
         'simulator: “No” shows the message; “Yes” shows the group’s participant types');
       await adminPage.getByRole('button', { name: 'Exit simulator' }).click();
+
+      // "Where do you know them from?" can be switched off in the group's settings; the simulator follows.
+      const hbCard = adminPage.locator('.experiment-card[data-experiment="Harvard Baseball"]');
+      await hbCard.getByRole('button', { name: 'Edit', exact: true }).click();
+      const box = adminPage.getByLabel('Ask where they know each other from');
+      ok(await box.isChecked() && await adminPage.getByText('Relationship question', { exact: true }).first().isVisible(),
+        'group settings: a “Relationship question” section, asked by default');
+      await box.uncheck();
+      await adminPage.getByText('Skipped: invitees go straight to').waitFor();
+      await adminPage.screenshot({ path: path.join(SHOTS, '56-admin-relationship-question.png') });
+      await adminPage.getByRole('button', { name: 'Save changes' }).click();
+      await hbCard.getByText('Not asked (everyone knows each other the same way)').waitFor();
+      ok((await q(`select ask_relationship_question a from experiments where id = $1`, [hb.id]))[0].a === false, 'unticking it saves to Supabase');
+      await adminPage.getByRole('button', { name: 'Refresh' }).click();
+      await sim.getByText('“Where do you know them from?” is skipped.').waitFor();
+      await sim.getByRole('button', { name: 'Start simulator' }).click();
+      await adminPage.getByRole('button', { name: 'Enter the Experiment' }).click();
+      await adminPage.locator('.preview-layer .closeness-meter').waitFor();
+      ok(await adminPage.locator('.preview-layer .classifier').count() === 0, 'simulator: Harvard Baseball now goes straight to “How close are you to …?”');
+      await adminPage.getByRole('button', { name: 'Exit simulator' }).click();
+      await rpcAs(adminJwtE, 'admin_set_relationship_question', { p_experiment_id: hb.id, p_enabled: true });
     }
     await adminPage.waitForTimeout(500);
     await adminPage.screenshot({ path: path.join(SHOTS, '55-admin-group-tab.png') });
