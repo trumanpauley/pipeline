@@ -2,99 +2,156 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pipeline — your network runs through your groups</title>
-  <meta name="description" content="Pipeline turns the teams, clubs, and organizations you're already part of into your professional network. Join the waitlist.">
-  <meta name="theme-color" content="#05060a">
-  <meta property="og:title" content="Pipeline">
-  <meta property="og:description" content="Your network already exists. It runs through your groups.">
-  <meta property="og:url" content="https://pipeline-networking.com">
-  <meta name="twitter:card" content="summary">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pipeline — Find where your network leads.</title>
+  <meta name="description" content="Discover opportunities through the teams, clubs, and communities that connect you.">
+  <meta name="theme-color" content="#05070d">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://pipeline-networking.com/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Pipeline">
+  <meta property="og:title" content="Pipeline — Find where your network leads.">
+  <meta property="og:description" content="Discover opportunities through the teams, clubs, and communities that connect you.">
+  <meta property="og:url" content="https://pipeline-networking.com/">
+  <meta property="og:image" content="https://pipeline-networking.com/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Pipeline: three connected nodes above the wordmark, with the line “Find where your network leads.”">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pipeline — Find where your network leads.">
+  <meta name="twitter:description" content="Discover opportunities through the teams, clubs, and communities that connect you.">
+  <meta name="twitter:image" content="https://pipeline-networking.com/og.png">
+
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.className = 'js';</script>
 </head>
 <body>
   <canvas id="network" aria-hidden="true"></canvas>
+  <div class="veil" aria-hidden="true"></div>
 
-  <header class="topbar">
-    <a class="mini-brand" href="#top" aria-label="Pipeline home">
-      <img src="logo.svg" alt="" width="30" height="13">
+  <header class="nav" id="nav">
+    <a class="nav-brand" href="#top" aria-label="Pipeline, back to top">
+      <img src="logo-mark.svg" alt="" height="18">
       <span>Pipeline</span>
     </a>
-    <a class="topbar-cta" href="#join">Join the waitlist</a>
+    <a class="nav-cta" href="#join">Join the waitlist</a>
   </header>
 
-  <main id="top">
-    <section class="hero">
-      <h1 class="wordmark" aria-label="Pipeline">
-        <svg class="wordmark-arc" viewBox="0 0 120 52" aria-hidden="true">
-          <path class="arc-path" d="M14 40 Q60 2 106 40" pathLength="1"/>
-          <circle class="arc-dot d1" cx="14" cy="40" r="5.5"/>
-          <circle class="arc-dot d2" cx="60" cy="21" r="6"/>
-          <circle class="arc-dot d3" cx="106" cy="40" r="7"/>
-        </svg>
-        <span aria-hidden="true">Pipeline</span>
-      </h1>
+  <main>
+    <section class="hero" id="top">
+      <div class="hero-inner">
+        <div class="lockup"><svg class="lockup-svg" viewBox="0 0 207.3 128" role="img" aria-label="Pipeline">
+          <defs>
+            <linearGradient id="pl-arc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5E74D4"/><stop offset="1" stop-color="#BCCBFF"/></linearGradient>
+            <filter id="pl-glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <path class="lk-arc" pathLength="1" d="M26.5 56.9 Q103.1 -0.3 179.8 56.9" fill="none" stroke="url(#pl-arc)" stroke-width="2" stroke-linecap="round"/>
+          <circle class="lk-n lk-n1" cx="26.5" cy="56.9" r="4.2" fill="#6C82DA"/>
+          <circle class="lk-n lk-n2" cx="103.1" cy="28.3" r="5.2" fill="#B3C2FF"/>
+          <circle class="lk-n lk-n3" cx="179.8" cy="56.9" r="6.4" fill="#FFFFFF" filter="url(#pl-glow)"/>
+          <g class="lk-word"><path transform="translate(14 112)" d="M3.1484375 0.0H9.8515625V-13.609375H17.46875C25.771484375 -13.609375 31.103515625 -18.306640625 31.103515625 -25.74609375C31.103515625 -33.16015625 25.8984375 -37.83203125 17.595703125 -37.83203125H3.1484375ZM9.8515625 -19.34765625V-32.09375H17.21484375C21.734375 -32.09375 24.501953125 -29.681640625 24.501953125 -25.74609375C24.501953125 -21.78515625 21.734375 -19.34765625 17.21484375 -19.34765625Z M34.30375 0.0H40.7021875V-26.8125H34.30375ZM37.50296875 -30.798828125C39.6865625 -30.798828125 41.336953125 -32.373046875 41.336953125 -34.455078125C41.336953125 -36.51171875 39.6865625 -38.0859375 37.50296875 -38.0859375C35.319375 -38.0859375 33.668984375 -36.51171875 33.668984375 -34.455078125C33.668984375 -32.373046875 35.319375 -30.798828125 37.50296875 -30.798828125Z M45.3496875 10.61328125H51.748125V-4.037109375H51.824296875C53.500078125 -0.990234375 56.3184375 0.533203125 59.82234375 0.533203125C66.83015625 0.533203125 71.425859375 -5.078125 71.425859375 -13.431640625C71.425859375 -21.68359375 66.753984375 -27.345703125 59.847734375 -27.345703125C56.36921875 -27.345703125 53.398515625 -25.923828125 51.722734375 -23.080078125H51.6465625V-26.8125H45.3496875ZM58.324296875 -4.82421875C54.13484375 -4.82421875 51.39265625 -8.201171875 51.39265625 -13.431640625C51.39265625 -18.63671875 54.13484375 -22.0390625 58.324296875 -22.0390625C62.285234375 -22.0390625 64.95125 -18.966796875 64.95125 -13.431640625C64.95125 -7.87109375 62.285234375 -4.82421875 58.324296875 -4.82421875Z M86.66125 0.609375C92.932734375 0.609375 97.909296875 -3.021484375 98.924921875 -8.27734375H92.932734375C92.19640625 -5.9921875 90.038203125 -4.443359375 86.81359375 -4.443359375C82.4971875 -4.443359375 80.00890625 -7.36328125 79.8565625 -11.73046875H99.255V-13.482421875C99.255 -21.708984375 94.12609375 -27.421875 86.40734375 -27.421875C78.89171875 -27.421875 73.585078125 -21.53125 73.585078125 -13.380859375C73.585078125 -5.255859375 78.612421875 0.609375 86.66125 0.609375ZM79.90734375 -16.1484375C80.338984375 -19.982421875 82.801875 -22.34375 86.50890625 -22.34375C90.2159375 -22.34375 92.70421875 -19.982421875 93.11046875 -16.1484375Z M108.955234375 -37.83203125H102.556796875V0.0H108.955234375Z M113.60273437500001 0.0H120.00117187500001V-26.8125H113.60273437500001ZM116.80195312500001 -30.798828125C118.98554687500001 -30.798828125 120.63593750000001 -32.373046875 120.63593750000001 -34.455078125C120.63593750000001 -36.51171875 118.98554687500001 -38.0859375 116.80195312500001 -38.0859375C114.61835937500001 -38.0859375 112.96796875000001 -36.51171875 112.96796875000001 -34.455078125C112.96796875000001 -32.373046875 114.61835937500001 -30.798828125 116.80195312500001 -30.798828125Z M131.04710937500002 -15.158203125C131.04710937500002 -19.728515625 133.56078125000002 -21.734375 136.91234375000002 -21.734375C140.34007812500002 -21.734375 142.32054687500002 -19.677734375 142.32054687500002 -15.7421875V0.0H148.74437500000002V-16.7578125C148.74437500000002 -23.638671875 144.78343750000002 -27.345703125 139.17210937500002 -27.345703125C135.49046875000002 -27.345703125 132.77367187500002 -25.720703125 130.94554687500002 -22.69921875V-26.8125H124.64867187500002V0.0H131.04710937500002Z M165.22390625000003 0.609375C171.49539062500003 0.609375 176.47195312500003 -3.021484375 177.48757812500003 -8.27734375H171.49539062500003C170.75906250000003 -5.9921875 168.60085937500003 -4.443359375 165.37625000000003 -4.443359375C161.05984375000003 -4.443359375 158.57156250000003 -7.36328125 158.41921875000003 -11.73046875H177.81765625000003V-13.482421875C177.81765625000003 -21.708984375 172.68875000000003 -27.421875 164.97000000000003 -27.421875C157.45437500000003 -27.421875 152.14773437500003 -21.53125 152.14773437500003 -13.380859375C152.14773437500003 -5.255859375 157.17507812500003 0.609375 165.22390625000003 0.609375ZM158.47000000000003 -16.1484375C158.90164062500003 -19.982421875 161.36453125000003 -22.34375 165.07156250000003 -22.34375C168.77859375000003 -22.34375 171.26687500000003 -19.982421875 171.67312500000003 -16.1484375Z" fill="#F2F5FB"/></g>
+        </svg></div>
 
-      <p class="eyebrow">Early access · students &amp; alumni</p>
-      <h2 class="headline"><span class="line">Your network already exists.</span> <span class="line">It runs through your groups.</span></h2>
-      <p class="lede">
-        Pipeline turns the teams, clubs, and organizations you're already part of
-        into your professional network — so opportunities flow through people who share your story.
-      </p>
+        <h1 class="headline">
+          <span class="line l1">Your network already exists.</span>
+          <span class="line l2">Find where it leads.</span>
+        </h1>
+        <p class="lede">Discover opportunities through the teams, clubs, and communities that connect you.</p>
 
-      <form class="waitlist" data-source="hero" novalidate>
-        <label class="sr-only" for="email-hero">Email address</label>
-        <input id="email-hero" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@school.edu" required>
-        <input class="hp" name="company" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
-        <button type="submit">Join the waitlist</button>
-        <p class="form-status" role="status" aria-live="polite"></p>
-      </form>
-      <p class="fineprint">We'll only email you about Pipeline. Unsubscribe anytime.</p>
+        <form class="waitlist rise" data-source="hero" novalidate style="--d:1.35s">
+          <div class="field">
+            <label class="sr-only" for="email-hero">Email address</label>
+            <input id="email-hero" name="email" type="email" inputmode="email" autocomplete="email" placeholder="Email address" maxlength="254" required>
+            <input class="hp" name="company" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+            <button type="submit"><span class="btn-label">Join the waitlist</span><span class="btn-spin" aria-hidden="true"></span></button>
+          </div>
+          <p class="form-status" role="status" aria-live="polite"></p>
+          <div class="done" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/></svg>
+            <p><strong>You’re on the list.</strong> <span>We’ll email you when your community opens.</span></p>
+          </div>
+        </form>
+        <p class="fine rise" style="--d:1.5s">By joining, you agree to get Pipeline updates by email. Unsubscribe anytime.</p>
+      </div>
+      <a class="cue" href="#path" aria-label="Scroll to learn more"><span></span></a>
     </section>
 
-    <section class="insight">
-      <p class="eyebrow">The idea</p>
-      <h2><span class="line">A shared school is a weak tie.</span> <span class="line glow">A shared team is a pipeline.</span></h2>
-      <p>
-        The strongest connections we've seen between students and the people who hire them don't come
-        from going to the same school. They come from rowing in the same boat, playing on the same field,
-        or running the same club. Pipeline is built around those groups.
-      </p>
+    <section class="path" id="path">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <h2>The connections you haven’t discovered yet.</h2>
+          <p>Your next opportunity might be closer than you think.</p>
+        </div>
+
+        <div class="demo reveal" data-demo>
+          <ol class="route" aria-label="Example path from you to an opportunity">
+            <li class="stop s1"><span class="dot"></span><strong>You</strong><span class="sub">Interested in finance</span></li>
+            <li class="seg" aria-hidden="true"><span class="rail"></span><span class="via">Same team</span></li>
+            <li class="stop s2"><span class="dot"></span><strong>Teammate</strong><span class="sub">Knows an alum</span></li>
+            <li class="seg" aria-hidden="true"><span class="rail"></span><span class="via">Alumni network</span></li>
+            <li class="stop s3"><span class="dot"></span><strong>Alumnus</strong><span class="sub">Works in finance</span></li>
+            <li class="seg" aria-hidden="true"><span class="rail"></span><span class="via">Their firm</span></li>
+            <li class="stop s4"><span class="dot"></span><strong>Opportunity</strong><span class="sub">Analyst role</span></li>
+          </ol>
+          <div class="demo-foot">
+            <p>An illustrative example, not a live search or a real network.</p>
+            <button type="button" class="replay" data-replay>Replay</button>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="steps" aria-label="How Pipeline works">
-      <article class="step">
-        <span class="step-num">01</span>
-        <h3>Start with your groups</h3>
-        <p>Join the communities you're actually part of — teams, clubs, Greek life, and more.</p>
-      </article>
-      <article class="step">
-        <span class="step-num">02</span>
-        <h3>See your pipelines</h3>
-        <p>Find members and alumni who were once where you are, and see where they went next.</p>
-      </article>
-      <article class="step">
-        <span class="step-num">03</span>
-        <h3>Get warm introductions</h3>
-        <p>Reach out through people you share a group with — not another cold message.</p>
-      </article>
+    <section class="how" id="how">
+      <div class="wrap">
+        <ol class="steps" data-steps>
+          <li class="step t1 reveal">
+            <span class="node" aria-hidden="true"></span>
+            <span class="num">01</span>
+            <h3>Start with your groups</h3>
+            <p>The teams, clubs, and communities you’re already part of.</p>
+          </li>
+          <li class="step t2 reveal">
+            <span class="node" aria-hidden="true"></span>
+            <span class="num">02</span>
+            <h3>Discover your pipelines</h3>
+            <p>Explore where the people in your network have gone.</p>
+          </li>
+          <li class="step t3 reveal">
+            <span class="node" aria-hidden="true"></span>
+            <span class="num">03</span>
+            <h3>Find a way in</h3>
+            <p>Discover paths to people and opportunities through shared connections.</p>
+          </li>
+        </ol>
+      </div>
     </section>
 
     <section class="closing" id="join">
-      <img class="closing-mark" src="logo.svg" alt="" width="120" height="52">
-      <h2>Be first in the pipeline.</h2>
-      <p>We're opening Pipeline group by group. Join the waitlist and we'll let you know when yours is live.</p>
-      <form class="waitlist" data-source="footer" novalidate>
-        <label class="sr-only" for="email-footer">Email address</label>
-        <input id="email-footer" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@school.edu" required>
-        <input class="hp" name="company" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
-        <button type="submit">Join the waitlist</button>
-        <p class="form-status" role="status" aria-live="polite"></p>
-      </form>
+      <div class="wrap narrow">
+        <h2 class="reveal">Be first in the pipeline.</h2>
+        <p class="reveal">We’re opening Pipeline community by community.</p>
+        <form class="waitlist reveal" data-source="footer" novalidate>
+          <div class="field">
+            <label class="sr-only" for="email-footer">Email address</label>
+            <input id="email-footer" name="email" type="email" inputmode="email" autocomplete="email" placeholder="Email address" maxlength="254" required>
+            <input class="hp" name="company" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+            <button type="submit"><span class="btn-label">Join the waitlist</span><span class="btn-spin" aria-hidden="true"></span></button>
+          </div>
+          <p class="form-status" role="status" aria-live="polite"></p>
+          <div class="done" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/></svg>
+            <p><strong>You’re on the list.</strong> <span>We’ll email you when your community opens.</span></p>
+          </div>
+        </form>
+      </div>
     </section>
   </main>
 
