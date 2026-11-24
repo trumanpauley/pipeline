@@ -258,7 +258,7 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
       if (url.pathname === '/auth/v1/logout') return send(204);
 
       // ---------------- rest rpc ----------------
-      const m = url.pathname.match(/^\/rest\/v1\/rpc\/([a-z_]+)$/);
+      const m = url.pathname.match(/^\/rest\/v1\/rpc\/([a-z0-9_]+)$/);
       if (m && req.method === 'POST') {
         const claims = verifyJwt(bearer) || { role: 'anon' };
         const role = claims.role === 'authenticated' ? 'authenticated' : 'anon';

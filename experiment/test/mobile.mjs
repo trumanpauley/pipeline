@@ -147,13 +147,13 @@ async function keyboardCheck(browser) {
     await p.locator('.reveal-overlay').getByRole('button', { name: 'Continue' }).click();
   }
 
-  await p.getByRole('heading', { name: 'Be part of what’s next.' }).waitFor();
-  await p.locator('.waitlist-overlay .check').click(); // optional: future experiments
+  await p.getByRole('heading', { name: /Your network already exists/ }).waitFor();
+  await p.locator('.waitlist-overlay .check').first().click(); // optional: future experiments
   await check('community-email', p.getByLabel('Email address'), p.getByRole('button', { name: 'Join Early Access' }));
   await p.getByLabel('Email address').fill('maya@college.edu');
   await p.getByRole('button', { name: 'Join Early Access' }).click();
-  await p.getByRole('heading', { name: 'You’re on the list.' }).waitFor();
-  await p.getByRole('button', { name: 'Continue' }).click();
+  await p.getByTestId('completion-on-list').waitFor();
+  await p.getByRole('button', { name: 'Back to my network' }).click();
   // Save the network by phone (demo build has phone verification on; no SMS is sent)
   await p.locator('.save-card').click();
   await check('save-phone', p.getByLabel('Phone number'), p.getByRole('button', { name: 'Text me a code' }));

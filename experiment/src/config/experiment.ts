@@ -114,6 +114,13 @@ export const COPY = {
   landingCta: 'Enter the Experiment',
   landingFollow: 'Take part in our experiment to learn more about us.',
   landingMeta: 'Under two minutes · Voluntary',
+  // Community experiments (an experiment with a community name): community first, Pipeline disclosed.
+  communityTagline: 'How connected are we?',
+  communityBody: (community: string) => `Members of the ${community} community are exploring the strength and reach of their network.`,
+  communityFollow: 'Takes under two minutes. Completely voluntary.',
+  communityDisclosure: 'An independent networking experiment by Pipeline.',
+  communityJoinNote:
+    'This is an independent networking experiment by Pipeline. We record how you describe your connections and how invitations spread, and report results in aggregate. It isn’t sponsored or endorsed by any university, team or organization.',
   shareText: 'A small student experiment about how people are connected. You’re invited:',
   // First-name + consent page (after the relationship question). Never name the company here.
   joinEyebrow: 'We’re in stealth mode.',
@@ -181,6 +188,48 @@ export const COPY = {
       title: 'Your choices',
       lines: [
         'We never ask for a full surname, an email or a password.',
+        'You can delete your data at any time from “Your data”.',
+      ],
+    },
+  ],
+  /** The same disclosure for community experiments: Pipeline is named, and what the data is for is stated. */
+  aboutCommunity: [
+    {
+      title: 'The experiment',
+      lines: [
+        'This is an independent networking experiment run by Pipeline, a startup building tools to help people discover and navigate the networks they already belong to.',
+        'It isn’t sponsored or endorsed by any university, team or organization.',
+        'It takes about two minutes and is voluntary. You can stop at any point.',
+      ],
+    },
+    {
+      title: 'What we record',
+      lines: [
+        'How you describe your connection to the person who invited you, the people you invite, how invitations spread, and which experiment you’re in.',
+        'Anything optional you choose to add at the end, such as feedback or an email address.',
+      ],
+    },
+    {
+      title: 'How it may be used',
+      lines: [
+        'Pipeline uses it to study how communities are connected and to shape what it builds.',
+        'Results are reported in aggregate. Nobody in your community sees how you described them.',
+      ],
+    },
+    {
+      title: 'Your name',
+      lines: [
+        'We use your first name and last initial to identify you within this networking experiment. Your name may be visible to people participating in your invitation chain.',
+        'People you invite see your first name when they open your link. Whoever invited you typed your name, and sees when you join.',
+        'Other participants don’t see your name. The network view shows people as anonymous dots.',
+        'The research team sees names and the invitation network to run and study the experiment.',
+        'If you join more than one experiment, your participations are linked through this browser’s sign-in, never by matching names.',
+      ],
+    },
+    {
+      title: 'Your choices',
+      lines: [
+        'We never ask for a full surname, an email or a password. Giving an email at the end is optional and never joins you to anything automatically.',
         'You can delete your data at any time from “Your data”.',
       ],
     },

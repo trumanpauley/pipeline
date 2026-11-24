@@ -80,7 +80,7 @@ function Home({ session }: { session: Session }) {
   const [account, setAccount] = useState<MyAccount | null>(null);
   const [overlay, setOverlay] = useState<null | 'community' | 'completion' | 'link' | 'phone'>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<null | 'invite' | 'feedback' | 'privacy'>(null);
+  const [sheet, setSheet] = useState<null | 'invite' | 'additional' | 'feedback' | 'privacy'>(null);
   const [reveal, setReveal] = useState<number | null>(null);
   // ABC questionnaire: opens once right after joining (if eligible); a card
   // on the home screen resumes it if they choose "Not now".
@@ -318,7 +318,7 @@ function Home({ session }: { session: Session }) {
         </button>
       )}
 
-      {level >= 2 && account && !account.community?.subscribed && (
+      {level >= 2 && account && !account.community?.subscribed && exp?.enable_waitlist !== false && (
         <button className="early-card fade-up" onClick={() => setOverlay('completion')}>
           <div>
             <strong>Early access</strong>
@@ -327,7 +327,7 @@ function Home({ session }: { session: Session }) {
           <span className="arrow" aria-hidden="true">→</span>
         </button>
       )}
-      {level >= 2 && account?.community?.subscribed && (
+      {level >= 2 && (account?.community?.subscribed || exp?.enable_waitlist === false) && (
         <a className="early-card fade-up" href={LANDING_LINK} rel="noopener" data-testid="explore-pipeline">
           <div>
             <strong>Explore Pipeline</strong>
@@ -335,6 +335,19 @@ function Home({ session }: { session: Session }) {
           </div>
           <span className="arrow" aria-hidden="true">→</span>
         </a>
+      )}
+      {level >= 2 && exp?.allow_additional_invites && state.additional?.allowed && (
+        <button className="early-card fade-up" onClick={() => setSheet('additional')} data-testid="invite-someone-else">
+          <div>
+            <strong>Invite someone else</strong>
+            <span>
+              {(state.additional?.created ?? 0) > 0
+                ? `${state.additional!.created} invited${state.additional!.joined ? ` · ${state.additional!.joined} joined` : ''}. Know someone else who should be part of this?`
+                : 'Know someone else who should be part of this?'}
+            </span>
+          </div>
+          <span className="arrow" aria-hidden="true">→</span>
+        </button>
       )}
 
       {showNetwork && (
@@ -367,6 +380,19 @@ function Home({ session }: { session: Session }) {
           onClose={() => {
             setSheet(null);
             void refresh();
+          }}
+        />
+      )}
+      {sheet === 'additional' && (
+        <InviteSheet
+          additional
+          method={p.method}
+          instruction={instruction}
+          share={{ slug: exp?.slug, message: exp?.forward_message }}
+          first={false}
+          onClose={() => {
+            setSheet(null);
+            void load();
           }}
         />
       )}
@@ -432,6 +458,8 @@ function Home({ session }: { session: Session }) {
       {overlay === 'completion' && (
         <CompletionOverlay
           account={account}
+          state={state}
+          onChanged={() => void load()}
           onSkip={() => {
             setOverlay(null);
             // Skipping changes nothing else; it only stops the screen reappearing by itself.

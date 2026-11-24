@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10.5 14.3 185.3 56.6" role="img" aria-label="Pipeline mark">
+  <defs>
+    <linearGradient id="pl-arc" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5E74D4"/>
+      <stop offset="1" stop-color="#BCCBFF"/>
+    </linearGradient>
+  </defs>
+  
+  <path d="M26.5 56.9 Q103.1 -0.3 179.8 56.9" fill="none" stroke="url(#pl-arc)" stroke-width="2.6" stroke-linecap="round"/>
+  <g>
+    <circle cx="26.5" cy="56.9" r="5.2" fill="#6C82DA" opacity="1"/>
+    <circle cx="103.1" cy="28.3" r="6.5" fill="#B3C2FF" opacity="1"/>
+    <circle cx="179.8" cy="56.9" r="8.0" fill="#FFFFFF" opacity="1"/>
+  </g>
+</svg>

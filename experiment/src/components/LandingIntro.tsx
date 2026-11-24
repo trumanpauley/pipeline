@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { COPY } from '../config/experiment';
+import type { ExperimentInfo } from '../lib/api';
 import { Button } from './ui';
 import { NetworkBackground } from './NetworkBackground';
 
@@ -103,8 +104,14 @@ function Typewriter({
 }
 
 /** The invitation landing: inviter's name, a typed line, then the way in. */
-export function LandingIntro({ senderName, onEnter }: { senderName: string | null; onEnter: () => void }) {
+export function LandingIntro({ senderName, onEnter, experiment }: { senderName: string | null; onEnter: () => void; experiment?: ExperimentInfo | null }) {
   const firstName = senderName?.trim().split(/\s+/)[0] || null;
+  // Community experiments lead with the community, not with Pipeline.
+  const community = experiment?.community_name?.trim() || null;
+  const title = experiment?.public_title?.trim() || (community ? `The ${community} Network Experiment` : null);
+  const bodyText = community
+    ? experiment?.welcome_message?.trim() || COPY.communityBody(community)
+    : COPY.landingBody;
   const [instant, setInstant] = useState(prefersReducedMotion);
   const [typing, setTyping] = useState(false);
   const [bodyDone, setBodyDone] = useState(false);
@@ -154,12 +161,22 @@ export function LandingIntro({ senderName, onEnter }: { senderName: string | nul
       {/* A quiet, slowly moving network behind the invitation (replaces the static illustration). */}
       <NetworkBackground />
       <div className="stack text-center">
-        <h1 className="display landing-title fade-up" style={{ animationDelay: instant ? '0s' : '.35s' }}>
-          {COPY.landingTitle(firstName)}
-        </h1>
+        {community && title ? (
+          <>
+            <p className="eyebrow fade-up" style={{ animationDelay: instant ? '0s' : '.2s' }}>
+              {firstName ? `${firstName} invited you to` : 'You’re invited to'}
+            </p>
+            <h1 className="display landing-title fade-up" style={{ animationDelay: instant ? '0s' : '.35s' }}>{title}</h1>
+            <p className="landing-tagline fade-up" style={{ animationDelay: instant ? '0s' : '.5s' }}>{COPY.communityTagline}</p>
+          </>
+        ) : (
+          <h1 className="display landing-title fade-up" style={{ animationDelay: instant ? '0s' : '.35s' }}>
+            {COPY.landingTitle(firstName)}
+          </h1>
+        )}
         <Typewriter
           className="muted landing-body"
-          text={COPY.landingBody}
+          text={bodyText}
           run={typing}
           instant={instant}
           msPerChar={T.bodyMsPerChar}
@@ -173,13 +190,13 @@ export function LandingIntro({ senderName, onEnter }: { senderName: string | nul
         </div>
         <Typewriter
           className="landing-follow"
-          text={COPY.landingFollow}
+          text={community ? COPY.communityFollow : COPY.landingFollow}
           run={typingFollow}
           instant={instant}
           msPerChar={T.followMsPerChar}
           onDone={() => setFollowDone(true)}
         />
-        <p className={`fine landing-meta ${followDone ? 'is-shown' : ''}`}>{COPY.landingMeta}</p>
+        <p className={`fine landing-meta ${followDone ? 'is-shown' : ''}`}>{community ? COPY.communityDisclosure : COPY.landingMeta}</p>
       </div>
     </div>
   );
