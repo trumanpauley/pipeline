@@ -2304,11 +2304,11 @@ try {
       await answer(una);
       const unaForm = una.locator('form.join-form');
       await unaForm.waitFor();
+      if (await una.locator('#eligibility-q').count()) await una.getByRole('radio', { name: 'Yes', exact: true }).click();
       ok((await una.getByTestId('join-disclosure').innerText()).includes('independent networking experiment by Pipeline'), 'before submitting: Pipeline’s involvement and what is recorded are disclosed');
       await una.locator('summary', { hasText: 'About this experiment & privacy' }).click();
       const aboutText = await una.locator('.about-body').innerText();
       ok(aboutText.includes('How it may be used') && aboutText.includes('run by Pipeline') && aboutText.includes('isn’t sponsored or endorsed'), 'the full disclosure says how the information may be used');
-      if (await una.locator('#eligibility-q').count()) await una.getByRole('radio', { name: 'Yes', exact: true }).click();
       await una.getByPlaceholder(NAME_PH).fill('Una U.');
       await una.getByText(CONSENT).click();
       await una.getByRole('radio', { name: 'Current player' }).click();
