@@ -484,7 +484,8 @@ details (name, description, instruction, categories).
 
 Migration `014`. Each experiment's join screen can speak to its own community. Set this up in the
 admin experiment form under **Join screen**:
-- **Welcome message:** one line under "And you are?", typed in briefly.
+- **Welcome message:** no longer shown (the join screen goes straight to its questions); the
+  stored text is kept for later use.
 - **Eligibility question (optional):** e.g. "Have you played for Harvard Baseball?". You choose
   the answer that continues, the answer that stops, and the message shown for "No".
 - **Participant types:** e.g. "Current player, Former player / alumnus".
@@ -502,7 +503,7 @@ alumni; "current" or "student" → student).
 
 The admin **Participant experience simulator** runs the real screens for the chosen group,
 without saving anything: landing, relationship question, connection strength and comfort, the
-join screen (welcome, eligibility, types, name, consent), and the ABC questions when the chosen
+join screen (eligibility, types, name, consent), and the ABC questions when the chosen
 generation qualifies.
 
 **Skipping "Where do you know them from?"** (migration `015`). In a community where everyone
@@ -594,8 +595,8 @@ depth 2. The threshold is set per experiment in `abc_min_depth`, and `abc_enable
 - **When:** right after joining, a centred dialog shows the scenario: students see "Imagine
   {Jane/John} is an incoming Harvard student looking for advice on which classes to take.",
   alumni see "…a Harvard junior looking for advice about internship opportunities."
-- **Questions:** two 1–5 questions follow, cold ("…if {name} sent you a message on LinkedIn asking
-  for advice?") and warm ("…if {inviter} personally introduced {name} to you?").
+- **Questions:** two 1–5 questions follow, cold ("…if {name} sent you a message asking for
+  advice?"; no platform named, since people answer texts and email more readily than LinkedIn) and warm ("…if {inviter} personally introduced {name} to you?").
 - **Random assignment:** Jane/John and the question order are drawn at random once and stored, so
   they stay the same if the person comes back.
 - **Resuming and locking:** answers are saved one at a time, so "Not now" or a refresh resumes at

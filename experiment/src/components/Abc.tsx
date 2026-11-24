@@ -7,12 +7,12 @@ type Q = 'cold' | 'warm';
 
 export const abcQuestion = (q: Q, name: string, inviter: string) =>
   q === 'cold'
-    ? `How likely would you be to respond if ${name} sent you a message on LinkedIn asking for advice?`
+    ? `How likely would you be to respond if ${name} sent you a message asking for advice?`
     : `How likely would you be to respond if ${inviter} personally introduced ${name} to you?`;
 
 /**
  * The ABC questionnaire: a scenario about Jane or John, then the same request
- * arriving cold (LinkedIn) and through the inviter, in the assigned order.
+ * arriving cold (a message from a stranger) and through the inviter, in the assigned order.
  * Answers already given are skipped, so a half-finished questionnaire resumes
  * where it stopped. The scenario stays above both questions so they differ
  * only in how the person gets in touch.
