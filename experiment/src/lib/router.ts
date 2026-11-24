@@ -9,9 +9,11 @@ const HASH = import.meta.env.VITE_HASH_ROUTER === '1';
 // Hash builds: a shared path-style link (/join/abc or /i/abc) is moved into
 // the hash on load, so the same permanent link works with either build.
 if (HASH && typeof window !== 'undefined') {
-  const m = window.location.pathname.match(/^(.*?\/)(join|i)\/([A-Za-z0-9_-]{10,64})\/?$/);
+  const m = window.location.pathname.match(/^(.*?\/)(join|i|[a-z0-9][a-z0-9-]{1,38}[a-z0-9])\/([A-Za-z0-9_-]{10,64})\/?$/);
   if (m && !window.location.hash.replace(/^#\/?/, '')) {
-    window.history.replaceState(null, '', `${m[1]}#/join/${m[3]}`);
+    // /join/TOKEN and /i/TOKEN → #/join/TOKEN; /harvard-baseball/TOKEN keeps its name.
+    const head = m[2] === 'i' ? 'join' : m[2];
+    window.history.replaceState(null, '', `${m[1]}#/${head}/${m[3]}`);
   }
 }
 

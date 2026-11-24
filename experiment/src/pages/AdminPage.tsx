@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { adminErrorText, api, inviteUrl, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
+import { adminErrorText, api, inviteUrl, shareText, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
 import { AbcFlow } from '../components/Abc';
 import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, PRIVATE_NOTE, ScaleQuestion } from '../components/Relationship';
 import { JoinForm } from '../components/JoinForm';
 import { LandingIntro } from '../components/LandingIntro';
 import { Classifier } from '../components/Classifier';
 import { supabase } from '../lib/supabase';
-import { navigate } from '../lib/router';
+import { appUrl, navigate } from '../lib/router';
+import { slugify, slugProblem, suggestsSponsorship } from '../lib/sharing';
+import { uploadPreviewImage } from '../lib/previewImage';
+import { InvitationPreview } from '../components/InvitationPreview';
 import { COPY, labelFor, METHODS, methodDef, type MethodKey } from '../config/experiment';
 import { SignIn } from '../components/EmailAuth';
 import { ModerationPanel } from '../components/ModerationPanel';
@@ -387,7 +390,14 @@ function Legend() {
   );
 }
 
-function SeedPanel({ experimentId, seeds, onChanged }: { experimentId: string; seeds: AdminOverview['seeds']; onChanged: () => void }) {
+function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
+  experimentId: string;
+  slug: string | null;
+  /** The experiment's initial invitation message, sent with seed links. */
+  inviteMessage: string | null;
+  seeds: AdminOverview['seeds'];
+  onChanged: () => void;
+}) {
   const [count, setCount] = useState(10);
   const [sender, setSender] = useState('');
   const [note, setNote] = useState('');
@@ -410,14 +420,27 @@ function SeedPanel({ experimentId, seeds, onChanged }: { experimentId: string; s
     }
   };
   const copy = async (token: string) => {
-    await navigator.clipboard.writeText(inviteUrl(token)).catch(() => undefined);
+    await navigator.clipboard.writeText(inviteUrl(token, slug)).catch(() => undefined);
     setCopied(token);
     window.setTimeout(() => setCopied(null), 1400);
   };
   const copyAll = async () => {
-    const unused = seeds.filter((s) => s.status === 'created').map((s) => inviteUrl(s.token)).join('\n');
+    const unused = seeds.filter((s) => s.status === 'created').map((s) => inviteUrl(s.token, slug)).join('\n');
     await navigator.clipboard.writeText(unused).catch(() => undefined);
     setCopied('all');
+  };
+  // The initial invitation message plus this seed's link: the share sheet on a
+  // phone (you choose the app and send it yourself), copied elsewhere.
+  const sendMessage = async (token: string) => {
+    const url = inviteUrl(token, slug);
+    const message = inviteMessage?.trim() || COPY.shareText;
+    if (typeof navigator.share === 'function') {
+      try { await navigator.share({ text: message, url }); } catch { /* cancelled */ }
+      return;
+    }
+    await navigator.clipboard.writeText(shareText(message, url)).catch(() => undefined);
+    setCopied(`m:${token}`);
+    window.setTimeout(() => setCopied(null), 1400);
   };
 
   return (
@@ -438,11 +461,16 @@ function SeedPanel({ experimentId, seeds, onChanged }: { experimentId: string; s
         <>
           <button className="link" onClick={copyAll}>{copied === 'all' ? 'Copied unused links' : 'Copy all unused links'}</button>
           <Table
-            head={['Link', 'From', 'Note', 'Status', 'Branch', '']}
+            head={['Link', 'Message', 'From', 'Note', 'Status', 'Branch', '']}
             rows={seeds.map((s) => [
               <button key="c" className="chip mono" onClick={() => copy(s.token)}>
-                {copied === s.token ? 'Copied' : `/join/${s.token.slice(0, 8)}…`}
+                {copied === s.token ? 'Copied' : `/${slug ?? 'join'}/${s.token.slice(0, 8)}…`}
               </button>,
+              s.status === 'created' || s.status === 'opened' ? (
+                <button key="m" className="chip" onClick={() => sendMessage(s.token)} aria-label={`Share the invitation message with link ${s.token.slice(0, 8)}`}>
+                  {copied === `m:${s.token}` ? 'Copied' : 'Share message'}
+                </button>
+              ) : '',
               s.sender_name ?? '—',
               s.note ?? '',
               s.status,
@@ -482,6 +510,14 @@ type ExperimentDraft = {
   eligible_label: string;
   ineligible_label: string;
   ineligible_message: string;
+  // Invitation settings (link name, preview, messages)
+  slug: string;
+  public_title: string;
+  preview_description: string;
+  preview_image_url: string;
+  invite_message: string;
+  forward_message: string;
+  affiliation_authorized: boolean;
 };
 
 const draftOf = (e?: Experiment): ExperimentDraft => ({
@@ -499,16 +535,50 @@ const draftOf = (e?: Experiment): ExperimentDraft => ({
   eligible_label: e?.eligible_label ?? 'Yes',
   ineligible_label: e?.ineligible_label ?? 'No',
   ineligible_message: e?.ineligible_message ?? '',
+  slug: e?.slug ?? '',
+  public_title: e?.public_title ?? '',
+  preview_description: e?.preview_description ?? '',
+  preview_image_url: e?.preview_image_url ?? '',
+  invite_message: e?.invite_message ?? '',
+  forward_message: e?.forward_message ?? '',
+  affiliation_authorized: e?.affiliation_authorized ?? false,
 });
 
+/** Fired after an experiment's settings are saved, so other panels (the simulator) reload them. */
+const EXPERIMENTS_CHANGED = 'px:experiments-changed';
+
 const saveDraft = async (d: ExperimentDraft) => {
+  try {
+    return await saveDraftSteps(d);
+  } finally {
+    window.dispatchEvent(new Event(EXPERIMENTS_CHANGED));
+  }
+};
+
+const saveDraftSteps = async (d: ExperimentDraft) => {
   const saved = await api.adminSaveExperiment({
     ...d,
     invites_per_participant: Number(d.invites_per_participant),
     categories: d.categories.split(',').map((c) => c.trim()).filter(Boolean),
   });
   await api.adminSaveExperimentOnboarding(saved.id, d);
-  await api.adminSetRelationshipQuestion(saved.id, d.ask_relationship_question);
+  try {
+    await api.adminSetRelationshipQuestion(saved.id, d.ask_relationship_question);
+  } catch (err) {
+    // The rest is saved; this one setting needs migration 015.
+    if (/could not find the function|admin_set_relationship_question/i.test((err as Error).message)) {
+      throw new Error('Saved, except “Where do you know them from?”: run migration 015 in the Supabase SQL Editor first, then save again.');
+    }
+    throw err;
+  }
+  try {
+    await api.adminSaveExperimentSharing(saved.id, d);
+  } catch (err) {
+    if (/could not find the function|admin_save_experiment_sharing/i.test((err as Error).message)) {
+      throw new Error('Saved, except the invitation settings: run migration 016 in the Supabase SQL Editor first, then save again.');
+    }
+    throw err;
+  }
   return saved;
 };
 
@@ -599,6 +669,9 @@ function ExperimentsPanel({ refreshKey, only, onChanged }: { refreshKey: number;
                 {e.description && (<><dt>Group</dt><dd>{e.description}</dd></>)}
                 <dt>Instruction</dt><dd>{e.invite_instruction || <span className="muted">Default (“Invite two people…”)</span>}</dd>
                 <dt>Invites each</dt><dd>{e.invites_per_participant}</dd>
+                <dt>Link</dt><dd>{e.slug
+                  ? <><span className="mono">{appUrl(`/${e.slug}`).replace(/^https?:\/\//, '')}</span>{e.public_title ? <span className="muted"> · “{e.public_title}”</span> : null}</>
+                  : <span className="muted">/join/… (no link name)</span>}</dd>
                 <dt>Relationship question</dt><dd>{e.ask_relationship_question === false
                   ? <span className="muted">Not asked (everyone knows each other the same way)</span>
                   : 'Asked (“Where do you know them from?” or its variant)'}</dd>
@@ -624,7 +697,7 @@ function ExperimentsPanel({ refreshKey, only, onChanged }: { refreshKey: number;
                 ))}
               </p>
             )}
-            {open === e.id && <ExperimentDetailView experimentId={e.id} onChanged={reload} />}
+            {open === e.id && <ExperimentDetailView experimentId={e.id} slug={e.slug ?? null} inviteMessage={e.invite_message ?? null} onChanged={reload} />}
           </article>
         ))}
       </div>
@@ -670,11 +743,19 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
         <input className="input" value={d.categories} placeholder="Current player, Former player / alumnus" onChange={(e) => set('categories', e.target.value)} aria-label="Participant categories" />
       </label>
       <fieldset className="experiment-onboarding">
-        <legend>Join screen</legend>
+        <legend>Relationship question</legend>
         <label className="preview-check">
           <input type="checkbox" checked={d.ask_relationship_question} onChange={(e) => set('ask_relationship_question', e.target.checked)} aria-label="Ask where they know each other from" />
-          Ask “Where do you know them from?” <span className="muted">(turn off when everyone knows each other the same way, e.g. one team; invitees and inviters both skip it)</span>
+          Ask “Where do you know them from?” first
         </label>
+        <p className="muted small">
+          {d.ask_relationship_question
+            ? 'Invitees answer it right after opening their link, and inviters answer it when they create a link.'
+            : 'Skipped: invitees go straight to “How close are you to …?”, and inviters get their link right after typing the name. Good for one team or chapter, where everyone knows each other the same way.'}
+        </p>
+      </fieldset>
+      <fieldset className="experiment-onboarding">
+        <legend>Join screen</legend>
         <label>Welcome message <span className="muted">(one line under “And you are?”)</span>
           <textarea className="input" rows={2} value={d.welcome_message} maxLength={240}
             placeholder="A small experiment exploring the connections between current and former Harvard Baseball players."
@@ -706,6 +787,7 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
           </>
         )}
       </fieldset>
+      <InvitationSettings d={d} set={set} />
       <ErrorText error={error} />
       <div className="row-actions">
         <Button type="submit" busy={busy}>{d.id ? 'Save changes' : 'Create experiment'}</Button>
@@ -715,7 +797,12 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
   );
 }
 
-function ExperimentDetailView({ experimentId, onChanged }: { experimentId: string; onChanged: () => void }) {
+function ExperimentDetailView({ experimentId, slug, inviteMessage, onChanged }: {
+  experimentId: string;
+  slug: string | null;
+  inviteMessage: string | null;
+  onChanged: () => void;
+}) {
   const [detail, setDetail] = useState<ExperimentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reload = useCallback(async () => {
@@ -731,7 +818,7 @@ function ExperimentDetailView({ experimentId, onChanged }: { experimentId: strin
   if (!detail) return <p className="muted small">Loading…</p>;
   return (
     <div className="experiment-detail">
-      <SeedPanel experimentId={experimentId} seeds={detail.seeds} onChanged={() => { void reload(); onChanged(); }} />
+      <SeedPanel experimentId={experimentId} slug={slug} inviteMessage={inviteMessage} seeds={detail.seeds} onChanged={() => { void reload(); onChanged(); }} />
       <div>
         <h3>Referral tree</h3>
         <p className="muted small">
@@ -941,7 +1028,13 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
     relationship?: string; closeness?: number; comfort?: number; name?: string; category?: string | null; cold?: number; warm?: number;
   }>({});
 
-  useEffect(() => { void api.adminExperiments().then(setExperiments).catch(() => undefined); }, []);
+  // Always the saved settings: reloaded whenever an experiment is saved, and on each start.
+  const loadExperiments = useCallback(() => api.adminExperiments().then(setExperiments).catch(() => undefined), []);
+  useEffect(() => {
+    void loadExperiments();
+    window.addEventListener(EXPERIMENTS_CHANGED, loadExperiments);
+    return () => window.removeEventListener(EXPERIMENTS_CHANGED, loadExperiments);
+  }, [loadExperiments]);
   const e = experiments.find((x) => x.id === expId) ?? experiments[0];
   const minDepth = e?.abc_min_depth ?? 3;
   const eligible = Boolean(e?.abc_enabled) && depth >= minDepth;
@@ -952,7 +1045,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
     eligible: true, name, order, classification: scenario?.key, inviter_name: inviter.trim() || null,
     scenario: (scenario?.scenario ?? '').replace('{name}', name), cold: null, warm: null, completed: false,
   };
-  const start = () => { setAnswers({}); setStep('landing'); };
+  const start = async () => { await loadExperiments(); setAnswers({}); setStep('landing'); };
   const afterRating = () => setStep('join');
   const asksRelationship = e?.ask_relationship_question !== false;
 
@@ -995,7 +1088,9 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
       <p className="muted small" data-testid="preview-eligibility">
         Generation {depth} {eligible ? 'gets' : 'doesn’t get'} the ABC questions in {e?.name ?? 'this group'} (from generation {minDepth}
         {e && !e.abc_enabled ? ', currently switched off' : ''}). Generation 1 joined from a seed link.
-        {e?.ask_relationship_question === false ? ' “Where do you know them from?” is skipped.' : ''}
+        {e ? (e.ask_relationship_question === false
+          ? ' “Where do you know them from?” is skipped.'
+          : ' “Where do you know them from?” is asked (untick it in the group’s settings to skip it).') : ''}
         {e?.eligibility_enabled && e.eligibility_question ? ` Eligibility question: “${e.eligibility_question}”` : ' No eligibility question.'}
       </p>
       <Button onClick={start}>Start simulator</Button>
@@ -1210,5 +1305,107 @@ function MethodStatsPanel({ stats }: { stats: AdminMethodStats }) {
         ])}
       />
     </Panel>
+  );
+}
+
+/**
+ * "Invitation settings": how this experiment looks and reads when its links
+ * are shared, with a live preview. Saved with the rest of the form.
+ */
+function InvitationSettings({ d, set }: {
+  d: ExperimentDraft;
+  set: <K extends keyof ExperimentDraft>(k: K, v: ExperimentDraft[K]) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const slugIssue = slugProblem(d.slug);
+  const sponsorship = !d.affiliation_authorized && suggestsSponsorship(d.public_title, d.preview_description, d.invite_message, d.forward_message);
+  const base = appUrl('/').replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      set('preview_image_url', await uploadPreviewImage(file, d.id));
+    } catch (e) {
+      setUploadError((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <fieldset className="experiment-onboarding invitation-settings">
+      <legend>Invitation settings</legend>
+      <div className="invitation-settings-grid">
+        <div className="invitation-settings-fields">
+          <label>Experiment title <span className="muted">(link previews)</span>
+            <input className="input" value={d.public_title} maxLength={80} placeholder="Harvard Baseball Network Experiment"
+              onChange={(e) => set('public_title', e.target.value)} aria-label="Experiment title" />
+          </label>
+          <label>URL slug
+            <div className="slug-input">
+              <span className="slug-prefix">{base}/</span>
+              <input className="input" value={d.slug} maxLength={40} placeholder="harvard-baseball" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                onChange={(e) => set('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))} aria-label="URL slug" />
+            </div>
+          </label>
+          {slugIssue
+            ? <p className="error small" role="alert">{slugIssue}</p>
+            : <p className="muted small">
+                {d.slug ? <>Invitations become <span className="mono">{base}/{d.slug}/…</span>; each keeps its own unique code. Links already sent keep working.</> : 'Empty: links stay /join/…'}
+                {!d.slug && d.name.trim() && slugify(d.name) && (
+                  <> <button type="button" className="link inline" onClick={() => set('slug', slugify(d.name))}>Use “{slugify(d.name)}”</button></>
+                )}
+              </p>}
+          <label>Link preview description
+            <textarea className="input" rows={2} value={d.preview_description} maxLength={200} placeholder="How strong is the Harvard Baseball network? Help us find out."
+              onChange={(e) => set('preview_description', e.target.value)} aria-label="Link preview description" />
+          </label>
+          <div className="preview-image-field">
+            <span>Link preview image <span className="muted">(cropped to 1200×630; empty = a generated title card)</span></span>
+            <div className="row-actions">
+              <label className="chip file-chip">
+                {uploading ? 'Uploading…' : d.preview_image_url ? 'Replace image' : 'Upload image'}
+                <input type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="Upload preview image"
+                  onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+              {d.preview_image_url && <button type="button" className="chip ghost" onClick={() => set('preview_image_url', '')}>Use generated image</button>}
+            </div>
+            <input className="input" value={d.preview_image_url} maxLength={600} placeholder="or an image address: https://…"
+              onChange={(e) => set('preview_image_url', e.target.value.trim())} aria-label="Preview image address" />
+            <ErrorText error={uploadError} />
+          </div>
+          <label>Initial invitation message <span className="muted">(sent with seed links)</span>
+            <textarea className="input" rows={3} value={d.invite_message} maxLength={500}
+              placeholder="Current Harvard Baseball players are studying the strength of our baseball network. Take this short survey to help us understand how connected our community really is."
+              onChange={(e) => set('invite_message', e.target.value)} aria-label="Initial invitation message" />
+          </label>
+          <label>Participant forwarding message <span className="muted">(sent with participants’ own links)</span>
+            <textarea className="input" rows={3} value={d.forward_message} maxLength={500}
+              placeholder="I’m taking part in a short experiment about the Harvard Baseball network. Add your connection to help us map how our community is connected."
+              onChange={(e) => set('forward_message', e.target.value)} aria-label="Participant forwarding message" />
+          </label>
+          <label className="preview-check">
+            <input type="checkbox" checked={d.affiliation_authorized} onChange={(e) => set('affiliation_authorized', e.target.checked)} aria-label="Officially authorized" />
+            Officially authorized <span className="muted">(only if the organization named has approved this experiment)</span>
+          </label>
+          {sponsorship && (
+            <p className="error small" role="alert" data-testid="sponsorship-warning">
+              This wording suggests official sponsorship or endorsement (e.g. “official”, “sponsored by”, “on behalf of”). Rephrase it unless the organization has authorized the experiment.
+            </p>
+          )}
+        </div>
+        <InvitationPreview look={{
+          slug: slugIssue ? '' : d.slug,
+          title: d.public_title,
+          description: d.preview_description,
+          imageUrl: d.preview_image_url,
+          inviteMessage: d.invite_message,
+          forwardMessage: d.forward_message,
+        }} />
+      </div>
+    </fieldset>
   );
 }

@@ -123,6 +123,22 @@ export interface ExperimentInfo {
   ask_relationship_question?: boolean;
   /** Optional membership question asked before joining (null = not asked). */
   eligibility?: EligibilityInfo | null;
+  /** Readable public name in links, e.g. "harvard-baseball" → /harvard-baseball/TOKEN. */
+  slug?: string | null;
+  /** e.g. "Harvard Baseball Network Experiment" (link previews). */
+  public_title?: string | null;
+  /** What participants send with their referral links. */
+  forward_message?: string | null;
+}
+
+/** An experiment's public link-preview settings (for /harvard-baseball and link previews). */
+export interface ShareMeta {
+  found: boolean;
+  id?: string;
+  slug?: string | null;
+  title?: string | null;
+  description?: string | null;
+  image_url?: string | null;
 }
 
 export interface EligibilityInfo {
@@ -142,6 +158,11 @@ export interface AbcScenario {
 export interface Experiment extends ExperimentInfo {
   // Onboarding settings as stored (the public `eligibility` is derived from these).
   ask_relationship_question?: boolean;
+  // Invitation settings (migration 016)
+  preview_description?: string | null;
+  preview_image_url?: string | null;
+  invite_message?: string | null;
+  affiliation_authorized?: boolean;
   eligibility_enabled: boolean;
   eligibility_question: string | null;
   eligible_label: string;
@@ -284,6 +305,11 @@ const MESSAGES: Record<string, string> = {
   not_eligible: 'This experiment is only for members of this community.',
   eligibility_question_required: 'Add the eligibility question, or turn screening off.',
   eligibility_labels_same: 'The two answers need different labels.',
+  invalid_slug: 'Use 3–40 lowercase letters, numbers and single hyphens for the link (e.g. harvard-baseball).',
+  slug_reserved: 'That link name is used by the app itself. Choose another.',
+  slug_taken: 'Another experiment already uses that link name.',
+  invalid_image_url: 'The preview image must be a public https:// address.',
+  sponsorship_language: 'The wording suggests official sponsorship or endorsement. Rephrase it, or tick “Officially authorized” if the organization has approved this experiment.',
   abc_completed: 'You’ve already answered these. Thank you!',
   abc_started: 'Your group can’t be changed now.',
   invalid_name_format: 'Enter a first name and last initial, like “James P.”',
@@ -424,6 +450,26 @@ export const api = {
     }),
   adminRevoke: (id: string) => rpc('admin_revoke_invitation', { p_invitation_id: id }),
   adminExperiments: () => rpc<Experiment[]>('admin_experiments'),
+  shareMeta: (slug: string) => rpc<ShareMeta>('experiment_share_meta', { p_slug: slug, p_token: null }),
+  adminSaveExperimentSharing: (experimentId: string, o: {
+    slug: string;
+    public_title: string;
+    preview_description: string;
+    preview_image_url: string;
+    invite_message: string;
+    forward_message: string;
+    affiliation_authorized: boolean;
+  }) =>
+    rpc<Experiment>('admin_save_experiment_sharing', {
+      p_experiment_id: experimentId,
+      p_slug: o.slug,
+      p_public_title: o.public_title,
+      p_preview_description: o.preview_description,
+      p_preview_image_url: o.preview_image_url,
+      p_invite_message: o.invite_message,
+      p_forward_message: o.forward_message,
+      p_affiliation_authorized: o.affiliation_authorized,
+    }),
   adminExperimentDetail: (id: string) => rpc<ExperimentDetail>('admin_experiment_detail', { p_experiment_id: id }),
   adminSaveExperiment: (e: {
     id: string | null;
@@ -471,8 +517,18 @@ export const api = {
     }),
 };
 
-/** Permanent public link for an invitation: {VITE_PUBLIC_APP_URL}/join/{token}. */
-export const inviteUrl = (token: string) => appUrl(`/join/${token}`);
+/**
+ * Permanent public link for an invitation: {VITE_PUBLIC_APP_URL}/{slug}/{token}
+ * when the experiment has a link name (e.g. /harvard-baseball/AbC…), otherwise
+ * /join/{token}. The token alone identifies the invitation and its sender, so
+ * both forms (and every link already sent) open the same invitation.
+ */
+export const inviteUrl = (token: string, slug?: string | null) =>
+  appUrl(slug ? `/${slug}/${token}` : `/join/${token}`);
+
+/** The text people send: the experiment's message, then the link. */
+export const shareText = (message: string | null | undefined, url: string) =>
+  message?.trim() ? `${message.trim()}\n\n${url}` : url;
 
 export interface AdminOverview {
   totals: {

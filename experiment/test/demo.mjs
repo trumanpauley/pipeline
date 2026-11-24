@@ -34,6 +34,7 @@ for (const f of [
   'supabase/migrations/013_copy_safe_name_check.sql',
   'supabase/migrations/014_community_onboarding.sql',
   'supabase/migrations/015_optional_relationship_question.sql',
+  'supabase/migrations/016_invitation_sharing.sql',
 ]) {
   execSync(`psql "${DB}" -v ON_ERROR_STOP=1 -q -f ${path.join(root, f)}`);
 }

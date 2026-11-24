@@ -21,6 +21,29 @@ export function signJwt(payload) {
   return `${head}.${body}.${sig}`;
 }
 
+const storedFiles = new Map();
+
+/** The file in a storage upload (multipart form, as supabase-js sends it, or a raw body). */
+function fileFromUpload(contentType, buf) {
+  const b = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/);
+  if (!b) return { type: contentType || 'application/octet-stream', bytes: buf };
+  const boundary = Buffer.from(`--${b[1] || b[2]}`);
+  let start = buf.indexOf(boundary);
+  while (start !== -1) {
+    const next = buf.indexOf(boundary, start + boundary.length);
+    if (next === -1) break;
+    const part = buf.subarray(start + boundary.length + 2, next - 2);
+    const headEnd = part.indexOf('\r\n\r\n');
+    const head = part.subarray(0, headEnd).toString();
+    const type = head.match(/content-type:\s*([^\r\n]+)/i);
+    if (type) return { type: type[1].trim(), bytes: part.subarray(headEnd + 4) };
+    start = next;
+  }
+  return { type: 'application/octet-stream', bytes: buf };
+}
+
+export const storedPreviewFiles = storedFiles;
+
 function verifyJwt(token) {
   const parts = (token || '').split('.');
   if (parts.length !== 3) return null;
@@ -84,10 +107,47 @@ export function startMockSupabase({ port, connectionString, fixedCode = null }) 
       res.end(body === undefined ? '' : JSON.stringify(body));
     };
     if (req.method === 'OPTIONS') return send(204);
-    let raw = '';
-    for await (const chunk of req) raw += chunk;
-    const body = raw ? JSON.parse(raw) : {};
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const rawBuf = Buffer.concat(chunks);
     const bearer = (req.headers.authorization || '').replace(/^Bearer /, '');
+
+    // ---------------- storage (preview images) ----------------
+    // Public bucket "experiment-previews"; uploads only for admins (same rule as
+    // the storage policy in migration 016). Files are kept in memory.
+    const st = url.pathname.match(/^\/storage\/v1\/object\/(public\/)?([a-z0-9-]+)\/(.+)$/);
+    if (st) {
+      const [, isPublic, bucket, key] = st;
+      if (bucket !== 'experiment-previews') return send(404, { statusCode: '404', error: 'Bucket not found', message: 'Bucket not found' });
+      if (req.method === 'GET' && isPublic) {
+        const f = storedFiles.get(key);
+        if (!f) return send(404, { message: 'Object not found' });
+        res.writeHead(200, { 'content-type': f.type, 'access-control-allow-origin': '*' });
+        return res.end(f.bytes);
+      }
+      if (req.method === 'POST' && !isPublic) {
+        const claims = verifyJwt(bearer);
+        let admin = false;
+        if (claims?.role === 'authenticated') {
+          const c = await pool.connect();
+          try {
+            await c.query('begin');
+            await c.query('set local role authenticated');
+            await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)]);
+            admin = (await c.query('select public.is_admin() as a')).rows[0].a;
+            await c.query('commit');
+          } finally {
+            c.release();
+          }
+        }
+        if (!admin) return send(403, { statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' });
+        storedFiles.set(key, fileFromUpload(req.headers['content-type'] || '', rawBuf));
+        return send(200, { Key: `${bucket}/${key}`, Id: crypto.randomUUID() });
+      }
+    }
+
+    const raw = rawBuf.toString('utf8');
+    const body = raw ? JSON.parse(raw) : {};
 
     try {
       // ---------------- auth ----------------
