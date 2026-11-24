@@ -5880,6 +5880,10 @@ revoke execute on function public.admin_experiment_detail(uuid) from public, ano
 revoke execute on function public.admin_waitlist_overview() from public, anon;
 revoke execute on function public.create_additional_invitation(text, text) from public, anon;
 revoke execute on function public.submit_experiment_feedback(text, boolean, text) from public, anon;
+-- The renamed-and-rewrapped get_my_state is a new function: give it the same access as before.
+revoke execute on function public.get_my_state() from public, anon;
+grant execute on function public.get_my_state() to authenticated;
+revoke execute on function public.px_get_my_state_v18() from public, anon;
 revoke execute on function public.px_participant_completed() from public, anon, authenticated;
 revoke execute on function public.px_invitation_kind() from public, anon, authenticated;
 grant execute on function public.admin_save_experiment_launch(uuid, text, text, boolean, boolean, boolean) to authenticated;
