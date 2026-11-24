@@ -248,6 +248,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
       <Screen className="center landing">
         <LandingIntro
           senderName={info?.sender_name ?? null}
+          experiment={info?.experiment ?? null}
           onEnter={() => {
             if (!skipsQuestion(info)) return setStep('classify');
             progress.set(token, { answered: true });

@@ -103,7 +103,14 @@ export interface AdminWaitlistOverview {
   on_both: number;
   last_7_days: number;
   by_source: { source: string; count: number }[];
-  recent: { email: string; source: string; created_at: string }[];
+  recent: {
+    email: string;
+    source: string;
+    created_at: string;
+    origin?: 'landing' | 'experiment';
+    experiment?: string | null;
+    consent?: string | null;
+  }[];
 }
 
 export interface AdminAccountStats {
@@ -140,6 +147,13 @@ export interface ExperimentInfo {
   public_title?: string | null;
   /** What participants send with their referral links. */
   forward_message?: string | null;
+  /** Migration 018: the community the experiment is for, e.g. "Harvard Baseball". */
+  community_name?: string | null;
+  /** Replaces the default thank-you line on the completion page. */
+  completion_message?: string | null;
+  allow_additional_invites?: boolean;
+  enable_feedback?: boolean;
+  enable_waitlist?: boolean;
 }
 
 /** An experiment's public link-preview settings (for /harvard-baseball and link previews). */
@@ -202,9 +216,24 @@ export interface Experiment extends ExperimentInfo {
   };
 }
 
+export type ReferralKind = 'seed_personal' | 'seed_broadcast' | 'standard' | 'additional';
+export const REFERRAL_KIND_LABEL: Record<ReferralKind, string> = {
+  seed_personal: 'Personal seed',
+  seed_broadcast: 'Broadcast seed',
+  standard: 'Standard referral',
+  additional: 'Additional referral',
+};
+
 export interface ExperimentDetail {
-  seeds: AdminOverview['seeds'];
-  tree: (AdminOverview['tree'][number] & { category: string | null })[];
+  seeds: (AdminOverview['seeds'][number] & { kind?: ReferralKind })[];
+  tree: (AdminOverview['tree'][number] & {
+    category: string | null;
+    kind?: ReferralKind | null;
+    seed?: string | null;
+    group?: string | null;
+    completed?: boolean;
+    strength?: number | null;
+  })[];
   secondary: { from: string | null; to: string }[];
 }
 
@@ -303,6 +332,13 @@ export interface MyState {
   feedback_question?: string;
   reveals?: { title: string }[];
   invitations?: MyInvitation[];
+  /** Voluntary extra invitations after completion (migration 018). */
+  additional?: {
+    allowed: boolean;
+    created: number;
+    joined: number;
+    recent: { id: string; token: string; recipient_label: string | null; status: InvitationStatus; created_at: string }[];
+  };
   branch?: BranchNode[];
   network?: { participants: number; generations: number };
 }
@@ -520,6 +556,44 @@ export const api = {
       p_ineligible_label: o.ineligible_label,
       p_ineligible_message: o.ineligible_message,
     }),
+  createAdditionalInvitation: (value: string, label: string) =>
+    rpc<{ id?: string; token?: string; error?: string }>('create_additional_invitation', {
+      p_value: value,
+      p_recipient_label: label,
+    }),
+  submitExperimentFeedback: (body: string, contactOk: boolean, email: string | null) =>
+    rpc<{ ok: boolean }>('submit_experiment_feedback', { p_body: body, p_contact_ok: contactOk, p_email: email }),
+  adminSaveExperimentLaunch: (experimentId: string, o: {
+    community_name: string;
+    completion_message: string;
+    allow_additional_invites: boolean;
+    enable_feedback: boolean;
+    enable_waitlist: boolean;
+  }) =>
+    rpc<Experiment>('admin_save_experiment_launch', {
+      p_experiment_id: experimentId,
+      p_community_name: o.community_name,
+      p_completion_message: o.completion_message,
+      p_allow_additional_invites: o.allow_additional_invites,
+      p_enable_feedback: o.enable_feedback,
+      p_enable_waitlist: o.enable_waitlist,
+    }),
+  adminCreateSeedsV2: (experimentId: string, count: number, senderName: string, label: string, kind: 'personal' | 'broadcast') =>
+    rpc<{ id: string; token: string }[]>('admin_create_experiment_seeds_v2', {
+      p_experiment_id: experimentId,
+      p_count: count,
+      p_sender_name: senderName,
+      p_label: label,
+      p_kind: kind,
+    }),
+  adminUpdateSeed: (id: string, label: string, kind: 'personal' | 'broadcast' | null) =>
+    rpc('admin_update_seed', { p_invitation_id: id, p_label: label, p_kind: kind }),
+  adminLaunchAnalytics: (experimentId: string | null) =>
+    rpc<AdminLaunchAnalytics>('admin_launch_analytics', { p_experiment_id: experimentId }),
+  adminFeedbackList: (experimentId: string | null, status: 'new' | 'reviewed' | null) =>
+    rpc<AdminFeedbackList>('admin_feedback_list', { p_experiment_id: experimentId, p_status: status }),
+  adminFeedbackReview: (id: string, reviewed: boolean) =>
+    rpc('admin_feedback_review', { p_id: id, p_reviewed: reviewed }),
   adminCreateExperimentSeeds: (experimentId: string, count: number, senderName: string, note: string) =>
     rpc<{ id: string; token: string }[]>('admin_create_experiment_seeds', {
       p_experiment_id: experimentId,
@@ -541,6 +615,53 @@ export const inviteUrl = (token: string, slug?: string | null) =>
 /** The text people send: the experiment's message, then the link. */
 export const shareText = (message: string | null | undefined, url: string) =>
   message?.trim() ? `${message.trim()}\n\n${url}` : url;
+
+export interface Ratio { num: number; den: number }
+export interface AdminLaunchAnalytics {
+  overview: {
+    seed_links: number;
+    participants: number;
+    started: number;
+    completed: number;
+    completion_rate: Ratio;
+    by_group: { group: string; participants: number; completed: number }[];
+    waitlist_from_experiment: number;
+    waitlist_conversion: Ratio;
+  };
+  by_kind: {
+    kind: ReferralKind;
+    generated: number;
+    shared: number;
+    opened: number;
+    started: number;
+    completed: number;
+    duplicates: number;
+    opened_rate: Ratio;
+    started_rate: Ratio;
+    completed_rate: Ratio;
+    conversion: Ratio;
+  }[];
+  additional: { generated: number; completed_with_any: Ratio; per_completed: Ratio };
+  depth: { max: number; avg: number | null };
+  timing: { median_created_to_completed_s: number | null; measured: number };
+  overlap: { people_invited_more_than_once: number; extra_invitations_received: number };
+}
+
+export interface FeedbackItem {
+  id: string;
+  experiment: string;
+  experiment_id: string;
+  body: string;
+  week: string;
+  status: 'new' | 'reviewed';
+  reviewed_at: string | null;
+  contact_ok: boolean;
+  contact_email: string | null;
+}
+export interface AdminFeedbackList {
+  counts: { total: number; new: number; with_contact: number };
+  items: FeedbackItem[];
+}
 
 export interface AdminOverview {
   totals: {

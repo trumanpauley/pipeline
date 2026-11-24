@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { adminErrorText, api, inviteUrl, shareText, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type AdminWaitlistOverview, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
+import { adminErrorText, api, inviteUrl, shareText, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminFeedbackList, type AdminLaunchAnalytics, type AdminOverview, type AdminWaitlistOverview, type Ratio, REFERRAL_KIND_LABEL, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
 import { AbcFlow } from '../components/Abc';
 import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, PRIVATE_NOTE, ScaleQuestion } from '../components/Relationship';
 import { JoinForm } from '../components/JoinForm';
@@ -103,6 +103,7 @@ export function AdminPage({ session }: { session: Session | null }) {
 
   const t = data.totals;
   const group = groups.find((g) => g.id === tab) ?? null;
+  const special = tab === 'waitlist' || tab === 'feedback';
   const inv = data.invitations;
 
   return (
@@ -119,8 +120,14 @@ export function AdminPage({ session }: { session: Session | null }) {
       </header>
 
       <nav className="admin-tabs" role="tablist" aria-label="Dashboard sections">
-        <button role="tab" aria-selected={!group} className={`chip ${!group ? 'is-active' : ''}`} onClick={() => setTab('overview')}>
+        <button role="tab" aria-selected={!group && !special} className={`chip ${!group && !special ? 'is-active' : ''}`} onClick={() => setTab('overview')}>
           Overview
+        </button>
+        <button role="tab" aria-selected={tab === 'waitlist'} className={`chip ${tab === 'waitlist' ? 'is-active' : ''}`} onClick={() => setTab('waitlist')}>
+          Waitlist
+        </button>
+        <button role="tab" aria-selected={tab === 'feedback'} className={`chip ${tab === 'feedback' ? 'is-active' : ''}`} onClick={() => setTab('feedback')}>
+          Feedback
         </button>
         {groups.map((g) => (
           <button key={g.id} role="tab" aria-selected={group?.id === g.id} className={`chip ${group?.id === g.id ? 'is-active' : ''}`} onClick={() => setTab(g.id)}>
@@ -129,8 +136,16 @@ export function AdminPage({ session }: { session: Session | null }) {
         ))}
       </nav>
 
-      {group ? (
+      {tab === 'waitlist' ? (
         <>
+          <WaitlistPanel stats={wstats} />
+          {cstats && <CommunityPanel stats={cstats} />}
+        </>
+      ) : tab === 'feedback' ? (
+        <FeedbackPanel groups={groups} refreshKey={version} />
+      ) : group ? (
+        <>
+          <LaunchPanel experimentId={group.id} refreshKey={version} waitlistTotal={null} />
           <ExperimentsPanel refreshKey={version} only={group.id} onChanged={load} />
           <AbcPanel refreshKey={version} fixedExperiment={group.id} />
           <AbcPreviewPanel experimentId={group.id} />
@@ -152,6 +167,8 @@ export function AdminPage({ session }: { session: Session | null }) {
         <Tile label="Same-network joins" value={acct?.flagged_same_network ?? 0} sub="flagged for review" />
         <Tile label="Feedback answers" value={t.feedback} sub={`${t.deleted} deleted accounts`} />
       </section>
+
+      <LaunchPanel experimentId={null} refreshKey={version} waitlistTotal={wstats?.unique_total ?? null} />
 
       <Panel
         title="Invitation funnel"
@@ -231,10 +248,6 @@ export function AdminPage({ session }: { session: Session | null }) {
 
       <AbcPanel refreshKey={version} />
       <AbcPreviewPanel />
-
-      <WaitlistPanel stats={wstats} />
-
-      {cstats && <CommunityPanel stats={cstats} />}
 
       <Panel title="Research exports" note="CSV. Only the participants, waitlist and community files contain email addresses.">
         <div className="export-row">
@@ -400,23 +413,31 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
   slug: string | null;
   /** The experiment's initial invitation message, sent with seed links. */
   inviteMessage: string | null;
-  seeds: AdminOverview['seeds'];
+  seeds: ExperimentDetail['seeds'];
   onChanged: () => void;
 }) {
   const [count, setCount] = useState(10);
   const [sender, setSender] = useState('');
   const [note, setNote] = useState('');
+  const [kind, setKind] = useState<'personal' | 'broadcast'>('personal');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
-    if (!sender.trim()) return setError('Enter the name invitees will see (e.g. your first name).');
+    if (kind === 'personal' && !sender.trim()) return setError('Enter the name invitees will see (e.g. your first name).');
     setBusy(true);
     setError(null);
     try {
-      await api.adminCreateExperimentSeeds(experimentId, count, sender, note);
+      try {
+        await api.adminCreateSeedsV2(experimentId, count, sender, note, kind);
+      } catch (err) {
+        // Before migration 018 only personal seeds exist.
+        if (!/could not find the function|admin_create_experiment_seeds_v2/i.test((err as Error).message)) throw err;
+        if (kind === 'broadcast') throw new Error('Run migration 018 in the Supabase SQL Editor to create broadcast links.');
+        await api.adminCreateExperimentSeeds(experimentId, count, sender, note);
+      }
       onChanged();
     } catch (err) {
       setError(adminErrorText(err));
@@ -451,14 +472,24 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
   return (
     <div className="seed-panel">
       <h3>Seed links</h3>
-      <p className="muted small">Unique single-use links you send personally. Each one belongs to this experiment for good.</p>
+      <p className="muted small">
+        Unique single-use links. <strong>Personal</strong>: a founder hands it to someone they know; the invitee sees your name.
+        {' '}<strong>Broadcast</strong>: posted to a group chat or list; no name is shown and no personal relationship is recorded.
+        The label is internal and never shown to participants.
+      </p>
       <form className="seed-form" onSubmit={create}>
+        <select className="input" value={kind} onChange={(e) => setKind(e.target.value as 'personal' | 'broadcast')} aria-label="Seed type">
+          <option value="personal">Personal seed</option>
+          <option value="broadcast">Broadcast seed</option>
+        </select>
         <input className="input" type="number" min={1} max={50} value={count}
           onChange={(e) => setCount(Number(e.target.value))} aria-label="Number of links" />
-        <input className="input" placeholder="Your name, as invitees see it" value={sender}
-          onChange={(e) => setSender(e.target.value)} aria-label="Sender name" />
-        <input className="input" placeholder="Private note (optional)" value={note}
-          onChange={(e) => setNote(e.target.value)} aria-label="Note" />
+        {kind === 'personal' && (
+          <input className="input" placeholder="Your name, as invitees see it" value={sender}
+            onChange={(e) => setSender(e.target.value)} aria-label="Sender name" />
+        )}
+        <input className="input" placeholder={kind === 'personal' ? 'Label, e.g. Founder 1 — Current players' : 'Label, e.g. Harvard Baseball group chat'} value={note}
+          onChange={(e) => setNote(e.target.value)} aria-label="Note" maxLength={80} />
         <Button type="submit" busy={busy}>Generate</Button>
       </form>
       <ErrorText error={error} />
@@ -466,7 +497,7 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
         <>
           <button className="link" onClick={copyAll}>{copied === 'all' ? 'Copied unused links' : 'Copy all unused links'}</button>
           <Table
-            head={['Link', 'Message', 'From', 'Note', 'Status', 'Branch', '']}
+            head={['Link', 'Message', 'Type', 'From', 'Label', 'Status', 'Branch', '']}
             rows={seeds.map((s) => [
               <button key="c" className="chip mono" onClick={() => copy(s.token)}>
                 {copied === s.token ? 'Copied' : `/${slug ?? 'join'}/${s.token.slice(0, 8)}…`}
@@ -476,6 +507,7 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
                   {copied === `m:${s.token}` ? 'Copied' : 'Share message'}
                 </button>
               ) : '',
+              s.kind === 'seed_broadcast' ? 'Broadcast' : 'Personal',
               s.sender_name ?? '—',
               s.note ?? '',
               s.status,
@@ -523,6 +555,12 @@ type ExperimentDraft = {
   invite_message: string;
   forward_message: string;
   affiliation_authorized: boolean;
+  // Community & completion (migration 018)
+  community_name: string;
+  completion_message: string;
+  allow_additional_invites: boolean;
+  enable_feedback: boolean;
+  enable_waitlist: boolean;
 };
 
 const draftOf = (e?: Experiment): ExperimentDraft => ({
@@ -547,6 +585,11 @@ const draftOf = (e?: Experiment): ExperimentDraft => ({
   invite_message: e?.invite_message ?? '',
   forward_message: e?.forward_message ?? '',
   affiliation_authorized: e?.affiliation_authorized ?? false,
+  community_name: e?.community_name ?? '',
+  completion_message: e?.completion_message ?? '',
+  allow_additional_invites: e?.allow_additional_invites ?? false,
+  enable_feedback: e?.enable_feedback ?? false,
+  enable_waitlist: e?.enable_waitlist ?? true,
 });
 
 /** Fired after an experiment's settings are saved, so other panels (the simulator) reload them. */
@@ -581,6 +624,14 @@ const saveDraftSteps = async (d: ExperimentDraft) => {
   } catch (err) {
     if (/could not find the function|admin_save_experiment_sharing/i.test((err as Error).message)) {
       throw new Error('Saved, except the invitation settings: run migration 016 in the Supabase SQL Editor first, then save again.');
+    }
+    throw err;
+  }
+  try {
+    await api.adminSaveExperimentLaunch(saved.id, d);
+  } catch (err) {
+    if (/could not find the function|admin_save_experiment_launch/i.test((err as Error).message)) {
+      throw new Error('Saved, except the community and completion settings: run migration 018 in the Supabase SQL Editor first, then save again.');
     }
     throw err;
   }
@@ -787,6 +838,35 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
         )}
       </fieldset>
       <InvitationSettings d={d} set={set} />
+      <fieldset className="experiment-onboarding">
+        <legend>Community &amp; completion</legend>
+        <label>Community name <span className="muted">(used in the thank-you and the experiment’s wording)</span>
+          <input className="input" value={d.community_name} maxLength={60} placeholder="Harvard Baseball"
+            onChange={(e) => set('community_name', e.target.value)} aria-label="Community name" />
+        </label>
+        <label>Introductory message <span className="muted">(shown on the invitation page)</span>
+          <textarea className="input" rows={2} value={d.welcome_message} maxLength={240}
+            placeholder="Current and former Harvard Baseball players are exploring the strength and reach of their network."
+            onChange={(e) => set('welcome_message', e.target.value)} aria-label="Introductory message" />
+        </label>
+        <label>Completion thank-you message <span className="muted">(empty = “Thank you for helping us better understand the {d.community_name.trim() || 'community'} network.”)</span>
+          <textarea className="input" rows={2} value={d.completion_message} maxLength={300}
+            onChange={(e) => set('completion_message', e.target.value)} aria-label="Completion thank-you message" />
+        </label>
+        <label className="preview-check">
+          <input type="checkbox" checked={d.allow_additional_invites} onChange={(e) => set('allow_additional_invites', e.target.checked)} aria-label="Allow additional invitations after completion" />
+          Allow additional invitations after completion <span className="muted">(“Invite someone else”, one person at a time)</span>
+        </label>
+        <label className="preview-check">
+          <input type="checkbox" checked={d.enable_feedback} onChange={(e) => set('enable_feedback', e.target.checked)} aria-label="Enable optional feedback" />
+          Enable optional feedback
+        </label>
+        <label className="preview-check">
+          <input type="checkbox" checked={d.enable_waitlist} onChange={(e) => set('enable_waitlist', e.target.checked)} aria-label="Enable optional waitlist signup" />
+          Enable optional waitlist signup
+        </label>
+        <p className="muted small">Connection-strength and the ABC questions have their own setting (“ABC experiment” below); the standard two invitations are unchanged by any of these.</p>
+      </fieldset>
       <ErrorText error={error} />
       <div className="row-actions">
         <Button type="submit" busy={busy}>{d.id ? 'Save changes' : 'Create experiment'}</Button>
@@ -825,10 +905,91 @@ function ExperimentDetailView({ experimentId, slug, inviteMessage, onChanged }: 
             ? `${detail.secondary.length} further invitation${detail.secondary.length === 1 ? '' : 's'} to people already in are kept as extra connections (connections.csv).`
             : 'Further invitations to people already in are kept as extra connections (connections.csv).'}
         </p>
-        <AdminTree tree={detail.tree} height={420} />
+        <FilteredTree detail={detail} />
         <Legend />
       </div>
     </div>
+  );
+}
+
+/**
+ * The referral tree with filters (seed, how people came in, group, strength, depth). People who
+ * don't match but sit on the path to someone who does are shown faintly so branches stay connected.
+ * This is the referral activity seen in this experiment, not a map of anyone's whole network.
+ */
+function FilteredTree({ detail }: { detail: ExperimentDetail }) {
+  const [seed, setSeed] = useState('');
+  const [kind, setKind] = useState('');
+  const [group, setGroup] = useState('');
+  const [minStrength, setMinStrength] = useState(0);
+  const [maxDepth, setMaxDepth] = useState(0);
+  const groups = useMemo(() => [...new Set(detail.tree.map((n) => n.group).filter(Boolean) as string[])], [detail.tree]);
+  const maxD = useMemo(() => detail.tree.reduce((m, n) => Math.max(m, n.depth), 0), [detail.tree]);
+  const filtered = useMemo(() => {
+    const active = Boolean(seed || kind || group || minStrength || maxDepth);
+    if (!active) return detail.tree.map((n) => ({ ...n, dim: false }));
+    const match = (n: ExperimentDetail['tree'][number]) =>
+      (!seed || n.seed === seed)
+      && (!kind || (kind === 'seed' ? (n.kind === 'seed_personal' || n.kind === 'seed_broadcast') : n.kind === kind))
+      && (!group || n.group === group)
+      && (!minStrength || (n.strength != null && n.strength >= minStrength))
+      && (!maxDepth || n.depth <= maxDepth);
+    const byId = new Map(detail.tree.map((n) => [n.id, n]));
+    const keep = new Set<string>();
+    for (const n of detail.tree) {
+      if (!match(n)) continue;
+      keep.add(n.id);
+      for (let p = n.parent ? byId.get(n.parent) : undefined; p && !keep.has(p.id); p = p.parent ? byId.get(p.parent) : undefined) keep.add(p.id);
+    }
+    return detail.tree.filter((n) => keep.has(n.id)).map((n) => ({ ...n, dim: !match(n) }));
+  }, [detail.tree, seed, kind, group, minStrength, maxDepth]);
+  const nodes = useMemo<TreeNode[]>(() => [
+    { id: 'root', parent: null, kind: 'root', label: 'Seeds', info: `${filtered.length} shown` },
+    ...filtered.map((n): TreeNode => ({
+      id: n.id,
+      parent: n.parent ?? 'root',
+      kind: n.deleted ? 'deleted' : n.dim ? 'pending' : 'member',
+      color: n.deleted ? undefined : METHOD_COLOR[n.method],
+      info: `Generation ${n.depth} · ${n.kind ? REFERRAL_KIND_LABEL[n.kind] : 'Participant'}${n.group ? ` · ${n.group}` : ''}${n.strength != null ? ` · strength ${n.strength}` : ''}${n.completed ? ' · completed' : ''}`,
+    })),
+  ], [filtered]);
+  return (
+    <>
+      <div className="tree-filters" aria-label="Referral tree filters">
+        <select className="input" value={seed} onChange={(e) => setSeed(e.target.value)} aria-label="Filter by seed">
+          <option value="">All seeds</option>
+          {detail.seeds.map((s) => <option key={s.id} value={s.id}>{s.note || s.sender_name || `Seed ${s.token.slice(0, 6)}`}</option>)}
+        </select>
+        <select className="input" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Filter by referral type">
+          <option value="">All referral types</option>
+          <option value="seed">Seed joiners</option>
+          <option value="seed_personal">Personal seeds</option>
+          <option value="seed_broadcast">Broadcast seeds</option>
+          <option value="standard">Standard referrals</option>
+          <option value="additional">Additional referrals</option>
+        </select>
+        {groups.length > 0 && (
+          <select className="input" value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Filter by group">
+            <option value="">All groups</option>
+            {groups.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        )}
+        <select className="input" value={minStrength} onChange={(e) => setMinStrength(Number(e.target.value))} aria-label="Filter by connection strength">
+          <option value={0}>Any strength</option>
+          <option value={25}>Strength ≥ 25</option>
+          <option value={50}>Strength ≥ 50</option>
+          <option value={75}>Strength ≥ 75</option>
+        </select>
+        <select className="input" value={maxDepth} onChange={(e) => setMaxDepth(Number(e.target.value))} aria-label="Filter by referral depth">
+          <option value={0}>Any depth</option>
+          {Array.from({ length: Math.max(0, maxD) }, (_, i) => i + 1).map((d) => <option key={d} value={d}>Up to generation {d}</option>)}
+        </select>
+      </div>
+      <p className="muted small">
+        Shows the referral activity observed in this experiment, not anyone’s complete network. Faint dots are on the path to a match.
+      </p>
+      <Tree nodes={nodes} height={420} />
+    </>
   );
 }
 
@@ -1099,7 +1260,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
           <button type="button" className="chip preview-exit" onClick={() => setStep(null)}>Exit simulator</button>
           {step === 'landing' && (
             <Screen className="center landing">
-              <LandingIntro senderName={inviter.trim() || null} onEnter={() => setStep(asksRelationship ? 'classify' : 'closeness')} />
+              <LandingIntro senderName={inviter.trim() || null} experiment={e ? publicInfo(e) : null} onEnter={() => setStep(asksRelationship ? 'classify' : 'closeness')} />
             </Screen>
           )}
           {step === 'classify' && (
@@ -1174,6 +1335,154 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
   );
 }
 
+const ratioPct = (r: Ratio) => (r.den > 0 ? `${Math.round((r.num / r.den) * 100)}%` : '—');
+const ratioOf = (r: Ratio, what: string) => `${r.num} of ${r.den} ${what}`;
+
+/**
+ * Launch analytics (migration 018). Every rate shows what it is a share of. A link is counted once
+ * per stage: generated → shared (Copy/Share tapped; not proof it was sent) → opened (a person
+ * opened it; automated link-preview requests aren't recorded) → started (joined) → completed.
+ * Test experiments are excluded.
+ */
+function LaunchPanel({ experimentId, refreshKey, waitlistTotal }: { experimentId: string | null; refreshKey: number; waitlistTotal: number | null }) {
+  const [a, setA] = useState<AdminLaunchAnalytics | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.adminLaunchAnalytics(experimentId)
+      .then((r) => { if (alive) { setA(r); setError(null); } })
+      .catch((e) => { if (alive) setError(adminErrorText(e)); });
+    return () => { alive = false; };
+  }, [experimentId, refreshKey]);
+
+  if (error) {
+    return (
+      <Panel title="Launch analytics" note="Seed links, referrals, completion and waitlist conversion.">
+        <p className="muted small">
+          Not available yet. Run <code>supabase/migrations/018_launch_updates.sql</code> in the Supabase SQL editor, then refresh.
+        </p>
+      </Panel>
+    );
+  }
+  if (!a) return <Panel title="Launch analytics"><p className="muted small">Loading…</p></Panel>;
+  const o = a.overview;
+  const kindRow = (k: AdminLaunchAnalytics['by_kind'][number]) => [
+    REFERRAL_KIND_LABEL[k.kind] ?? k.kind,
+    k.generated, k.shared, k.opened, k.started, k.completed,
+    `${ratioPct(k.conversion)} (${ratioOf(k.conversion, 'generated')})`,
+  ];
+  const standard = a.by_kind.find((k) => k.kind === 'standard');
+  const additional = a.by_kind.find((k) => k.kind === 'additional');
+  return (
+    <Panel
+      title="Launch analytics"
+      note={experimentId ? 'This experiment only.' : 'All experiments except test ones.'}
+    >
+      <div className="tiles" data-testid="launch-tiles">
+        <Tile label="Seed links" value={o.seed_links} sub="personal + broadcast" />
+        <Tile label="Unique participants" value={o.participants} sub="not deleted" />
+        <Tile label="Experiment starts" value={o.started} sub="joined through any link" />
+        <Tile label="Completed" value={o.completed} sub="finished the experiment" />
+        <Tile label="Completion rate" value={ratioPct(o.completion_rate)} sub={ratioOf(o.completion_rate, 'who started')} />
+        <Tile label="Waitlist signups" value={waitlistTotal ?? o.waitlist_from_experiment} sub={waitlistTotal != null ? 'unique emails, website + experiment' : 'from the experiment'} />
+        <Tile label="Waitlist conversion" value={ratioPct(o.waitlist_conversion)} sub={ratioOf(o.waitlist_conversion, 'who completed')} />
+      </div>
+      {o.by_group.length > 0 && (
+        <Table head={['Group', 'Participants', 'Completed']} rows={o.by_group.map((g) => [g.group, g.participants, `${g.completed} (${pct(g.completed, g.participants)})`])} />
+      )}
+
+      <h3 className="subhead">Referrals</h3>
+      <Table
+        head={['Type', 'Generated', 'Shared', 'Opened', 'Started', 'Completed', 'Conversion (completed ÷ generated)']}
+        rows={a.by_kind.map(kindRow)}
+      />
+      <div className="tiles">
+        <Tile label="Standard conversion" value={standard ? ratioPct(standard.conversion) : '—'} sub={standard ? ratioOf(standard.conversion, 'standard links generated') : 'no links yet'} />
+        <Tile label="Additional conversion" value={additional ? ratioPct(additional.conversion) : '—'} sub={additional ? ratioOf(additional.conversion, 'additional links generated') : 'no links yet'} />
+        <Tile label="Made additional invites" value={ratioPct(a.additional.completed_with_any)} sub={ratioOf(a.additional.completed_with_any, 'completed participants')} />
+        <Tile label="Additional per participant" value={a.additional.per_completed.den ? (a.additional.per_completed.num / a.additional.per_completed.den).toFixed(2) : '—'} sub={ratioOf(a.additional.per_completed, 'completed participants')} />
+        <Tile label="Referral depth" value={`max ${a.depth.max}`} sub={`average ${a.depth.avg ?? '—'} (seed joiners are 1)`} />
+        <Tile label="Created → completed" value={fmtDuration(a.timing.median_created_to_completed_s)} sub={`median, ${a.timing.measured} measured`} />
+        <Tile label="Invited more than once" value={a.overlap.people_invited_more_than_once} sub={`${a.overlap.extra_invitations_received} extra invitations kept as overlap`} />
+      </div>
+      <p className="muted small">
+        Generated = link exists (revoked excluded). Shared = Copy/Share tapped, not proof it was sent. Opened = a person opened it
+        (link-preview bots aren’t recorded). Started = someone joined through it. Completed = that person completed the experiment.
+        Completion times only exist for people who finish after migration 018.
+      </p>
+    </Panel>
+  );
+}
+
+/** Optional feedback (migration 018). Not linked to participants; only the text, group, week and any contact offered. */
+function FeedbackPanel({ groups, refreshKey }: { groups: Experiment[]; refreshKey: number }) {
+  const [exp, setExp] = useState<string>('');
+  const [status, setStatus] = useState<'' | 'new' | 'reviewed'>('');
+  const [list, setList] = useState<AdminFeedbackList | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    api.adminFeedbackList(exp || null, status || null)
+      .then((r) => { setList(r); setError(null); })
+      .catch((e) => setError(adminErrorText(e)));
+  }, [exp, status]);
+  useEffect(() => { load(); }, [load, refreshKey]);
+
+  if (error) {
+    return (
+      <Panel title="Feedback">
+        <p className="muted small">
+          Not available yet. Run <code>supabase/migrations/018_launch_updates.sql</code> in the Supabase SQL editor, then refresh.
+        </p>
+      </Panel>
+    );
+  }
+  const weekOf = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return (
+    <Panel
+      title="Feedback"
+      note="Written feedback from the end of the experiment. It isn’t linked to a participant, invitation or rating, and only the week it was sent is kept. Don’t try to work out who wrote it."
+    >
+      {list && (
+        <div className="tiles community-tiles">
+          <Tile label="Total" value={list.counts.total} />
+          <Tile label="Not reviewed" value={list.counts.new} />
+          <Tile label="Offered contact" value={list.counts.with_contact} sub="optional email" />
+        </div>
+      )}
+      <div className="experiment-form-row">
+        <label>Group
+          <select className="input" value={exp} onChange={(e) => setExp(e.target.value)} aria-label="Filter by experiment group">
+            <option value="">All groups</option>
+            {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </label>
+        <label>Status
+          <select className="input" value={status} onChange={(e) => setStatus(e.target.value as '' | 'new' | 'reviewed')} aria-label="Filter by status">
+            <option value="">All</option>
+            <option value="new">Not reviewed</option>
+            <option value="reviewed">Reviewed</option>
+          </select>
+        </label>
+      </div>
+      {list && list.items.length === 0 && <p className="muted small">No feedback yet.</p>}
+      <ul className="feedback-list">
+        {list?.items.map((f) => (
+          <li key={f.id} className={`feedback-item ${f.status === 'reviewed' ? 'is-reviewed' : ''}`} data-testid="feedback-item">
+            <p className="feedback-body">{f.body}</p>
+            <p className="muted small">
+              {f.experiment} · week of {weekOf(f.week)} ·{' '}
+              {f.contact_ok ? <>open to discussing: <span className="mono">{f.contact_email}</span></> : 'anonymous'}
+            </p>
+            <button className="chip" onClick={async () => { await api.adminFeedbackReview(f.id, f.status !== 'reviewed'); load(); }}>
+              {f.status === 'reviewed' ? 'Mark as not reviewed' : 'Mark as reviewed'}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}
+
 /** One waitlist: the Pipeline website and the end of the experiment together, de-duplicated by email. */
 function WaitlistPanel({ stats: w }: { stats: AdminWaitlistOverview | null }) {
   if (!w) {
@@ -1206,9 +1515,16 @@ function WaitlistPanel({ stats: w }: { stats: AdminWaitlistOverview | null }) {
       <Table head={['Source', 'Signups']} rows={w.by_source.map((s) => [label(s.source), s.count])} />
       <h3 className="subhead">Recent signups</h3>
       <Table
-        head={['Email', 'Source', 'When']}
-        rows={w.recent.map((r) => [r.email, label(r.source), new Date(r.created_at).toLocaleString()])}
+        head={['Email', 'Source', 'Experiment', 'Signed up', 'Consent']}
+        rows={w.recent.map((r) => [
+          r.email, label(r.source), r.experiment ?? '—', new Date(r.created_at).toLocaleDateString(),
+          r.consent ? 'Agreed to Pipeline updates' : '—',
+        ])}
       />
+      <p className="muted small">
+        Consent: everyone listed agreed to Pipeline updates by email when they signed up (the exact wording is stored with each signup).
+        Experiment participants appear only if they chose “Join Early Access”, and are never added automatically.
+      </p>
     </Panel>
   );
 }

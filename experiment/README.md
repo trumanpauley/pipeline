@@ -167,7 +167,7 @@ project still works if you have to.
    `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
    `013_copy_safe_name_check.sql`, `014_community_onboarding.sql` and
    `015_optional_relationship_question.sql`, `016_invitation_sharing.sql` and
-   `017_waitlist_overview.sql`. If you've already run some,
+   `017_waitlist_overview.sql` and `018_launch_updates.sql`. If you've already run some,
    run only the ones after them.
    (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
    characters and break every name check with "invalid regular expression".)
@@ -635,6 +635,44 @@ the text (`src/components/NetworkBackground.tsx`). It uses no library: plain Can
 
 Every visual setting (density, speed, opacities, colours, centre fade, glow) is in the
 `NETWORK` object at the top of that file.
+
+## Launch updates (migration 018)
+
+Additive and safe to run more than once; nothing is dropped and existing links, participants and
+data are untouched. Run `supabase/migrations/018_launch_updates.sql` in the Supabase SQL editor.
+
+- **Community branding.** Per experiment (admin → the group's tab → edit): *Community name*,
+  *Introductory message* (`welcome_message`), *Completion thank-you message*, plus the title, link
+  preview and share messages that already existed. An experiment with a community name opens with
+  the community first (“{Name} invited you to” / the title / “How connected are we?” / the intro),
+  discloses Pipeline (“An independent networking experiment by Pipeline.”) and says what is recorded
+  and how it may be used before anyone submits. Experiments without a community name look exactly as
+  before. Nothing implies sponsorship by a university or team.
+- **Settings.** *Allow additional invitations*, *Enable optional feedback*, *Enable optional
+  waitlist signup* (all per experiment). ABC questions keep their existing switch. Only the new
+  columns are touched; other experiments aren't changed.
+- **Referral kinds** (`invitations.kind`): `seed_personal`, `seed_broadcast`, `standard`,
+  `additional`. Existing links were backfilled. A *broadcast* seed stores no inviter name, so it
+  never implies a personal relationship and no strength is recorded. Labels (e.g. “Founder 1 —
+  Current players”) are admin-only.
+- **Additional invitations.** After completing, “Invite someone else” makes one individual link at
+  a time (name + the 0–100 “how well do you know them” slider + the normal sharing message). They
+  are stored apart from the standardised data (the answer goes on `invitations.sender_strength`, not
+  `classifications`), never change completion, and are capped per participant (`max_additional_invites`,
+  default 60) and rate-limited.
+- **Feedback.** “Help us improve” → `experiment_feedback`. Not linked to participant, invitation or
+  rating; stores only the text, the experiment, the *week* sent, an optional contact email (only with
+  explicit consent), and a review status. Not readable through the API. Giving an email never
+  subscribes anyone to Pipeline updates. It can't be erased with “Delete my data” (there is nothing
+  to match it to). Rate limiting uses a salted hash of the network address, deleted within two days.
+- **Admin.** *Launch analytics* (overview tiles, per-kind funnel, additional-invite stats, depth,
+  timing, overlap; every rate shows its denominator), a *Feedback* tab (filter, mark reviewed,
+  anonymous vs contact offered), a *Waitlist* tab (source, date, experiment, consent), seed type and
+  label when creating links, and referral-tree filters (seed, type, group, strength, depth).
+- **Duplicate participants.** A second invitation to an existing participant is recorded as a
+  `duplicate` against the same person (the first referral stays primary; its relationship answer is
+  kept) and shows in the overlap numbers. People are never merged by name.
+- **Logo.** `public/logo.svg` / `logo-mark.svg` / `favicon.svg` are the same files as `landing/`.
 
 ## Early access
 

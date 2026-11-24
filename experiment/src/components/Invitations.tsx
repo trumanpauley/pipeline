@@ -229,9 +229,15 @@ export function InviteSheet({
   first,
   instruction,
   askRelationship = true,
+  additional = false,
   share,
   onClose,
 }: {
+  /**
+   * A voluntary extra invitation after completing the experiment: always asks the 0–100
+   * "how well do you know them" slider, never counts toward the two standard invitations.
+   */
+  additional?: boolean;
   share?: ShareSettings;
   method: string;
   first: boolean;
@@ -250,6 +256,17 @@ export function InviteSheet({
 
   const create = async (value: string | null, ms: number, label = name.trim()) => {
     try {
+      if (additional) {
+        const x = await api.createAdditionalInvitation(value ?? '', label);
+        if (x.error || !x.id || !x.token) {
+          setError(x.error === 'invalid_name_format' ? 'Enter their first name and last initial, like “Sarah M.”' : NAME_REJECTED);
+          setStep('who');
+          return;
+        }
+        setInvite({ id: x.id, url: inviteUrl(x.token, share?.slug) });
+        setStep('ready');
+        return;
+      }
       const r = await api.createInvitation(value, label, ms);
       setInvite({ id: r.id, url: inviteUrl(r.token, share?.slug) });
       setStep('ready');
@@ -278,7 +295,7 @@ export function InviteSheet({
     const ok = await nameAcceptable(formatted);
     setChecking(false);
     if (!ok) return setError(NAME_REJECTED);
-    if (!askRelationship) {
+    if (!askRelationship && !additional) {
       setChecking(true);
       await create(null, 0, formatted);
       setChecking(false);
@@ -291,7 +308,7 @@ export function InviteSheet({
     <Sheet onClose={onClose}>
       {step === 'who' && (
         <form className="stack fade-up" onSubmit={submitName}>
-          <h2 className="title">{first ? 'Who will you invite first?' : 'Who will you invite next?'}</h2>
+          <h2 className="title">{additional ? 'Who else should be part of this?' : first ? 'Who will you invite first?' : 'Who will you invite next?'}</h2>
           {instruction && <p className="invite-instruction">{instruction}</p>}
           <p className="muted">Enter their first name and last initial.</p>
           <input
@@ -311,7 +328,15 @@ export function InviteSheet({
         </form>
       )}
       {/* The question uses their first name ("How well do you know Sarah?"). */}
-      {step === 'classify' && <Classifier method={method} name={name.trim().replace(/ \S\.$/u, '')} onSelect={create} track={{ direction: 'outbound' }} />}
+      {step === 'classify' && (
+        <Classifier
+          method={additional ? 'circular' : method}
+          name={name.trim().replace(/ \S\.$/u, '')}
+          onSelect={create}
+          // Extra invitations stay out of the standardised classification telemetry.
+          track={additional ? undefined : { direction: 'outbound' }}
+        />
+      )}
       {step === 'ready' && invite && (
         <div className="stack fade-up text-center">
           <div className="ready-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></div>

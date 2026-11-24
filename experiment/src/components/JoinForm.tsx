@@ -180,6 +180,9 @@ export function JoinForm({
                 </div>
               )}
 
+              {experiment?.community_name && (
+                <p className="fine join-disclosure" data-testid="join-disclosure">{COPY.communityJoinNote}</p>
+              )}
               <div className="join-consent consents">
                 <Check checked={research} onChange={setResearch}>
                   <span className="consent-text">{COPY.joinConsent}</span>{' '}
@@ -192,7 +195,7 @@ export function JoinForm({
                     Details
                   </button>
                 </Check>
-                <AboutDisclosure open={showAbout} onToggle={setShowAbout} />
+                <AboutDisclosure open={showAbout} onToggle={setShowAbout} community={Boolean(experiment?.community_name)} />
               </div>
 
               <ErrorText error={shownError} />
@@ -280,7 +283,7 @@ function Segmented({
  * The full research and privacy disclosure, collapsed by default. The consent
  * checkbox covers everything here, and its "Details" link opens it.
  */
-function AboutDisclosure({ open, onToggle }: { open: boolean; onToggle: (open: boolean) => void }) {
+function AboutDisclosure({ open, onToggle, community }: { open: boolean; onToggle: (open: boolean) => void; community?: boolean }) {
   return (
     <details
       id="join-about"
@@ -295,7 +298,7 @@ function AboutDisclosure({ open, onToggle }: { open: boolean; onToggle: (open: b
         </svg>
       </summary>
       <div className="about-body">
-        {COPY.about.map((sec) => (
+        {(community ? COPY.aboutCommunity : COPY.about).map((sec) => (
           <section key={sec.title}>
             <h2>{sec.title}</h2>
             <ul>

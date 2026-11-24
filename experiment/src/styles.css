@@ -321,7 +321,7 @@ tr:last-child td { border-bottom: 0; }
 .dist-label { font-size: 14px; color: var(--text-2); }
 .dist-bars { display: flex; flex-direction: column; gap: 3px; }
 .dist-n { font-size: 13px; text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.seed-form { display: grid; grid-template-columns: 90px 1fr 1fr 140px; gap: 8px; }
+.seed-form { display: grid; grid-template-columns: 150px 90px 1fr 1fr 140px; gap: 8px; }
 .seed-form .btn { min-height: 54px; }
 @media (max-width: 720px) { .seed-form { grid-template-columns: 1fr; } }
 .export-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -801,3 +801,24 @@ tr:last-child td { border-bottom: 0; }
 a.btn { text-decoration: none; }
 a.early-card { text-decoration: none; }
 .subhead { margin: 18px 0 8px; font-size: 14px; font-weight: 600; color: var(--text-2); }
+
+/* Launch updates: admin */
+.tree-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }
+.feedback-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }
+.feedback-item { padding: 12px 0; border-top: 1px solid var(--line, rgba(255,255,255,.1)); display: grid; gap: 6px; justify-items: start; }
+.feedback-item.is-reviewed { opacity: .6; }
+.feedback-body { margin: 0; white-space: pre-wrap; }
+
+/* Launch updates: completion page */
+.completion-logo { height: 30px; width: auto; align-self: flex-start; margin-bottom: 4px; }
+.completion-thanks { margin: 0; font-size: 17px; line-height: 1.5; color: var(--text); }
+.completion-pipeline { display: grid; gap: 10px; padding: 8px 0 4px; }
+.completion-pipeline .display { margin: 0; }
+.completion-invite { display: grid; gap: 8px; }
+.completion-feedback { display: grid; gap: 10px; }
+.completion-feedback-label { display: grid; gap: 8px; font-size: 14px; color: var(--text-2); }
+.waitlist-overlay.completion ~ .sheet-backdrop { z-index: 40; }
+
+/* Launch updates: community invitation */
+.landing-tagline { margin: 0; font-size: clamp(20px, 5vw, 26px); font-weight: 560; letter-spacing: -0.01em; color: var(--text); }
+.join-disclosure { margin: 0 0 4px; text-align: left; }
