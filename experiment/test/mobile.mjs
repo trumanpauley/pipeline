@@ -84,6 +84,11 @@ async function answerInvitee(p) {
     await p.locator('.classifier .option, .classifier .scale-dot').first().click();
   }
   await p.locator('.closeness-bar').nth(3).click();
+  const note = p.locator('.closeness .answer-note');
+  const r = await note.evaluate((el) => ({ text: el.textContent, bottom: el.getBoundingClientRect().bottom, h: innerHeight }));
+  report(/^Your answers are private\. .+ won’t see them\.$/.test(r.text) && r.bottom <= r.h,
+    `closeness: small privacy note under Continue (“${r.text}”), on screen`);
+  await p.screenshot({ path: path.join(OUT, 'closeness-note.png') });
   await p.locator('.closeness').getByRole('button', { name: 'Continue' }).click();
   if (method !== 'comfort') await p.getByTestId('comfort').locator('.scale-dot').nth(2).click();
 }

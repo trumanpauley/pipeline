@@ -1,6 +1,10 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Button } from './ui';
 
+/** The small reassurance under the relationship questions. */
+export const PRIVATE_NOTE = (name: string) =>
+  `Your answers are private. ${name.charAt(0).toUpperCase()}${name.slice(1)} won’t see them.`;
+
 export const CLOSENESS_LABELS = [
   'Barely know them',
   'Acquaintance',
@@ -94,6 +98,7 @@ export function ClosenessMeter({
       >
         Continue
       </Button>
+      <p className="answer-note">{PRIVATE_NOTE(name)}</p>
     </div>
   );
 }
@@ -106,6 +111,7 @@ export function ScaleQuestion({
   high,
   onSelect,
   testId,
+  note,
 }: {
   question: string;
   /** Optional line above the question (e.g. the ABC scenario, kept in view). */
@@ -114,6 +120,8 @@ export function ScaleQuestion({
   high: string;
   onSelect: (value: number) => void;
   testId?: string;
+  /** Optional small line underneath (e.g. that the answer is private). */
+  note?: string;
 }) {
   const [chosen, setChosen] = useState<number | null>(null);
   const choose = (v: number) => {
@@ -145,6 +153,7 @@ export function ScaleQuestion({
           <span>{high}</span>
         </div>
       </div>
+      {note && <p className="answer-note">{note}</p>}
     </div>
   );
 }
