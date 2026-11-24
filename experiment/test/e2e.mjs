@@ -761,7 +761,11 @@ try {
     ok(!(await rpcAs(await jwtOf(bobPage), 'get_abc')).body.eligible && !(await rpcAs(await jwtOf(alicePage), 'get_abc')).body.eligible,
       'generations 1 and 2 (Alice, Bob) don’t get the ABC questions');
     const dlg = davePage.locator('.sheet .abc');
-    await dlg.waitFor();
+    await dlg.waitFor({ timeout: 15000 }).catch(async (e) => {
+      await davePage.screenshot({ path: path.join(SHOTS, 'debug-dave-abc.png') });
+      console.error('[debug] Dave page:', davePage.url(), (await davePage.locator('body').innerText()).slice(0, 600));
+      throw e;
+    });
     ok((await dlg.getAttribute('data-step')) === 'classify' && await davePage.getByRole('radio', { name: 'Harvard alumnus/alumna' }).isVisible(),
       'no group on file yet → asked first: "Current Harvard student" / "Harvard alumnus/alumna"');
     await davePage.getByRole('radio', { name: 'Harvard alumnus/alumna' }).click();
