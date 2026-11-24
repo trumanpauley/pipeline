@@ -249,6 +249,10 @@ export function AdminPage({ session }: { session: Session | null }) {
       <AbcPanel refreshKey={version} />
       <AbcPreviewPanel />
 
+      <WaitlistPanel stats={wstats} />
+
+      {cstats && <CommunityPanel stats={cstats} />}
+
       <Panel title="Research exports" note="CSV. Only the participants, waitlist and community files contain email addresses.">
         <div className="export-row">
           {['experiments', 'participants', 'invitations', 'connections', 'classifications', 'classification_events', 'reciprocal', 'feedback', 'waitlist'].map((k) => (
