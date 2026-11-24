@@ -166,7 +166,7 @@ project still works if you have to.
    `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
    `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
    `013_copy_safe_name_check.sql`, `014_community_onboarding.sql` and
-   `015_optional_relationship_question.sql`. If you've already run some,
+   `015_optional_relationship_question.sql` and `016_invitation_sharing.sql`. If you've already run some,
    run only the ones after them.
    (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
    characters and break every name check with "invalid regular expression".)
@@ -514,6 +514,56 @@ from?"** under **Join screen**. Then:
 No answer is stored for the skipped question (not a placeholder), and the server still requires
 one in experiments that ask it. Answers given earlier are kept. Migration 015 switches it off for
 Harvard Baseball and PSK.
+
+## Invitation settings: link names, link previews, messages
+
+Migration `016`, plus the Vercel functions in `api/`. Each experiment can look like its own
+initiative when its links are shared. Edit an experiment in the admin dashboard; the
+**Invitation settings** section has:
+- **Experiment title:** the link-preview title, e.g. "Harvard Baseball Network Experiment".
+- **URL slug:** e.g. `harvard-baseball`.
+  - Invitation links become `/harvard-baseball/TOKEN`, and `/harvard-baseball` is the experiment's
+    public page ("invitation only").
+  - The token still identifies the one invitation and its sender, so referral attribution and
+    trees are unchanged.
+  - `/join/TOKEN` links (every link already sent) keep working.
+  - Slugs are 3–40 lowercase letters, numbers and single hyphens, and unique. App routes (`admin`,
+    `join`, `api`, …) are refused.
+- **Link preview description** and **link preview image.** Uploads are cropped to 1200×630 JPEG
+  and stored in the public `experiment-previews` bucket; only admins can upload. Without an
+  image, a title card is generated (`/api/og`).
+- **Initial invitation message:** sent with seed links. Each seed row has **Share message**.
+- **Participant forwarding message:** sent with participants' own links. The invite sheet shows
+  it; **Share invitation** opens the phone's share sheet (Web Share API), and **Copy message**
+  copies the message and link elsewhere. Nothing is sent automatically.
+- **Officially authorized:** until this is ticked, the server refuses wording that suggests
+  official sponsorship or endorsement ("official", "sponsored by", "on behalf of", "approved
+  by", …).
+
+A live preview next to the fields shows an iMessage-style message, the link card and the full
+shared text, for both messages, as you type.
+
+**How link previews work.** iMessage, WhatsApp and other apps build previews from the page's
+HTML without running JavaScript. `vercel.json` sends `/join/TOKEN`, `/i/TOKEN`, `/SLUG/TOKEN` and
+`/SLUG` to `api/page.js`, which returns the app's `index.html` with that experiment's Open Graph
+and Twitter Card tags written in (title, description, image, `summary_large_image`). The app then
+loads as usual.
+- The function reads the public `experiment_share_meta` function with the publishable key, so it
+  only gets display settings, never a sender or participant.
+- Experiments without settings, and unknown links, get the generic preview.
+- It uses the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` environment variables
+  as the build; Vercel functions read them at run time, so no new variables are needed.
+
+**Testing a preview after deploying:**
+1. Open `https://YOUR-DOMAIN/harvard-baseball` and view the page source: the `og:` tags are
+   there.
+2. Paste a link into a message to yourself, or use a preview checker (e.g. opengraph.xyz, the
+   LinkedIn Post Inspector, Facebook's Sharing Debugger).
+3. Apps cache previews per link, so test with a new invitation link after changing settings.
+   Generated images change address whenever the settings are saved.
+
+Preview deployments behind Vercel's Deployment Protection can't be read by crawlers; test on
+production.
 
 ## Connection strength and the ABC experiment
 

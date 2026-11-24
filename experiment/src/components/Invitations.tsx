@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { api, inviteUrl, type MyInvitation } from '../lib/api';
+import { api, inviteUrl, shareText, type MyInvitation } from '../lib/api';
 import { COPY } from '../config/experiment';
 import { Classifier } from './Classifier';
 import { Button, ErrorText, Sheet } from './ui';
@@ -23,22 +23,33 @@ export async function copyText(text: string) {
   }
 }
 
+/** How this experiment's invitations are shared: its link name and the participant's message. */
+export interface ShareSettings {
+  slug?: string | null;
+  /** The experiment's forwarding message (empty = the generic line). */
+  message?: string | null;
+}
+const messageFor = (share?: ShareSettings) => share?.message?.trim() || COPY.shareText;
+
 /**
- * Share (native sheet) or copy, and record the *intent* to share. The record is
+ * Share (native sheet: the person picks the app and sends it themselves) or
+ * copy the message and link, and record the *intent* to share. The record is
  * written before the share sheet opens: tapping Share counts even if it's then
- * cancelled, and nothing here claims the link was actually received.
+ * cancelled, and nothing here claims the link was actually received. Nothing
+ * is ever sent automatically.
  */
-async function shareOrCopy(inv: { id: string; url: string }, how: 'share' | 'copy') {
+async function shareOrCopy(inv: { id: string; url: string }, how: 'share' | 'copy', message: string) {
   const native = how === 'share' && typeof navigator.share === 'function';
   const marked = api.markShared(inv.id, native ? 'share' : 'copy').catch(() => null);
   if (native) {
     try {
-      await navigator.share({ text: COPY.shareText, url: inv.url });
+      await navigator.share({ text: message, url: inv.url });
     } catch {
       /* cancelled — still counts as initiating a share */
     }
   } else {
-    await copyText(inv.url);
+    // Desktop and browsers without sharing: the whole message, ready to paste.
+    await copyText(shareText(message, inv.url));
   }
   await marked;
   return native ? 'shared' : 'copied';
@@ -68,12 +79,14 @@ export function InviteSlots({
   level,
   onInvite,
   onChanged,
+  share,
 }: {
   invitations: MyInvitation[];
   max: number;
   level: number;
   onInvite: () => void;
   onChanged: () => void;
+  share?: ShareSettings;
 }) {
   const slots = Array.from({ length: max }, (_, i) => invitations[i] ?? null);
   const firstEmpty = slots.findIndex((s) => s === null);
@@ -82,7 +95,7 @@ export function InviteSlots({
     <section className="invite-slots" aria-label="Your invitations">
       {slots.map((inv, i) =>
         inv ? (
-          <FilledSlot key={inv.id} inv={inv} index={i} level={level} onChanged={onChanged} />
+          <FilledSlot key={inv.id} inv={inv} index={i} level={level} onChanged={onChanged} share={share} />
         ) : (
           <EmptySlot
             key={`slot-${i}`}
@@ -153,14 +166,16 @@ function FilledSlot({
   index,
   level,
   onChanged,
+  share,
 }: {
   inv: MyInvitation;
   index: number;
   level: number;
   onChanged: () => void;
+  share?: ShareSettings;
 }) {
   const [copied, setCopied] = useState(false);
-  const url = inviteUrl(inv.token);
+  const url = inviteUrl(inv.token, share?.slug);
   const st = STATUS(inv);
   // A soft pulse on the status dot when it changes while the card is on screen.
   const lastStatus = useRef(st.key);
@@ -173,7 +188,7 @@ function FilledSlot({
     return () => window.clearTimeout(t);
   }, [st.key]);
   const act = async (how: 'share' | 'copy') => {
-    const r = await shareOrCopy({ id: inv.id, url }, how);
+    const r = await shareOrCopy({ id: inv.id, url }, how, messageFor(share));
     if (r === 'copied') {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
@@ -199,7 +214,7 @@ function FilledSlot({
         <div className="invite-actions">
           {awaitingShare && <p className="invite-hint">Share to unlock {UNLOCKS[index]?.toLowerCase()}</p>}
           <button className="chip" onClick={() => act('share')}>Share</button>
-          <button className="chip" onClick={() => act('copy')}>{copied ? 'Copied' : 'Copy link'}</button>
+          <button className="chip" onClick={() => act('copy')} aria-label={`Copy the message and link for ${inv.recipient_label || 'this invitation'}`}>{copied ? 'Copied' : 'Copy'}</button>
           <button className="chip ghost" onClick={remove} aria-label={`Remove ${inv.recipient_label || 'this'} link`}>×</button>
         </div>
       )}
@@ -214,8 +229,10 @@ export function InviteSheet({
   first,
   instruction,
   askRelationship = true,
+  share,
   onClose,
 }: {
+  share?: ShareSettings;
   method: string;
   first: boolean;
   /** false: the experiment skips "Where do you know them from?"; the link is made right after the name. */
@@ -234,7 +251,7 @@ export function InviteSheet({
   const create = async (value: string | null, ms: number, label = name.trim()) => {
     try {
       const r = await api.createInvitation(value, label, ms);
-      setInvite({ id: r.id, url: inviteUrl(r.token) });
+      setInvite({ id: r.id, url: inviteUrl(r.token, share?.slug) });
       setStep('ready');
     } catch (e) {
       setError((e as Error).message);
@@ -244,7 +261,7 @@ export function InviteSheet({
 
   const act = async (how: 'share' | 'copy') => {
     if (!invite) return;
-    const r = await shareOrCopy(invite, how);
+    const r = await shareOrCopy(invite, how, messageFor(share));
     if (r === 'copied') setCopied(true);
     setShared(true);
   };
@@ -300,9 +317,12 @@ export function InviteSheet({
           <div className="ready-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="28" height="28"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
           <h2 className="title">{name.trim()}’s link is ready.</h2>
           <p className="muted">It works once, for one person.</p>
-          <code className="url">{invite.url.replace(/^https?:\/\//, '')}</code>
-          <Button onClick={() => act('share')}>{copied ? 'Link copied' : 'Share invitation'}</Button>
-          <Button variant="secondary" onClick={() => act('copy')}>{copied ? 'Copied' : 'Copy link'}</Button>
+          <div className="share-message" aria-label="Your invitation message">
+            <p>{messageFor(share)}</p>
+            <code className="url">{invite.url.replace(/^https?:\/\//, '')}</code>
+          </div>
+          <Button onClick={() => act('share')}>{copied ? 'Message copied' : 'Share invitation'}</Button>
+          <Button variant="secondary" onClick={() => act('copy')}>{copied ? 'Copied' : 'Copy message'}</Button>
           {shared ? (
             <Button variant="ghost" onClick={onClose}>Continue</Button>
           ) : (

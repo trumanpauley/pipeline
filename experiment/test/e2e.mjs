@@ -97,6 +97,7 @@ psql('supabase/migrations/012_connection_strength_abc.sql');
 psql('supabase/migrations/013_copy_safe_name_check.sql');
 psql('supabase/migrations/014_community_onboarding.sql');
 psql('supabase/migrations/015_optional_relationship_question.sql');
+psql('supabase/migrations/016_invitation_sharing.sql');
 {
   // SQL is pasted into the Supabase editor from a browser, which drops invisible characters:
   // the migrations must not rely on any (013 fixed one that broke every name check).
@@ -367,7 +368,7 @@ async function invite(page, label, { shots = false, share = true } = {}) {
   await page.getByRole('heading', { name: `${full(label)}’s link is ready.` }).waitFor();
   const link = 'http://' + (await page.locator('.sheet .url').innerText());
   if (share) {
-    await page.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
+    await page.locator('.sheet').getByRole('button', { name: 'Copy message' }).click();
     await page.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
   } else {
     await page.locator('.sheet').getByRole('button', { name: 'Later' }).click();
@@ -459,7 +460,7 @@ try {
   await alicePage.screenshot({ path: path.join(SHOTS, '05c-home-first-invite-unshared.png'), fullPage: true });
 
   step('Copying the link unlocks "Pipeline" and the second invitation');
-  await alicePage.locator('.invite-card.is-filled').getByRole('button', { name: 'Copy link' }).click();
+  await alicePage.locator('.invite-card.is-filled').getByRole('button', { name: /^Copy the message/ }).click();
   await alicePage.locator('.reveal-overlay').waitFor();
   await alicePage.waitForTimeout(1800);
   ok((await alicePage.locator('.reveal-title').innerText()).includes('part of Pipeline'), 'reveal 1: the name');
@@ -1293,7 +1294,7 @@ try {
     await mira.locator('.sheet .circular').getByRole('button', { name: 'Continue', exact: true }).click();
     await mira.getByRole('heading', { name: 'Theo T.’s link is ready.' }).waitFor();
     const theoLink = 'http://' + (await mira.locator('.sheet .url').innerText());
-    await mira.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
+    await mira.locator('.sheet').getByRole('button', { name: 'Copy message' }).click();
     await mira.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
     const [outRow] = await q(`select c.* from classifications c join invitations i on i.id = c.invitation_id where i.token = $1 and c.direction = 'outbound'`, [theoLink.split(/\/(?:join|i)\//)[1]]);
     ok(outRow.method === 'circular' && outRow.value === '80' && outRow.rater_id === miraP.id && outRow.question_version === 'circular_v1', 'outbound rating stored (80%, D, circular_v1, Mira’s ID)');
@@ -1405,7 +1406,7 @@ try {
     await nadia.getByRole('heading', { name: 'Sarah S.’s link is ready.' }).waitFor();
     const sarahLink = 'http://' + (await nadia.locator('.sheet .url').innerText());
     const sarahTok = sarahLink.split(/\/(?:join|i)\//)[1];
-    await nadia.locator('.sheet').getByRole('button', { name: 'Copy link' }).click();
+    await nadia.locator('.sheet').getByRole('button', { name: 'Copy message' }).click();
     await nadia.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
     await nadia.locator('.reveal-overlay').waitFor();
     await nadia.waitForTimeout(1800);
@@ -1553,7 +1554,7 @@ try {
     ok((await evs()).join() === 'created', 'event recorded: created');
 
     // Share initiated → Pending + immediate unlock (no recipient action needed)
-    await lena.locator('.invite-card.is-filled').getByRole('button', { name: 'Copy link' }).click();
+    await lena.locator('.invite-card.is-filled').getByRole('button', { name: /^Copy the message/ }).click();
     await lena.locator('.reveal-overlay').waitFor();
     ok((await lena.locator('.reveal-title').innerText()).includes('part of Pipeline'), 'sharing the first invitation unlocks the name immediately');
     await lena.waitForTimeout(1800);
@@ -1998,6 +1999,222 @@ try {
       ok(quinnP.parent_id === patP.id && quinnP.depth === 2
         && (await q(`select count(*)::int n from relationship_ratings where invitation_id = $1`, [qInv.id]))[0].n === 1,
         'generation 2 joins through the referral; closeness and comfort are still recorded');
+    }
+
+    // 10c. Invitation settings: link names, link previews, messages
+    {
+      const HB_TITLE = 'Harvard Baseball Network Experiment';
+      const HB_DESC = 'How strong is the Harvard Baseball network? Help us find out.';
+      const HB_INVITE = 'Current Harvard Baseball players are studying the strength of our baseball network. Take this short survey to help us understand how connected our community really is.';
+      const HB_FORWARD = 'I’m taking part in a short experiment about the Harvard Baseball network. Add your connection to help us map how our community is connected.';
+      const saveSharing = (jwt, id, o = {}) => rpcAs(jwt, 'admin_save_experiment_sharing', {
+        p_experiment_id: id, p_slug: o.slug ?? null, p_public_title: o.title ?? null, p_preview_description: o.desc ?? null,
+        p_preview_image_url: o.image ?? null, p_invite_message: o.invite ?? null, p_forward_message: o.forward ?? null,
+        p_affiliation_authorized: o.auth ?? false,
+      });
+
+      // The server's rules
+      ok((await saveSharing(jamesJwt, hs.id, { slug: 'harvard-students' })).body.message === 'forbidden', 'invitation settings are admin-only (server)');
+      ok((await saveSharing(adminJwtE, hs.id, { slug: 'admin' })).body.message === 'slug_reserved'
+        && (await saveSharing(adminJwtE, hs.id, { slug: 'join' })).body.message === 'slug_reserved'
+        && (await saveSharing(adminJwtE, hs.id, { slug: 'Harvard Students!' })).body.message === 'invalid_slug'
+        && (await saveSharing(adminJwtE, hs.id, { slug: 'ab' })).body.message === 'invalid_slug'
+        && (await saveSharing(adminJwtE, hs.id, { slug: 'a--b' })).body.message === 'invalid_slug', 'slugs: readable format only, never an app route (admin, join, …)');
+      ok((await saveSharing(adminJwtE, hs.id, { slug: 'harvard-students', image: 'http://example.com/a.png' })).body.message === 'invalid_image_url', 'preview images must be public https addresses');
+      ok((await saveSharing(adminJwtE, hs.id, { slug: 'harvard-students', forward: 'An official Harvard University survey.' })).body.message === 'sponsorship_language'
+        && (await saveSharing(adminJwtE, hs.id, { slug: 'harvard-students', title: 'Sponsored by the Athletics Department' })).body.message === 'sponsorship_language'
+        && (await saveSharing(adminJwtE, hs.id, { slug: 'harvard-students', invite: 'On behalf of Harvard, please join.' })).body.message === 'sponsorship_language',
+        'wording that suggests official sponsorship is refused');
+      ok((await saveSharing(adminJwtE, hs.id, { slug: 'harvard-students', forward: 'Officially sponsored by the club.', auth: true })).body.affiliation_authorized === true,
+        '…unless the admin marks the experiment as officially authorized');
+      ok((await saveSharing(adminJwtE, hs.id, { slug: 'harvard-students' })).body.slug === 'harvard-students', 'Harvard Students → /harvard-students');
+      ok((await saveSharing(adminJwtE, hb.id, { slug: 'harvard-students' })).body.message === 'slug_taken', 'each slug belongs to one experiment');
+
+      // The admin form: "Invitation settings" with a live preview
+      await adminTabs.getByRole('tab', { name: 'Harvard Baseball' }).click();
+      const hbCard2 = adminPage.locator('.experiment-card[data-experiment="Harvard Baseball"]');
+      await hbCard2.getByRole('button', { name: 'Edit', exact: true }).click();
+      const f = adminPage.locator('form.experiment-form');
+      await f.getByRole('group', { name: 'Invitation settings' }).waitFor();
+      const pv = f.getByTestId('invitation-preview');
+      ok(await pv.getByTestId('preview-title').innerText() === 'You’ve been invited.', 'preview starts with the generic card');
+      await f.getByLabel('Experiment title').fill(HB_TITLE);
+      ok(await pv.getByTestId('preview-title').innerText() === HB_TITLE, 'live preview: the title as it’s typed');
+      await f.getByLabel('URL slug').fill('admin');
+      await f.getByText('That name is used by the app itself.').waitFor();
+      await f.getByLabel('URL slug').fill('');
+      await f.getByRole('button', { name: 'Use “harvard-baseball”' }).click();
+      ok(await f.getByLabel('URL slug').inputValue() === 'harvard-baseball', 'slug suggested from the experiment name');
+      await f.getByLabel('Link preview description').fill(HB_DESC);
+      await f.getByLabel('Initial invitation message').fill(HB_INVITE);
+      await f.getByLabel('Participant forwarding message').fill('The official Harvard Baseball survey.');
+      await f.getByTestId('sponsorship-warning').waitFor();
+      ok(true, 'the form warns about sponsorship wording before saving');
+      await f.getByLabel('Participant forwarding message').fill(HB_FORWARD);
+      ok(await f.getByTestId('sponsorship-warning').count() === 0
+        && await pv.getByTestId('preview-description').innerText() === HB_DESC
+        && await pv.getByTestId('preview-message').innerText() === HB_INVITE
+        && (await pv.getByTestId('preview-text').innerText()).startsWith(HB_INVITE)
+        && /\/harvard-baseball\/[A-Za-z0-9_-]{10,}$/.test((await pv.getByTestId('preview-text').innerText()).trim()),
+        'live preview: iMessage bubble, link card and full text (initial invitation, /harvard-baseball/… link)');
+      await pv.getByRole('radio', { name: 'Forwarded by a participant' }).click();
+      ok(await pv.getByTestId('preview-message').innerText() === HB_FORWARD, 'live preview: the forwarding message, separately');
+      // Upload a preview image (cropped to 1200×630 and stored publicly)
+      const picture = await adminPage.screenshot({ clip: { x: 0, y: 0, width: 800, height: 600 } });
+      await f.getByLabel('Upload preview image').setInputFiles({ name: 'team.png', mimeType: 'image/png', buffer: picture });
+      await pv.locator('img.og-image').waitFor();
+      const imageUrl = await f.getByLabel('Preview image address').inputValue();
+      ok(imageUrl.startsWith(`${API}/storage/v1/object/public/experiment-previews/`), 'image uploaded to the public preview bucket');
+      const imgRes = await fetch(imageUrl);
+      const dims = await pv.locator('img.og-image').evaluate((img) => [img.naturalWidth, img.naturalHeight]);
+      ok(imgRes.ok && imgRes.headers.get('content-type') === 'image/jpeg' && dims[0] === 1200 && dims[1] === 630,
+        'the image is public (no sign-in) and cropped to 1200×630 JPEG');
+      await adminPage.waitForTimeout(400);
+      await f.screenshot({ path: path.join(SHOTS, '57-admin-invitation-settings.png') });
+      await f.getByRole('button', { name: 'Save changes' }).click();
+      await hbCard2.getByText('“Harvard Baseball Network Experiment”').waitFor();
+      const [hbs] = await q(`select * from experiments where id = $1`, [hb.id]);
+      ok(hbs.slug === 'harvard-baseball' && hbs.public_title === HB_TITLE && hbs.preview_description === HB_DESC && hbs.preview_image_url === imageUrl
+        && hbs.invite_message === HB_INVITE && hbs.forward_message === HB_FORWARD && hbs.affiliation_authorized === false, 'all invitation settings saved in Supabase');
+      {
+        // A non-admin can't upload preview images
+        const r = await fetch(`${API}/storage/v1/object/experiment-previews/x.jpg`, { method: 'POST', headers: { authorization: `Bearer ${jamesJwt}`, 'content-type': 'image/jpeg' }, body: 'x' });
+        ok(r.status === 403, 'preview image uploads are admin-only');
+      }
+
+      // Seed links use the slug, and can be shared with the initial message
+      await hbCard2.getByLabel('Number of links').fill('1');
+      await hbCard2.getByLabel('Sender name').fill('Truman');
+      await hbCard2.getByLabel('Note').fill('slug');
+      await hbCard2.getByRole('button', { name: 'Generate' }).click();
+      const seedRow = hbCard2.locator('.seed-panel tbody tr', { hasText: 'slug' });
+      await seedRow.waitFor();
+      ok(/^\/harvard-baseball\/[A-Za-z0-9_-]{8}…$/.test(await seedRow.locator('button.mono').innerText()), 'seed links read /harvard-baseball/TOKEN');
+      await adminPage.evaluate(() => {
+        window.__shares = [];
+        Object.defineProperty(navigator, 'share', { configurable: true, value: async (d) => { window.__shares.push(d); } });
+      });
+      await seedRow.getByRole('button', { name: /^Share the invitation message/ }).click();
+      const [seedShare] = await adminPage.evaluate(() => window.__shares);
+      const [slugSeed] = await q(`select token from invitations where experiment_id = $1 and admin_note = 'slug'`, [hb.id]);
+      ok(seedShare.text === HB_INVITE && seedShare.url.endsWith(`/harvard-baseball/${slugSeed.token}`), 'seed: share sheet with the initial message and the unique link (nothing sent automatically)');
+
+      // A participant's own invitation: the forwarding message + their unique link
+      const tess = await newPhone();
+      await tess.addInitScript(() => {
+        window.__shares = [];
+        Object.defineProperty(navigator, 'share', { configurable: true, value: async (d) => { window.__shares.push(d); } });
+      });
+      await joinExp(tess, `${APP}/harvard-baseball/${slugSeed.token}`, 'Tess T.', 'Current player');
+      const tessP = await byName('Tess T.');
+      ok(tessP.experiment_id === hb.id && tessP.depth === 1, 'the slug link resolves to the right experiment and seed (generation 1, Harvard Baseball)');
+      await tess.getByRole('button', { name: 'Invite someone' }).first().click();
+      await tess.getByLabel('Their first name and last initial').fill('Tom H.');
+      await tess.getByRole('button', { name: 'Continue' }).click();
+      const sheetNext = await Promise.race([
+        tess.locator('.sheet .classifier').waitFor().then(() => 'question'),
+        tess.getByRole('heading', { name: 'Tom H.’s link is ready.' }).waitFor().then(() => 'ready'),
+      ]);
+      if (sheetNext === 'question') await answer(tess, '.sheet', 'last');
+      await tess.getByRole('heading', { name: 'Tom H.’s link is ready.' }).waitFor();
+      const tomLink = 'http://' + (await tess.locator('.sheet .url').innerText());
+      const tomTok = tomLink.split('/harvard-baseball/')[1];
+      ok(tomLink.startsWith(`${APP}/harvard-baseball/`) && /^[A-Za-z0-9_-]{20,}$/.test(tomTok), 'referral links use the slug and keep their own unique token');
+      ok(await tess.locator('.sheet .share-message p').innerText() === HB_FORWARD, 'the invite sheet shows the forwarding message');
+      await tess.locator('.sheet').getByRole('button', { name: 'Share invitation' }).click();
+      const [tessShare] = await tess.evaluate(() => window.__shares);
+      ok(tessShare.text === HB_FORWARD && tessShare.url === tomLink, 'Web Share: forwarding message + the participant’s unique link');
+      await tess.evaluate(() => {
+        Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => { window.__copied = t; } } });
+      });
+      await tess.locator('.sheet').getByRole('button', { name: 'Copy message' }).click();
+      ok(await tess.evaluate(() => window.__copied) === `${HB_FORWARD}\n\n${tomLink}`, 'no Web Share: the message and link are copied, ready to paste');
+      await shot(tess, '58-invite-sheet-forward-message');
+      await tess.locator('.sheet').getByRole('button', { name: 'Continue' }).click();
+      const [tomInv] = await q(`select * from invitations where token = $1`, [tomTok]);
+      ok(tomInv.sender_id === tessP.id && tomInv.experiment_id === hb.id && tomInv.shared_at, 'attribution: Tess’s invitation, in Harvard Baseball, marked shared');
+
+      // Tom opens the slug link; the same invitation also opens at /join/TOKEN
+      const tom = await newPhone();
+      await tom.goto(tomLink);
+      await tom.getByRole('heading', { name: 'Tess invited you.' }).waitFor();
+      ok(await tom.title() === HB_TITLE, 'the invitation opens from /harvard-baseball/TOKEN (tab title = experiment title)');
+      const tom2 = await newPhone();
+      await tom2.goto(`${APP}/join/${tomTok}`);
+      await tom2.getByRole('heading', { name: 'Tess invited you.' }).waitFor();
+      ok(true, 'the same invitation still opens at /join/TOKEN');
+      const oldLink = await newPhone();
+      await oldLink.goto(`${APP}/join/${hbSeeds[1].token}`);
+      await oldLink.locator('h1').first().waitFor();
+      ok(!(await oldLink.getByText('Nothing here.').count()), 'links sent before the slug keep working');
+
+      // The experiment's public page
+      const pub = await newPhone();
+      await pub.goto(`${APP}/harvard-baseball`);
+      await pub.getByTestId('experiment-page').waitFor();
+      ok(await pub.getByRole('heading', { name: HB_TITLE }).isVisible() && await pub.getByText(HB_DESC).isVisible()
+        && await pub.getByText('Invitation only').isVisible(), '/harvard-baseball: the experiment’s public page (title, description, invitation only)');
+      await shot(pub, '59-experiment-public-page');
+      await pub.goto(`${APP}/no-such-experiment`);
+      await pub.getByText('Nothing here.').waitFor();
+      ok(true, 'an unknown slug says so');
+
+      // Server-rendered link previews (what iMessage, WhatsApp etc. read, without JavaScript)
+      process.env.VITE_SUPABASE_URL = API;
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'publishable-test-key';
+      process.env.VITE_PUBLIC_APP_URL = 'https://pipeline-experiment.vercel.app';
+      process.env.PX_INDEX_HTML = path.join(root, 'index.html');
+      const pageFn = await import(path.join(root, 'api/page.js'));
+      const ogFn = await import(path.join(root, 'api/og.js'));
+      const render = async (u) => {
+        const r = await pageFn.GET(new Request(u));
+        return { r, html: await r.text() };
+      };
+      // A meta tag's value, as a crawler reads it (HTML entities decoded).
+      const tag = (html, prop) => html.match(new RegExp(`<meta (?:property|name)="${prop}" content="([^"]*)"`))?.[1]
+        ?.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      const PUB = 'https://pipeline-experiment.vercel.app';
+      {
+        const { r, html } = await render(`${PUB}/api/page?slug=harvard-baseball&token=${tomTok}`);
+        ok(r.headers.get('content-type').startsWith('text/html') && tag(html, 'og:title') === HB_TITLE && tag(html, 'og:description') === HB_DESC
+          && tag(html, 'og:image') === imageUrl && tag(html, 'twitter:card') === 'summary_large_image' && tag(html, 'twitter:image') === imageUrl
+          && tag(html, 'og:url') === `${PUB}/harvard-baseball/${tomTok}` && (html.match(/<title>/g) || []).length === 1
+          && html.includes(`<title>${HB_TITLE}</title>`), 'server-rendered preview for a referral link: experiment title, description, image, card type');
+        ok(!html.includes('Tess') && !html.includes('Tom H.') && html.includes('<div id="root">') && html.includes('src="/src/main.tsx"')
+          && (html.match(/og:title/g) || []).length === 1, 'no sender or recipient in the preview; the app page itself is unchanged');
+      }
+      {
+        // The URL shape Vercel might pass (original path, no query)
+        const { html } = await render(`${PUB}/harvard-baseball/${tomTok}`);
+        const { html: html2 } = await render(`${PUB}/api/page?token=${tomTok}`);
+        ok(tag(html, 'og:title') === HB_TITLE && tag(html2, 'og:title') === HB_TITLE && tag(html2, 'og:url') === `${PUB}/harvard-baseball/${tomTok}`,
+          'a /join/TOKEN link to a Harvard Baseball invitation gets the Harvard Baseball preview too');
+        const { html: html3 } = await render(`${PUB}/harvard-baseball`);
+        ok(tag(html3, 'og:title') === HB_TITLE && tag(html3, 'og:url') === `${PUB}/harvard-baseball`, '/harvard-baseball has the experiment preview');
+      }
+      {
+        const [defInv] = await q(`select i.token from invitations i join experiments e on e.id = i.experiment_id where e.is_default limit 1`);
+        const { html } = await render(`${PUB}/api/page?token=${defInv.token}`);
+        const { html: bad } = await render(`${PUB}/api/page?token=NoSuchToken12345`);
+        const { html: badSlug } = await render(`${PUB}/api/page?slug=no-such-experiment`);
+        ok(tag(html, 'og:title') === 'You’ve been invited.' && tag(html, 'og:image') === `${PUB}/api/og` && tag(html, 'og:url') === `${PUB}/join/${defInv.token}`
+          && tag(bad, 'og:title') === 'You’ve been invited.' && tag(badSlug, 'og:title') === 'You’ve been invited.',
+          'experiments without settings, unknown tokens and unknown slugs get the generic preview');
+      }
+      {
+        // Without a custom image: the generated title card
+        await saveSharing(adminJwtE, hs.id, { slug: 'harvard-students', title: 'Harvard Students Network', desc: 'How are Harvard students connected? Help us find out.' });
+        const { html } = await render(`${PUB}/harvard-students`);
+        const img = tag(html, 'og:image');
+        ok(/^https:\/\/pipeline-experiment\.vercel\.app\/api\/og\?s=harvard-students&v=\d+$/.test(img), 'no uploaded image: a generated, versioned title card');
+        const res = await ogFn.GET(new Request(img.replace(PUB, 'http://localhost')));
+        const png = Buffer.from(await res.arrayBuffer());
+        fs.writeFileSync(path.join(SHOTS, '60-og-harvard-students.png'), png);
+        ok(res.headers.get('content-type') === 'image/png' && png.subarray(1, 4).toString() === 'PNG' && png.length < 600 * 1024
+          && png.readUInt32BE(16) === 1200 && png.readUInt32BE(20) === 630 && /immutable/.test(res.headers.get('cache-control')),
+          `generated preview image: 1200×630 PNG, ${Math.round(png.length / 1024)} KB (< 600 KB for WhatsApp), cached`);
+      }
     }
 
     // 11. Erasure covers every experiment

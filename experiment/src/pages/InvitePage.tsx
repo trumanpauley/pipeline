@@ -54,9 +54,10 @@ export function InvitePage({ token, session }: { token: string; session: Session
   const senderName = info?.sender_name || 'the person who invited you';
 
   // Invitees haven't unlocked anything: never show the company name here.
+  // (An experiment's own public title, e.g. "Harvard Baseball Network Experiment", is fine.)
   useEffect(() => {
-    document.title = BRAND.hidden;
-  }, []);
+    document.title = info?.experiment?.public_title || BRAND.hidden;
+  }, [info]);
   const signedIn = Boolean(session);
 
   const show = (title: string, body?: string, cta?: string) => {

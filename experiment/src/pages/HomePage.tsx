@@ -293,6 +293,7 @@ function Home({ session }: { session: Session }) {
         level={level}
         onInvite={() => setSheet('invite')}
         onChanged={refresh}
+        share={{ slug: exp?.slug, message: exp?.forward_message }}
       />
       {level < 2 && (
         <button className="link center-link" onClick={() => setSheet('feedback')}>
@@ -345,6 +346,7 @@ function Home({ session }: { session: Session }) {
           method={p.method}
           instruction={instruction}
           askRelationship={exp?.ask_relationship_question !== false}
+          share={{ slug: exp?.slug, message: exp?.forward_message }}
           first={invites.length === 0}
           onClose={() => {
             setSheet(null);
