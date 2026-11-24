@@ -95,6 +95,17 @@ export interface AdminCommunityStats {
   by_experiment?: { experiment_id: string; name: string; participants: number; signups: number; research_invites: number }[];
 }
 
+/** One waitlist across the landing page and the end of the experiment (admin only). */
+export interface AdminWaitlistOverview {
+  unique_total: number;
+  landing_total: number;
+  experiment_total: number;
+  on_both: number;
+  last_7_days: number;
+  by_source: { source: string; count: number }[];
+  recent: { email: string; source: string; created_at: string }[];
+}
+
 export interface AdminAccountStats {
   anonymous: number;
   linked_emails: number;
@@ -437,6 +448,7 @@ export const api = {
     rpc('update_community_preferences', { p_research_invites: researchInvites, p_updates: updates }),
   dismissCommunityPrompt: () => rpc('dismiss_community_prompt'),
   adminCommunityStats: () => rpc<AdminCommunityStats>('admin_community_stats'),
+  adminWaitlistOverview: () => rpc<AdminWaitlistOverview>('admin_waitlist_overview'),
   adminAccountStats: () => rpc<AdminAccountStats>('admin_account_stats'),
   deleteMyData: () => rpc('delete_my_data'),
   // admin

@@ -96,6 +96,17 @@ export const BRAND = {
   revealed: 'Pipeline',
 };
 
+/**
+ * The public Pipeline website. The completion screen links here with a
+ * non-identifying ?source=experiment tag (never a name, link token or experiment id).
+ * Override with VITE_LANDING_URL (no trailing slash) for a preview deployment.
+ */
+export const LANDING_URL = (
+  ((import.meta.env.VITE_LANDING_URL as string | undefined) ?? '').trim().replace(/\/+$/, '') ||
+  'https://pipeline-networking.com'
+);
+export const LANDING_LINK = `${LANDING_URL}/?source=experiment`;
+
 export const COPY = {
   /** Invitation landing. `name` is the inviter's first name from the referral data. */
   landingTitle: (name: string | null) => (name ? `${name} invited you.` : 'You’ve been invited.'),

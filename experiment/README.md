@@ -166,7 +166,8 @@ project still works if you have to.
    `008_live_invitation_tracking.sql`, `009_pipeline_community.sql` and
    `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
    `013_copy_safe_name_check.sql`, `014_community_onboarding.sql` and
-   `015_optional_relationship_question.sql` and `016_invitation_sharing.sql`. If you've already run some,
+   `015_optional_relationship_question.sql`, `016_invitation_sharing.sql` and
+   `017_waitlist_overview.sql`. If you've already run some,
    run only the ones after them.
    (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
    characters and break every name check with "invalid regular expression".)
@@ -666,6 +667,24 @@ table is still called `community_signups`). **Join Early Access** records the ea
     id, email, experiment, generation). It contains no relationship data and is the list to use
     when recruiting for the next experiment.
   - `community.csv`: every signup, with its experiment, both consents and all timestamps.
+
+### Completion screen and the Pipeline site
+
+When a participant finishes (after the second invitation, or after answering one question instead),
+a minimal **Experiment complete** screen explains that nothing more is required, with a prominent
+**Explore Pipeline** button to the public site and an optional early-access email. Joining is never
+required, is never pre-ticked, and someone already on the list isn't asked again.
+
+- The link is `https://pipeline-networking.com/?source=experiment`. Only that non-identifying tag is
+  sent: no names, link tokens, ratings or experiment ids are ever in the URL. Set `VITE_LANDING_URL`
+  (no trailing slash) in Vercel to point somewhere else.
+- Signing up here still goes through `join_community`, so consent text, timestamp and experiment are
+  recorded by the server. Experiment participants are never added to the marketing list automatically.
+- **One waitlist view.** Migration `017` adds the admin-only `admin_waitlist_overview()`, which
+  combines `landing_waitlist` (the website) and `community_signups` (this experiment), de-duplicated
+  by email; the admin page shows it under *Waitlist* (total, sources, last 7 days, recent). It is
+  additive and safe to run more than once; until it's run the panel says so and everything else
+  works. Waitlist records are not readable through the public API.
 
 ## Try it on a phone (no Supabase, no Codespace)
 
