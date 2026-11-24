@@ -26,7 +26,7 @@ export interface JoinSubmit {
 }
 
 /**
- * The join screen: "And you are?", the community's welcome line, its optional
+ * The join screen: "And you are?" (or "Are you Sam K.?"), the community's optional
  * membership question, the participant type, first name + last initial, and
  * research consent. Used by the invitation page and, unchanged, by the admin
  * simulator (which passes `preview` so nothing is checked against the server).
@@ -34,7 +34,6 @@ export interface JoinSubmit {
 export function JoinForm({
   experiment,
   invitedName,
-  senderFirst,
   initial,
   onChange,
   onSubmit,
@@ -47,7 +46,8 @@ export function JoinForm({
   experiment?: ExperimentInfo | null;
   /** The name the inviter gave (seed links: none). */
   invitedName: string | null;
-  senderFirst: string | null;
+  /** Who sent the invitation (kept for callers; not shown on this screen). */
+  senderFirst?: string | null;
   initial?: Partial<JoinFormState>;
   onChange?: (s: JoinFormState) => void;
   onSubmit: (v: JoinSubmit) => void | Promise<void>;
@@ -74,12 +74,6 @@ export function JoinForm({
     const t = window.setTimeout(() => setHintTimeUp(true), 3000);
     return () => window.clearTimeout(t);
   }, []);
-  // The welcome line types itself in shortly after the screen appears.
-  const [welcomeStart, setWelcomeStart] = useState(false);
-  useEffect(() => {
-    const t = window.setTimeout(() => setWelcomeStart(true), 350);
-    return () => window.clearTimeout(t);
-  }, []);
 
   // Links from before "First L." names may carry a first name only: the
   // recipient then adds their initial (the name field starts filled in).
@@ -96,7 +90,6 @@ export function JoinForm({
 
   const categories = experiment?.categories ?? [];
   const screening = experiment?.eligibility ?? null;
-  const welcome = experiment?.welcome_message?.trim() || null;
   // With a membership question, the rest appears once it's answered "yes".
   const eligibleSoFar = !screening || eligibility === 'yes';
   const ineligible = Boolean(screening) && eligibility === 'no';
@@ -128,11 +121,7 @@ export function JoinForm({
     <form className="join-form" onSubmit={submit} data-mode={mode} data-eligibility={eligibility || 'unanswered'}>
       <header className="join-intro">
         <h1 className="join-title">{mode === 'enter' ? COPY.joinSeedTitle : COPY.joinConfirmTitle(invitedName!)}</h1>
-        {welcome ? (
-          <TypedHint className="join-welcome" text={welcome} start={welcomeStart} duration={Math.min(1800, Math.max(900, welcome.length * 18))} />
-        ) : mode !== 'enter' ? (
-          <p className="muted join-body">{COPY.joinConfirmBody(senderFirst)}</p>
-        ) : null}
+        {/* Just the title: the invitation itself already said who it's from and what it's about. */}
       </header>
 
       <div className="join-fields">

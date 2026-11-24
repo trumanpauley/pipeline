@@ -772,7 +772,7 @@ try {
     await davePage.getByRole('button', { name: 'Continue' }).click();
     const first = order === 'cold_first' ? 'cold' : 'warm';
     const second = first === 'cold' ? 'warm' : 'cold';
-    const qText = { cold: `How likely would you be to respond if ${fname} sent you a message on LinkedIn asking for advice?`, warm: `How likely would you be to respond if Bob personally introduced ${fname} to you?` };
+    const qText = { cold: `How likely would you be to respond if ${fname} sent you a message asking for advice?`, warm: `How likely would you be to respond if Bob personally introduced ${fname} to you?` };
     await davePage.getByTestId(`abc-${first}`).waitFor();
     ok((await davePage.getByTestId(`abc-${first}`).locator('.question').innerText()) === qText[first]
       && (await davePage.getByTestId(`abc-${first}`).locator('.scale-context').innerText()).startsWith(`Imagine ${fname}`), `first question (${first}), with the same scenario above it; the inviter's real name in the warm one`);
@@ -1428,7 +1428,7 @@ try {
     await VALUE_D(40)(sarah);
     await rate(sarah, 'circular', { closeness: 5, comfort: 4 });
     await sarah.getByRole('heading', { name: 'Are you Sarah S.?' }).waitFor();
-    ok(await sarah.getByText('That’s who Nadia invited.').isVisible(), 'confirmation screen: "Are you Sarah S.?" / "That’s who Nadia invited."');
+    ok(await sarah.getByText('That’s who Nadia invited.').count() === 0, 'confirmation screen: just "Are you Sarah S.?", nothing repeated under it');
     const yes = sarah.getByRole('button', { name: 'Yes, that’s me' });
     ok(await yes.isDisabled() && await sarah.getByRole('button', { name: 'That’s not my name' }).isVisible(), 'two options; "Yes, that’s me" needs consent first');
     await sarah.waitForTimeout(1200);
@@ -1666,7 +1666,6 @@ try {
     await form.getByLabel('Invitation instruction').fill('Invite two Harvard Baseball players, current or alumni.');
     await form.getByLabel('Invites per participant').fill('2');
     await form.getByLabel('Participant categories').fill('Current player, Former player / alumnus');
-    await form.getByLabel('Welcome message').fill('A small experiment exploring the connections between current and former Harvard Baseball players.');
     await form.getByLabel('Ask an eligibility question').check();
     await form.getByLabel('Eligibility question', { exact: true }).fill('Have you played for Harvard Baseball?');
     await form.getByLabel('Ineligible message').fill('This experiment is currently for Harvard Baseball players and alumni. Thanks for your interest.');
@@ -1676,9 +1675,9 @@ try {
     const [hb] = await q(`select * from experiments where name = 'Harvard Baseball'`);
     ok(hb && hb.status === 'active' && hb.invites_per_participant === 2 && JSON.stringify(hb.categories) === '["Current player","Former player / alumnus"]' && !hb.is_default,
       'admin creates "Harvard Baseball" (description, instruction, 2 invites, Current player / Former player) without code changes');
-    ok(hb.welcome_message.startsWith('A small experiment exploring') && hb.eligibility_enabled && hb.eligibility_question === 'Have you played for Harvard Baseball?'
+    ok(await form.getByLabel('Welcome message').count() === 0 && hb.eligibility_enabled && hb.eligibility_question === 'Have you played for Harvard Baseball?'
       && hb.eligible_label === 'Yes' && hb.ineligible_label === 'No' && hb.ineligible_message.startsWith('This experiment is currently for Harvard Baseball'),
-      'onboarding settings saved in Supabase: welcome line, eligibility question, answers, message');
+      'onboarding settings saved in Supabase: eligibility question, answers, message (no welcome line field)');
     const hs = (await rpcAs(adminJwtE, 'admin_save_experiment', { p_id: null, p_name: 'Harvard Students', p_description: 'Harvard students and alumni.', p_invite_instruction: 'Invite two Harvard students or alumni.', p_invites_per_participant: 2, p_categories: ['Current Student', 'Alumni'], p_status: 'active' })).body;
     ok(hs.id && hs.name === 'Harvard Students' && hs.status === 'active', 'a second experiment: "Harvard Students"');
     ok((await rpcAs(adminJwtE, 'admin_save_experiment', { p_id: null, p_name: 'harvard baseball', p_description: '', p_invite_instruction: '', p_invites_per_participant: 2, p_categories: [], p_status: 'active' })).body.message === 'experiment_name_taken', 'experiment names are unique');
@@ -1706,9 +1705,8 @@ try {
     await james.getByRole('button', { name: 'Enter the Experiment' }).click();
     await answer(james);
     await james.getByRole('heading', { name: 'And you are?' }).waitFor();
-    await james.waitForFunction(() => document.querySelector('.join-welcome')?.getAttribute('data-done') === 'true', null, { timeout: 4000 });
-    ok((await james.locator('.join-welcome [aria-hidden]').innerText()).trim() === 'A small experiment exploring the connections between current and former Harvard Baseball players.'
-      && await james.locator('.join-welcome .type-hint-caret').count() === 0, 'the group’s welcome line types in, and the cursor is gone after');
+    await james.waitForTimeout(800);
+    ok(await james.locator('.join-welcome').count() === 0 && await james.locator('.join-intro p').count() === 0, 'nothing under the title: straight to the questions');
     ok(await james.getByText('Have you played for Harvard Baseball?').isVisible() && await james.getByPlaceholder(NAME_PH).count() === 0
       && await james.getByRole('radio', { name: 'Yes', exact: true }).getAttribute('aria-checked') === 'false'
       && await james.getByRole('radio', { name: 'No', exact: true }).getAttribute('aria-checked') === 'false', 'eligibility question first, nothing pre-selected');
@@ -1902,8 +1900,8 @@ try {
       await adminPage.locator('.closeness-bar').nth(2).click();
       await adminPage.locator('.closeness').getByRole('button', { name: 'Continue' }).click();
       await adminPage.locator('.preview-layer #eligibility-q').waitFor();
-      ok(await adminPage.locator('.join-welcome .sr-only').innerText() === 'A small experiment exploring the connections between current and former Harvard Baseball players.',
-        'simulator (Harvard Baseball tab): the group’s welcome line and eligibility question');
+      ok(await adminPage.locator('.preview-layer .join-welcome').count() === 0,
+        'simulator (Harvard Baseball tab): the group’s join screen, eligibility question first');
       await adminPage.getByRole('radio', { name: 'No', exact: true }).click();
       await adminPage.getByText('This experiment is currently for Harvard Baseball players and alumni. Thanks for your interest.').waitFor();
       await adminPage.getByRole('radio', { name: 'Yes', exact: true }).click();

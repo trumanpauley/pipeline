@@ -675,7 +675,6 @@ function ExperimentsPanel({ refreshKey, only, onChanged }: { refreshKey: number;
                 <dt>Relationship question</dt><dd>{e.ask_relationship_question === false
                   ? <span className="muted">Not asked (everyone knows each other the same way)</span>
                   : 'Asked (“Where do you know them from?” or its variant)'}</dd>
-                <dt>Welcome</dt><dd>{e.welcome_message || <span className="muted">None</span>}</dd>
                 <dt>Eligibility</dt><dd>{e.eligibility_enabled && e.eligibility_question
                   ? <>{e.eligibility_question} <span className="muted">({e.eligible_label} continues · {e.ineligible_label} stops)</span></>
                   : <span className="muted">Not asked</span>}</dd>
@@ -756,11 +755,6 @@ function ExperimentForm({ draft, onCancel, onSaved }: { draft: ExperimentDraft; 
       </fieldset>
       <fieldset className="experiment-onboarding">
         <legend>Join screen</legend>
-        <label>Welcome message <span className="muted">(one line under “And you are?”)</span>
-          <textarea className="input" rows={2} value={d.welcome_message} maxLength={240}
-            placeholder="A small experiment exploring the connections between current and former Harvard Baseball players."
-            onChange={(e) => set('welcome_message', e.target.value)} aria-label="Welcome message" />
-        </label>
         <label className="preview-check">
           <input type="checkbox" checked={d.eligibility_enabled} onChange={(e) => set('eligibility_enabled', e.target.checked)} aria-label="Ask an eligibility question" />
           Ask an eligibility question first
@@ -886,7 +880,7 @@ function AbcPanel({ refreshKey, fixedExperiment }: { refreshKey: number; fixedEx
   return (
     <Panel
       title="ABC experiment"
-      note="Would people answer Jane/John more readily through an introduction than a cold LinkedIn message, and does that depend on how close they are to the person who introduces them? These are self-reported answers, so read differences as associations, not causes. Previews are never stored, and test experiments are left out unless you pick one here."
+      note="Would people answer Jane/John more readily through an introduction than a cold message, and does that depend on how close they are to the person who introduces them? These are self-reported answers, so read differences as associations, not causes. Previews are never stored, and test experiments are left out unless you pick one here."
     >
       <div className="abc-filters">
         {!fixedExperiment && (
@@ -906,7 +900,7 @@ function AbcPanel({ refreshKey, fixedExperiment }: { refreshKey: number; fixedEx
           <div className="tiles compact">
             <Tile label="Eligible" value={st.participation.eligible} sub={`${st.participation.started} started`} />
             <Tile label="Completed" value={st.participation.completed} sub={`${pct(st.participation.completed, st.participation.eligible)} of eligible`} />
-            <Tile label="Cold (LinkedIn)" value={num(st.outreach.avg_cold)} sub="average, 1–5" />
+            <Tile label="Cold (message)" value={num(st.outreach.avg_cold)} sub="average, 1–5" />
             <Tile label="Warm (introduced)" value={num(st.outreach.avg_warm)} sub="average, 1–5" />
             <Tile label="Introduction advantage" value={signed(st.outreach.avg_advantage)} sub="warm − cold, average" />
             <Tile label="Connection strength" value={num(st.strength.avg_closeness)} sub={`average of ${st.strength.ratings_n} ratings, 1–5`} />
@@ -965,7 +959,7 @@ function AbcPanel({ refreshKey, fixedExperiment }: { refreshKey: number; fixedEx
           <h3 className="abc-h">Checks for presentation effects</h3>
           <Table
             head={['Asked first', 'Answers', 'Cold', 'Warm']}
-            rows={st.outreach.by_order.map((o) => [o.order === 'cold_first' ? 'Cold (LinkedIn)' : 'Warm (introduction)', o.n, num(o.avg_cold), num(o.avg_warm)])}
+            rows={st.outreach.by_order.map((o) => [o.order === 'cold_first' ? 'Cold (message)' : 'Warm (introduction)', o.n, num(o.avg_cold), num(o.avg_warm)])}
           />
           <Table head={['Name shown', 'Answers', 'Advantage']} rows={st.outreach.by_name.map((n) => [n.name, n.n, signed(n.avg_advantage)])} />
           <div className="export-row">
@@ -1008,7 +1002,7 @@ type SimStep = null | 'landing' | 'classify' | 'closeness' | 'comfort' | 'join' 
 /**
  * Participant experience simulator (admin only): the real invitation screens,
  * in order, for any group: landing, relationship question, connection
- * strength, comfort, the join screen with the group's welcome line,
+ * strength, comfort, the join screen with the group's
  * eligibility question and participant types, then the ABC questions when the
  * chosen generation gets them. Runs entirely in this browser; nothing is
  * saved, so it never reaches the analytics. Works on a phone at /admin.
@@ -1052,7 +1046,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
   return (
     <Panel
       title="Participant experience simulator"
-      note="The real invitation screens for the chosen group: landing, relationship questions, the join screen (welcome line, eligibility question, participant types, name, consent) and the ABC questions. Nothing is saved, so it never reaches the analytics."
+      note="The real invitation screens for the chosen group: landing, relationship questions, the join screen (eligibility question, participant types, name, consent) and the ABC questions. Nothing is saved, so it never reaches the analytics."
     >
       <div className="preview-controls">
         <label>Group
@@ -1163,7 +1157,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
               ['Comfort asking for an introduction', answers.comfort ?? (method === 'comfort' && asksRelationship ? 'their assigned question' : '—')],
               ['Name', answers.name ?? '—'],
               ['Participant type', answers.category ?? '—'],
-              ['Cold (LinkedIn)', answers.cold ?? (eligible ? '—' : 'not shown at this generation')],
+              ['Cold (message)', answers.cold ?? (eligible ? '—' : 'not shown at this generation')],
               ['Warm (introduction)', answers.warm ?? (eligible ? '—' : 'not shown at this generation')],
               ['Introduction advantage', answers.cold && answers.warm ? signed(answers.warm - answers.cold) : '—'],
             ]}
