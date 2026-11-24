@@ -1064,7 +1064,7 @@ try {
   ok(byExp && byExp.signups === 2 && byExp.research_invites === 1 && byExp.participants === 6, `early access by experiment: ${byExp?.signups} of ${byExp?.participants} participants, ${byExp?.research_invites} interested in future experiments`);
   {
     // one admin-only waitlist view across the landing page and the experiment
-    await admin.query(`insert into landing_waitlist (email, source) values ('wl-one@test.dev','landing-hero'), ('Dave@Test.dev','landing-footer:harvard-baseball') on conflict do nothing`);
+    await db.query(`insert into landing_waitlist (email, source) values ('wl-one@test.dev','landing-hero'), ('Dave@Test.dev','landing-footer:harvard-baseball') on conflict do nothing`);
     const wl = (await rpcAs(adminJwt, 'admin_waitlist_overview')).body;
     ok(wl.landing_total >= 2 && wl.experiment_total === 2, `waitlist: ${wl.landing_total} landing, ${wl.experiment_total} experiment`);
     ok(wl.on_both >= 1 && wl.unique_total === wl.landing_total + wl.experiment_total - wl.on_both, 'waitlist: de-duplicated by email across both sources');
