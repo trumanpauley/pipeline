@@ -5,13 +5,14 @@ import { currentQuery, navigate } from '../lib/router';
 import { demoNewInvite, demoReset, isLocalDemo } from '../lib/demo';
 import { pending } from '../lib/session';
 import { supabase } from '../lib/supabase';
-import { BRAND, COPY } from '../config/experiment';
+import { BRAND, COPY, LANDING_LINK } from '../config/experiment';
 import { InviteSheet, InviteSlots } from '../components/Invitations';
 import { SignIn } from '../components/EmailAuth';
 import { RevealOverlay } from '../components/Reveal';
 import { Tree, type TreeNode } from '../components/Tree';
 import { WaitlistOverlay } from '../components/Waitlist';
 import { CommunityOverlay } from '../components/Community';
+import { CompletionOverlay } from '../components/Completion';
 import { AbcFlow } from '../components/Abc';
 import { SaveNetworkOverlay } from '../components/SaveNetwork';
 import { formatPhone, phoneEnabled } from '../lib/phone';
@@ -77,7 +78,7 @@ export function DemoLinks() {
 function Home({ session }: { session: Session }) {
   const [state, setState] = useState<MyState | null>(null);
   const [account, setAccount] = useState<MyAccount | null>(null);
-  const [overlay, setOverlay] = useState<null | 'community' | 'link' | 'phone'>(null);
+  const [overlay, setOverlay] = useState<null | 'community' | 'completion' | 'link' | 'phone'>(null);
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | 'invite' | 'feedback' | 'privacy'>(null);
   const [reveal, setReveal] = useState<number | null>(null);
@@ -275,6 +276,12 @@ function Home({ session }: { session: Session }) {
         {level >= 1 && <h1 className="display small reveal-static">{reveals[0]?.title}</h1>}
         {level === 1 && <p className="muted">One more invitation reveals what we’re building.</p>}
         {level >= 2 && <p className="mission reveal-static">{reveals[1]?.title}</p>}
+        {level >= 2 && (
+          <p className="complete-pill" data-testid="experiment-complete">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            Experiment complete
+          </p>
+        )}
       </section>
 
       {abcDue && !abc && (
@@ -312,13 +319,22 @@ function Home({ session }: { session: Session }) {
       )}
 
       {level >= 2 && account && !account.community?.subscribed && (
-        <button className="early-card fade-up" onClick={() => setOverlay('community')}>
+        <button className="early-card fade-up" onClick={() => setOverlay('completion')}>
           <div>
             <strong>Early access</strong>
             <span>Be part of what’s next.</span>
           </div>
           <span className="arrow" aria-hidden="true">→</span>
         </button>
+      )}
+      {level >= 2 && account?.community?.subscribed && (
+        <a className="early-card fade-up" href={LANDING_LINK} rel="noopener" data-testid="explore-pipeline">
+          <div>
+            <strong>Explore Pipeline</strong>
+            <span>See what we’re building.</span>
+          </div>
+          <span className="arrow" aria-hidden="true">→</span>
+        </a>
       )}
 
       {showNetwork && (
@@ -369,7 +385,7 @@ function Home({ session }: { session: Session }) {
           account={account}
           onClose={() => setSheet(null)}
           onLink={() => { setSheet(null); saveNetwork(); }}
-          onCommunity={() => { setSheet(null); setOverlay('community'); }}
+          onCommunity={() => { setSheet(null); setOverlay(account?.community?.subscribed ? 'community' : 'completion'); }}
         />
       )}
       {reveal !== null && reveals[reveal - 1] && (
@@ -379,10 +395,11 @@ function Home({ session }: { session: Session }) {
           onDone={() => {
             if (reveal < level) return setReveal(reveal + 1);
             setReveal(null);
-            // After the mission reveal (two invitations, or the skip question), offer early access —
-            // unless they already joined or chose "Maybe later" (kept on the server).
+            // After the mission reveal (two invitations, or the skip question), show the completion
+            // screen: it introduces Pipeline and offers early access, unless they already joined or
+            // chose "Not now" (kept on the server).
             if (reveal >= 2 && account && !account.community && !account.community_prompt_dismissed) {
-              setOverlay('community');
+              setOverlay('completion');
             }
           }}
         />
@@ -409,6 +426,20 @@ function Home({ session }: { session: Session }) {
           onDone={() => {
             setAbc(null);
             void load();
+          }}
+        />
+      )}
+      {overlay === 'completion' && (
+        <CompletionOverlay
+          account={account}
+          onSkip={() => {
+            setOverlay(null);
+            // Skipping changes nothing else; it only stops the screen reappearing by itself.
+            void api.dismissCommunityPrompt().catch(() => undefined).then(() => load());
+          }}
+          onClose={(changed) => {
+            setOverlay(null);
+            if (changed) void load();
           }}
         />
       )}

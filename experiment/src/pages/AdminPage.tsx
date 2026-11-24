@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { adminErrorText, api, inviteUrl, shareText, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
+import { adminErrorText, api, inviteUrl, shareText, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminOverview, type AdminWaitlistOverview, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
 import { AbcFlow } from '../components/Abc';
 import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, PRIVATE_NOTE, ScaleQuestion } from '../components/Relationship';
 import { JoinForm } from '../components/JoinForm';
@@ -34,6 +34,7 @@ export function AdminPage({ session }: { session: Session | null }) {
   const [acct, setAcct] = useState<AdminAccountStats | null>(null);
   const [mstats, setMstats] = useState<AdminMethodStats | null>(null);
   const [cstats, setCstats] = useState<AdminCommunityStats | null>(null);
+  const [wstats, setWstats] = useState<AdminWaitlistOverview | null>(null);
   const [version, setVersion] = useState(0); // bumps on every refresh so sub-panels reload too
   const [error, setError] = useState<string | null>(null);
   // Tabs: the overview, then one per experiment (remembered on this device).
@@ -49,18 +50,20 @@ export function AdminPage({ session }: { session: Session | null }) {
 
   const load = useCallback(async () => {
     try {
-      const [o, a, m, c, g] = await Promise.all([
+      const [o, a, m, c, g, w] = await Promise.all([
         api.adminOverview(),
         api.adminAccountStats(),
         api.adminMethodStats().catch(() => null),
         api.adminCommunityStats().catch(() => null),
         api.adminExperiments().catch(() => [] as Experiment[]),
+        api.adminWaitlistOverview().catch(() => null),
       ]);
       setGroups(g);
       setData(o);
       setAcct(a);
       setMstats(m);
       setCstats(c);
+      setWstats(w);
       setVersion((n) => n + 1);
       setError(null);
     } catch (e) {
@@ -228,6 +231,8 @@ export function AdminPage({ session }: { session: Session | null }) {
 
       <AbcPanel refreshKey={version} />
       <AbcPreviewPanel />
+
+      <WaitlistPanel stats={wstats} />
 
       {cstats && <CommunityPanel stats={cstats} />}
 
@@ -1165,6 +1170,45 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
           <button type="button" className="link" onClick={() => setStep(null)}>Close</button>
         </div>
       )}
+    </Panel>
+  );
+}
+
+/** One waitlist: the Pipeline website and the end of the experiment together, de-duplicated by email. */
+function WaitlistPanel({ stats: w }: { stats: AdminWaitlistOverview | null }) {
+  if (!w) {
+    return (
+      <Panel title="Waitlist" note="Combined signups from pipeline-networking.com and the end of the experiment.">
+        <p className="muted small">
+          Not available yet. Run <code>supabase/migrations/017_waitlist_overview.sql</code> in the Supabase SQL editor,
+          then refresh.
+        </p>
+      </Panel>
+    );
+  }
+  const label = (s: string) => {
+    if (s === 'experiment') return 'End of the experiment';
+    const m = /^landing-(hero|footer)(?::(.+))?$/.exec(s);
+    if (!m) return s;
+    return `Website · ${m[1] === 'hero' ? 'top of page' : 'bottom of page'}${m[2] ? ` · from “${m[2]}”` : ''}`;
+  };
+  return (
+    <Panel
+      title="Waitlist"
+      note="Pipeline website and end-of-experiment signups together, one row per email. Visible to administrators only."
+    >
+      <div className="tiles community-tiles">
+        <Tile label="On the waitlist" value={w.unique_total} sub="unique emails" />
+        <Tile label="Website" value={w.landing_total} sub="pipeline-networking.com" />
+        <Tile label="From the experiment" value={w.experiment_total} sub={`${w.on_both} on both lists`} />
+        <Tile label="Last 7 days" value={w.last_7_days} sub="new signups" />
+      </div>
+      <Table head={['Source', 'Signups']} rows={w.by_source.map((s) => [label(s.source), s.count])} />
+      <h3 className="subhead">Recent signups</h3>
+      <Table
+        head={['Email', 'Source', 'When']}
+        rows={w.recent.map((r) => [r.email, label(r.source), new Date(r.created_at).toLocaleString()])}
+      />
     </Panel>
   );
 }
