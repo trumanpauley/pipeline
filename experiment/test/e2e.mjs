@@ -2414,6 +2414,8 @@ try {
       ok(new Set([vic.token, wes1.token, wes2.token, ...more.map((m) => m.token)]).size === 6, 'many additional invitations, each a unique individual link (no broadcast link)');
 
       // A recipient completes the experiment through an additional link
+      // every test participant shares one IP, so reset the per-IP join counter (the real limit is 20 an hour)
+      await q(`delete from rate_events where kind = 'join'`);
       const wes = await newPhone();
       await wes.goto(`${APP}/harvard-baseball/${wes1.token}`);
       await wes.getByRole('heading', { name: 'Harvard Baseball Network Experiment' }).waitFor();
