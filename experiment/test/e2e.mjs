@@ -2265,7 +2265,7 @@ try {
         await adminPage.getByRole('button', { name: 'Refresh' }).click();
         const hbCard3 = adminPage.locator('.experiment-card', { hasText: 'Harvard Baseball' });
         // close and reopen so the table reloads (the links were made through the API)
-        if (await hbCard3.locator('.experiment-detail').count()) await hbCard3.getByRole('button', { name: 'Seed links & tree' }).click();
+        if (await hbCard3.locator('.experiment-detail').count()) await hbCard3.getByRole('button', { name: 'Hide links & tree' }).click();
         await hbCard3.getByRole('button', { name: 'Seed links & tree' }).click();
         await hbCard3.getByLabel('Seed type').selectOption('broadcast');
         ok(await hbCard3.getByLabel('Sender name').count() === 0, 'admin: a broadcast seed asks for a label, not a name');
