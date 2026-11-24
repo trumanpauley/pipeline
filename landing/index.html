@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline — your network runs through your groups</title>
+  <meta name="description" content="Pipeline turns the teams, clubs, and organizations you're already part of into your professional network. Join the waitlist.">
+  <meta name="theme-color" content="#05060a">
+  <meta property="og:title" content="Pipeline">
+  <meta property="og:description" content="Your network already exists. It runs through your groups.">
+  <meta property="og:url" content="https://pipeline-networking.com">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="network" aria-hidden="true"></canvas>
+
+  <header class="topbar">
+    <a class="mini-brand" href="#top" aria-label="Pipeline home">
+      <img src="logo.svg" alt="" width="30" height="13">
+      <span>Pipeline</span>
+    </a>
+    <a class="topbar-cta" href="#join">Join the waitlist</a>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <h1 class="wordmark" aria-label="Pipeline">
+        <svg class="wordmark-arc" viewBox="0 0 120 52" aria-hidden="true">
+          <path class="arc-path" d="M14 40 Q60 2 106 40" pathLength="1"/>
+          <circle class="arc-dot d1" cx="14" cy="40" r="5.5"/>
+          <circle class="arc-dot d2" cx="60" cy="21" r="6"/>
+          <circle class="arc-dot d3" cx="106" cy="40" r="7"/>
+        </svg>
+        <span aria-hidden="true">Pipeline</span>
+      </h1>
+
+      <p class="eyebrow">Early access · students &amp; alumni</p>
+      <h2 class="headline"><span class="line">Your network already exists.</span> <span class="line">It runs through your groups.</span></h2>
+      <p class="lede">
+        Pipeline turns the teams, clubs, and organizations you're already part of
+        into your professional network — so opportunities flow through people who share your story.
+      </p>
+
+      <form class="waitlist" data-source="hero" novalidate>
+        <label class="sr-only" for="email-hero">Email address</label>
+        <input id="email-hero" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@school.edu" required>
+        <input class="hp" name="company" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <button type="submit">Join the waitlist</button>
+        <p class="form-status" role="status" aria-live="polite"></p>
+      </form>
+      <p class="fineprint">We'll only email you about Pipeline. Unsubscribe anytime.</p>
+    </section>
+
+    <section class="insight">
+      <p class="eyebrow">The idea</p>
+      <h2><span class="line">A shared school is a weak tie.</span> <span class="line glow">A shared team is a pipeline.</span></h2>
+      <p>
+        The strongest connections we've seen between students and the people who hire them don't come
+        from going to the same school. They come from rowing in the same boat, playing on the same field,
+        or running the same club. Pipeline is built around those groups.
+      </p>
+    </section>
+
+    <section class="steps" aria-label="How Pipeline works">
+      <article class="step">
+        <span class="step-num">01</span>
+        <h3>Start with your groups</h3>
+        <p>Join the communities you're actually part of — teams, clubs, Greek life, and more.</p>
+      </article>
+      <article class="step">
+        <span class="step-num">02</span>
+        <h3>See your pipelines</h3>
+        <p>Find members and alumni who were once where you are, and see where they went next.</p>
+      </article>
+      <article class="step">
+        <span class="step-num">03</span>
+        <h3>Get warm introductions</h3>
+        <p>Reach out through people you share a group with — not another cold message.</p>
+      </article>
+    </section>
+
+    <section class="closing" id="join">
+      <img class="closing-mark" src="logo.svg" alt="" width="120" height="52">
+      <h2>Be first in the pipeline.</h2>
+      <p>We're opening Pipeline group by group. Join the waitlist and we'll let you know when yours is live.</p>
+      <form class="waitlist" data-source="footer" novalidate>
+        <label class="sr-only" for="email-footer">Email address</label>
+        <input id="email-footer" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@school.edu" required>
+        <input class="hp" name="company" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <button type="submit">Join the waitlist</button>
+        <p class="form-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>© 2026 Pipeline Networking</span>
+    <span>A student-built startup.</span>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

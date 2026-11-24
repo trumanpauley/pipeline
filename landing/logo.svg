@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 52" role="img" aria-label="Pipeline mark">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <path d="M14 40 Q60 2 106 40" fill="none" stroke="#8ea4f5" stroke-width="2" stroke-linecap="round" filter="url(#glow)"/>
+  <g fill="#eef2ff" filter="url(#glow)">
+    <circle cx="14" cy="40" r="6"/>
+    <circle cx="60" cy="21" r="6.5"/>
+    <circle cx="106" cy="40" r="7.5"/>
+  </g>
+</svg>
