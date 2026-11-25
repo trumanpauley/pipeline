@@ -822,3 +822,4 @@ a.early-card { text-decoration: none; }
 /* Launch updates: community invitation */
 .landing-tagline { margin: 0; font-size: clamp(20px, 5vw, 26px); font-weight: 560; letter-spacing: -0.01em; color: var(--text); }
 .join-disclosure { margin: 0 0 4px; text-align: left; }
+.seed-sender { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }

@@ -167,7 +167,7 @@ project still works if you have to.
    `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
    `013_copy_safe_name_check.sql`, `014_community_onboarding.sql` and
    `015_optional_relationship_question.sql`, `016_invitation_sharing.sql` and
-   `017_waitlist_overview.sql`, `018_launch_updates.sql` and `019_broadcast_links.sql`. If you've already run some,
+   `017_waitlist_overview.sql`, `018_launch_updates.sql`, `019_broadcast_links.sql` and `020_broadcast_sender_name.sql`. If you've already run some,
    run only the ones after them.
    (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
    characters and break every name check with "invalid regular expression".)
@@ -652,8 +652,8 @@ data are untouched. Run `supabase/migrations/018_launch_updates.sql` in the Supa
   waitlist signup* (all per experiment). ABC questions keep their existing switch. Only the new
   columns are touched; other experiments aren't changed.
 - **Referral kinds** (`invitations.kind`): `seed_personal`, `seed_broadcast`, `standard`,
-  `additional`. Existing links were backfilled. A *broadcast* seed stores no inviter name, so it
-  never implies a personal relationship and no strength is recorded. Labels (e.g. “Founder 1 —
+  `additional`. Existing links were backfilled. A *broadcast* seed stores no inviter name unless you
+  give it one (migration 020); without a name it never implies a personal relationship. Labels (e.g. “Founder 1 —
   Current players”) are admin-only.
 - **Additional invitations.** After completing, “Invite someone else” makes one individual link at
   a time (name + the 0–100 “how well do you know them” slider + the normal sharing message). They
@@ -862,3 +862,9 @@ The test drops and recreates the `px` database at that URL.
 ### Broadcast links (migration 019)
 
 A *broadcast* seed link is made to be posted once in a group chat and used by many people. The link never gets used up: the first time someone opens it they get their own private copy, so people never share progress and nobody is told the link "has already been used". Personal seeds and referral links still work once. In Admin, a broadcast link shows as "Reusable" with how many people opened it and joined.
+
+### Sender names on broadcast links (migration 020)
+
+A broadcast link can say who it's from. In Admin → Seed links, choose **Broadcast seed** and fill in the optional **Sender name** (e.g. "Ryan Mooney"); the teammate posts the one link in their group chat, and everyone who opens it sees "Ryan" on the invitation and, if the experiment asks relationship questions, answers them about Ryan. Leave the name empty for an anonymous broadcast link, as before.
+
+To add or change the name on a link you've already made, use **Add name** / **Edit** in the link's *From* column. On a broadcast link the change also reaches people who opened it but haven't joined yet; people who already joined keep the name they saw. A personal link's name can only change before it's opened. Participants see the first name only, and names go through the same moderation as everywhere else.

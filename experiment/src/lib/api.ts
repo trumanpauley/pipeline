@@ -588,6 +588,9 @@ export const api = {
     }),
   adminUpdateSeed: (id: string, label: string, kind: 'personal' | 'broadcast' | null) =>
     rpc('admin_update_seed', { p_invitation_id: id, p_label: label, p_kind: kind }),
+  /** Set or change the name a seed link shows (migration 020). Empty clears it on a broadcast link. */
+  adminSetSeedSender: (id: string, senderName: string) =>
+    rpc<{ ok: boolean; sender_name: string | null }>('admin_set_seed_sender', { p_invitation_id: id, p_sender_name: senderName }),
   adminLaunchAnalytics: (experimentId: string | null) =>
     rpc<AdminLaunchAnalytics>('admin_launch_analytics', { p_experiment_id: experimentId }),
   adminFeedbackList: (experimentId: string | null, status: 'new' | 'reviewed' | null) =>
@@ -706,6 +709,7 @@ export interface AdminOverview {
     id: string;
     token: string;
     sender_name: string | null;
+    kind?: ReferralKind;
     note: string | null;
     status: InvitationStatus;
     opened_at: string | null;
