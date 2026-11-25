@@ -102,6 +102,7 @@ psql('../supabase/migrations/003_landing_waitlist.sql'); // the public website's
 psql('supabase/migrations/017_waitlist_overview.sql');
 psql('supabase/migrations/018_launch_updates.sql');
 psql('supabase/migrations/019_broadcast_links.sql');
+psql('supabase/migrations/020_broadcast_sender_name.sql');
 {
   // SQL is pasted into the Supabase editor from a browser, which drops invisible characters:
   // the migrations must not rely on any (013 fixed one that broke every name check).
@@ -2261,22 +2262,32 @@ try {
 
       // Seed kinds and internal labels
       const personal = (await rpcAs(adminJ, 'admin_create_experiment_seeds_v2', { p_experiment_id: hb.id, p_count: 1, p_sender_name: 'Truman', p_label: 'Founder 1 — Current players', p_kind: 'personal' })).body;
-      const broadcast = (await rpcAs(adminJ, 'admin_create_experiment_seeds_v2', { p_experiment_id: hb.id, p_count: 1, p_sender_name: 'Ignored I.', p_label: 'Harvard Baseball group chat', p_kind: 'broadcast' })).body;
+      const broadcast = (await rpcAs(adminJ, 'admin_create_experiment_seeds_v2', { p_experiment_id: hb.id, p_count: 1, p_sender_name: '', p_label: 'Harvard Baseball group chat', p_kind: 'broadcast' })).body;
       const [pRow] = await q(`select * from invitations where token = $1`, [personal[0].token]);
       const [bRow] = await q(`select * from invitations where token = $1`, [broadcast[0].token]);
       ok(pRow.kind === 'seed_personal' && pRow.sender_name === 'Truman' && pRow.admin_note === 'Founder 1 — Current players' && pRow.experiment_id === hb.id, 'personal seed: shows the founder’s name, internal label stored');
       ok(bRow.kind === 'seed_broadcast' && bRow.sender_name === null && bRow.admin_note === 'Harvard Baseball group chat', 'broadcast seed: no inviter name stored, so no personal relationship is implied');
+      {
+        // migration 020: a broadcast link may say who it's from; each person's copy shows that name
+        const named = (await rpcAs(adminJ, 'admin_create_experiment_seeds_v2', { p_experiment_id: hb.id, p_count: 1, p_sender_name: 'Ryan Mooney', p_label: 'Ryan — team chat', p_kind: 'broadcast' })).body;
+        const [nRow] = await q(`select * from invitations where token = $1`, [named[0].token]);
+        ok(nRow.kind === 'seed_broadcast' && nRow.sender_name === 'Ryan Mooney', 'broadcast seed: an optional sender name is stored');
+        ok((await rpcAs(adminJ, 'admin_set_seed_sender', { p_invitation_id: nRow.id, p_sender_name: 'Ryan M.' })).body.ok === true
+          && (await q(`select sender_name from invitations where id = $1`, [nRow.id]))[0].sender_name === 'Ryan M.', 'admin can change a broadcast link’s sender name');
+        ok((await rpcAs(jamesJ, 'admin_set_seed_sender', { p_invitation_id: nRow.id, p_sender_name: 'X Y' })).body.message === 'forbidden', 'changing a sender name is admin-only');
+        await rpcAs(adminJ, 'admin_revoke_invitation', { p_invitation_id: nRow.id });
+      }
       ok((await rpcAs(jamesJ, 'admin_create_experiment_seeds_v2', { p_experiment_id: hb.id, p_count: 1, p_sender_name: 'J', p_label: 'x', p_kind: 'personal' })).body.message === 'forbidden', 'creating seeds is admin-only');
       ok((await rpcAs(adminJ, 'admin_create_experiment_seeds_v2', { p_experiment_id: hb.id, p_count: 1, p_sender_name: 'J', p_label: 'x', p_kind: 'mass' })).body.message === 'invalid_value', 'only personal or broadcast seeds');
       {
-        // the admin screen: broadcast hides the sender name; labels are shown only here
+        // the admin screen: broadcast offers an optional sender name; labels are shown only here
         await adminPage.getByRole('button', { name: 'Refresh' }).click();
         const hbCard3 = adminPage.locator('.experiment-card', { hasText: 'Harvard Baseball' });
         // close and reopen so the table reloads (the links were made through the API)
         if (await hbCard3.locator('.experiment-detail').count()) await hbCard3.getByRole('button', { name: 'Hide links & tree' }).click();
         await hbCard3.getByRole('button', { name: 'Seed links & tree' }).click();
         await hbCard3.getByLabel('Seed type').selectOption('broadcast');
-        ok(await hbCard3.getByLabel('Sender name').count() === 0, 'admin: a broadcast seed asks for a label, not a name');
+        ok(/optional/i.test(await hbCard3.getByLabel('Sender name').getAttribute('placeholder') ?? ''), 'admin: a broadcast seed offers an optional sender name');
         await hbCard3.getByLabel('Seed type').selectOption('personal');
         ok(await hbCard3.locator('.seed-panel tbody tr', { hasText: 'Harvard Baseball group chat' }).innerText().then((t) => t.includes('Broadcast')), 'admin: seed table shows type and internal label');
       }

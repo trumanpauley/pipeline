@@ -449,6 +449,27 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
       setBusy(false);
     }
   };
+  // Add, change or (broadcast only) remove the name an existing seed link shows.
+  const editSender = async (s: ExperimentDetail['seeds'][number]) => {
+    const broadcast = s.kind === 'seed_broadcast';
+    const next = window.prompt(
+      broadcast
+        ? 'Name everyone who opens this link will see, e.g. Ryan Mooney. Leave empty to show no name.\nPeople who already joined keep the name they saw.'
+        : 'Name the invitee will see.',
+      s.sender_name ?? '',
+    );
+    if (next === null) return;
+    setError(null);
+    try {
+      await api.adminSetSeedSender(s.id, next);
+      onChanged();
+    } catch (err) {
+      const msg = (err as Error).message;
+      setError(/could not find the function|admin_set_seed_sender/i.test(msg)
+        ? 'Run migration 020 in the Supabase SQL Editor to edit sender names.'
+        : adminErrorText(err));
+    }
+  };
   const copy = async (token: string) => {
     await navigator.clipboard.writeText(inviteUrl(token, slug)).catch(() => undefined);
     setCopied(token);
@@ -478,7 +499,8 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
       <h3>Seed links</h3>
       <p className="muted small">
         Unique single-use links. <strong>Personal</strong>: a founder hands it to someone they know; the invitee sees your name.
-        {' '}<strong>Broadcast</strong>: posted to a group chat or list; no name is shown and no personal relationship is recorded.
+        {' '}<strong>Broadcast</strong>: one reusable link for a group chat or list. Add a sender name (e.g. the teammate who posts it)
+        and everyone who opens it sees that name and answers the relationship questions about them; leave it empty to show no name.
         The label is internal and never shown to participants.
       </p>
       <form className="seed-form" onSubmit={create}>
@@ -488,9 +510,13 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
         </select>
         <input className="input" type="number" min={1} max={50} value={count}
           onChange={(e) => setCount(Number(e.target.value))} aria-label="Number of links" />
-        {kind === 'personal' && (
-          <input className="input" placeholder="Your name, as invitees see it" value={sender}
-            onChange={(e) => setSender(e.target.value)} aria-label="Sender name" />
+        <input className="input"
+          placeholder={kind === 'personal' ? 'Your name, as invitees see it' : 'Sender name (optional), e.g. Ryan Mooney'}
+          value={sender} onChange={(e) => setSender(e.target.value)} aria-label="Sender name" />
+        {kind === 'broadcast' && count > 1 && (
+          <p className="muted small" style={{ gridColumn: '1 / -1', margin: 0 }}>
+            A broadcast link is reusable, so one is usually enough per group chat.
+          </p>
         )}
         <input className="input" placeholder={kind === 'personal' ? 'Label, e.g. Founder 1 — Current players' : 'Label, e.g. Harvard Baseball group chat'} value={note}
           onChange={(e) => setNote(e.target.value)} aria-label="Note" maxLength={80} />
@@ -512,7 +538,15 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
                 </button>
               ) : '',
               s.kind === 'seed_broadcast' ? 'Broadcast' : 'Personal',
-              s.sender_name ?? '—',
+              (s.kind === 'seed_broadcast' || s.status === 'created') ? (
+                <span key="f" className="seed-sender">
+                  {s.sender_name ?? <span className="muted">No name</span>}{' '}
+                  <button className="chip ghost" onClick={() => editSender(s)}
+                    aria-label={`${s.sender_name ? 'Edit' : 'Add'} sender name for link ${s.token.slice(0, 8)}`}>
+                    {s.sender_name ? 'Edit' : 'Add name'}
+                  </button>
+                </span>
+              ) : (s.sender_name ?? '—'),
               s.note ?? '',
               s.reusable ? `Reusable · ${s.uses ?? 0} opened · ${s.joined ?? 0} joined` : s.status,
               s.branch_size,
