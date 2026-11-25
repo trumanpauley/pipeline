@@ -823,3 +823,11 @@ a.early-card { text-decoration: none; }
 .landing-tagline { margin: 0; font-size: clamp(20px, 5vw, 26px); font-weight: 560; letter-spacing: -0.01em; color: var(--text); }
 .join-disclosure { margin: 0 0 4px; text-align: left; }
 .seed-sender { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* ABC V2 (migration 021) */
+.abc-knows .circular { margin-top: 4px; }
+.abc-dont-know { margin-top: -6px; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.abc-progress { margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+.abc-v2-groups { display: grid; gap: 12px; }
+.abc-v2-group { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; }
+.abc-v2-group .link { justify-self: start; padding: 0; }

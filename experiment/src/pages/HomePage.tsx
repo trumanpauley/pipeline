@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { api, type AbcState, type MyAccount, type MyState } from '../lib/api';
+import { api, type AbcState, type AbcV2State, type MyAccount, type MyState } from '../lib/api';
 import { currentQuery, navigate } from '../lib/router';
 import { demoNewInvite, demoReset, isLocalDemo } from '../lib/demo';
 import { pending } from '../lib/session';
@@ -14,6 +14,7 @@ import { WaitlistOverlay } from '../components/Waitlist';
 import { CommunityOverlay } from '../components/Community';
 import { CompletionOverlay } from '../components/Completion';
 import { AbcFlow } from '../components/Abc';
+import { AbcV2Flow } from '../components/AbcV2';
 import { SaveNetworkOverlay } from '../components/SaveNetwork';
 import { formatPhone, phoneEnabled } from '../lib/phone';
 import { resetDeviceId } from '../lib/device';
@@ -86,6 +87,8 @@ function Home({ session }: { session: Session }) {
   // on the home screen resumes it if they choose "Not now".
   const [justJoined] = useState(() => currentQuery().get('welcome') === '1');
   const [abc, setAbc] = useState<AbcState | null>(null);
+  // ABC V2 (per experiment, migration 021): its own questionnaire and answers.
+  const [abcV2, setAbcV2] = useState<AbcV2State | null>(null);
   const abcAutoOpened = useRef(false);
   const [notice, setNotice] = useState<string | null>(() => {
     const q = currentQuery();
@@ -134,13 +137,15 @@ function Home({ session }: { session: Session }) {
   // card (and the network) update without a refresh.
   useLiveInvitations(state?.participant?.id, () => void load());
 
+  const abcVersion = state?.abc?.version ?? 'v1';
   const openAbc = useCallback(async () => {
     try {
-      setAbc(await api.getAbc());
+      if (abcVersion === 'v2') setAbcV2(await api.getAbcV2());
+      else setAbc(await api.getAbc());
     } catch (e) {
       setError((e as Error).message);
     }
-  }, []);
+  }, [abcVersion]);
   const abcDue = Boolean(state?.abc?.eligible && !state.abc.completed);
   useEffect(() => {
     if (!abcDue || !justJoined || abcAutoOpened.current) return;
@@ -284,7 +289,7 @@ function Home({ session }: { session: Session }) {
         )}
       </section>
 
-      {abcDue && !abc && (
+      {abcDue && !abc && !abcV2 && (
         <button className="early-card abc-card fade-up" onClick={() => void openAbc()}>
           <div>
             <strong>One quick scenario</strong>
@@ -451,6 +456,19 @@ function Home({ session }: { session: Session }) {
           onClose={() => setAbc(null)}
           onDone={() => {
             setAbc(null);
+            void load();
+          }}
+        />
+      )}
+      {abcV2?.eligible && (
+        <AbcV2Flow
+          state={abcV2}
+          onClassify={async (key) => { setAbcV2(await api.setAbcV2Group(key)); }}
+          onKnows={async (knows, strength, ms) => { setAbcV2(await api.setAbcV2Knows(knows, strength, ms)); }}
+          onAnswer={async (q, v) => { setAbcV2(await api.answerAbcV2(q, v)); }}
+          onClose={() => setAbcV2(null)}
+          onDone={() => {
+            setAbcV2(null);
             void load();
           }}
         />

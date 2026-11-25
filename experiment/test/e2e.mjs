@@ -103,6 +103,7 @@ psql('supabase/migrations/017_waitlist_overview.sql');
 psql('supabase/migrations/018_launch_updates.sql');
 psql('supabase/migrations/019_broadcast_links.sql');
 psql('supabase/migrations/020_broadcast_sender_name.sql');
+psql('supabase/migrations/021_abc_v2.sql');
 {
   // SQL is pasted into the Supabase editor from a browser, which drops invisible characters:
   // the migrations must not rely on any (013 fixed one that broke every name check).
