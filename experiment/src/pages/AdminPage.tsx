@@ -514,7 +514,7 @@ function SeedPanel({ experimentId, slug, inviteMessage, seeds, onChanged }: {
               s.kind === 'seed_broadcast' ? 'Broadcast' : 'Personal',
               s.sender_name ?? '—',
               s.note ?? '',
-              s.status,
+              s.reusable ? `Reusable · ${s.uses ?? 0} opened · ${s.joined ?? 0} joined` : s.status,
               s.branch_size,
               s.status === 'created' || s.status === 'opened' ? (
                 <button key="r" className="chip ghost" onClick={async () => { await api.adminRevoke(s.id); onChanged(); }}>Revoke</button>

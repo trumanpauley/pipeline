@@ -101,6 +101,7 @@ psql('supabase/migrations/016_invitation_sharing.sql');
 psql('../supabase/migrations/003_landing_waitlist.sql'); // the public website's waitlist (separate root migration)
 psql('supabase/migrations/017_waitlist_overview.sql');
 psql('supabase/migrations/018_launch_updates.sql');
+psql('supabase/migrations/019_broadcast_links.sql');
 {
   // SQL is pasted into the Supabase editor from a browser, which drops invisible characters:
   // the migrations must not rely on any (013 fixed one that broke every name check).
@@ -2321,6 +2322,28 @@ try {
         'no relationship strength recorded for a broadcast seed');
       const unaJ = await jwtOf(una);
 
+      // A broadcast link is one link for a whole group chat: a second person can use the same link.
+      await q(`delete from rate_events where kind = 'join'`);   // the test runs from one address; real people don't
+      const una2 = await newPhone();
+      await una2.goto(`${APP}/harvard-baseball/${broadcast[0].token}`);
+      await una2.getByRole('heading', { name: 'Harvard Baseball Network Experiment' }).waitFor();
+      ok(!(await una2.locator('body').innerText()).includes('already been used'), 'broadcast link: a second person is not told it has been used');
+      await una2.getByRole('button', { name: 'Enter the Experiment' }).click();
+      await answer(una2);
+      await una2.locator('form.join-form').waitFor();
+      await una2.getByRole('radio', { name: 'Yes', exact: true }).click({ timeout: 10000 }).catch(() => undefined);
+      await una2.getByPlaceholder(NAME_PH).fill('Uma U.');
+      await una2.getByText(CONSENT).click();
+      await una2.getByRole('radio', { name: 'Current player' }).click();
+      await una2.getByRole('button', { name: /^(Continue|Yes, that’s me)$/ }).click();
+      await una2.locator('.home').waitFor();
+      const umaP = await byName('Uma U.');
+      const [bMaster] = await q(`select status, accepted_by from invitations where id = $1`, [bRow.id]);
+      ok(umaP.experiment_id === hb.id && umaP.invitation_id !== unaP.invitation_id && bMaster.accepted_by === null && bMaster.status !== 'accepted',
+        'broadcast link: each person gets their own copy and the shared link is never used up');
+      ok((await q(`select count(*)::int n from invitations where broadcast_parent = $1`, [bRow.id]))[0].n === 2, 'broadcast link: two people, two private copies');
+      await una2.context().close();
+
       // Optional feedback: off, then on
       ok((await rpcAs(unaJ, 'submit_experiment_feedback', { p_body: 'hello', p_contact_ok: false, p_email: null })).body.message === 'feedback_off', 'feedback does nothing while it is switched off');
       // Additional invitations: off, not complete, then allowed
@@ -2454,7 +2477,7 @@ try {
       const peopleNow = (await q(`select count(*)::int n from participants where experiment_id = $1 and deleted_at is null`, [hb.id]))[0].n;
       const doneNow = (await q(`select count(*)::int n from participants where experiment_id = $1 and deleted_at is null and reveal_level >= 2`, [hb.id]))[0].n;
       ok(la.overview.participants === peopleNow && la.overview.completed === doneNow && la.overview.completion_rate.den === peopleNow && la.overview.completion_rate.num === doneNow, `overview: ${peopleNow} participants, ${doneNow} completed; the completion rate says what it is a share of`);
-      ok(kind('seed_broadcast').generated === 1 && kind('seed_broadcast').started === 1 && kind('seed_broadcast').completed === 1 && kind('seed_personal').generated >= 2, 'personal and broadcast seeds are reported separately');
+      ok(kind('seed_broadcast').generated === 2 && kind('seed_broadcast').started === 2 && kind('seed_broadcast').completed === 1 && kind('seed_personal').generated >= 2, 'personal and broadcast seeds are reported separately');
       ok(kind('additional').generated === 6 && kind('additional').started === 1 && kind('additional').completed === 1 && kind('additional').duplicates === 1
         && kind('additional').conversion.num === 1 && kind('additional').conversion.den === 6, 'additional referrals: 6 generated, 1 started, 1 completed, conversion 1 of 6');
       ok(kind('standard').generated >= 1, 'standard referrals are reported separately from additional ones');

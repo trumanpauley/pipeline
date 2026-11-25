@@ -712,6 +712,9 @@ export interface AdminOverview {
     accepted_at: string | null;
     created_at: string;
     branch_size: number;
+    reusable?: boolean;
+    uses?: number;
+    joined?: number;
   }[];
   tree: { id: string; parent: string | null; depth: number; method: string; deleted: boolean }[];
   settings: Record<string, unknown>;
