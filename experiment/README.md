@@ -167,7 +167,7 @@ project still works if you have to.
    `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
    `013_copy_safe_name_check.sql`, `014_community_onboarding.sql` and
    `015_optional_relationship_question.sql`, `016_invitation_sharing.sql` and
-   `017_waitlist_overview.sql` and `018_launch_updates.sql`. If you've already run some,
+   `017_waitlist_overview.sql`, `018_launch_updates.sql` and `019_broadcast_links.sql`. If you've already run some,
    run only the ones after them.
    (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
    characters and break every name check with "invalid regular expression".)
@@ -857,3 +857,8 @@ PX_DATABASE_URL=postgres://postgres@127.0.0.1:5432/px npm run test:e2e
 ```
 
 The test drops and recreates the `px` database at that URL.
+
+
+### Broadcast links (migration 019)
+
+A *broadcast* seed link is made to be posted once in a group chat and used by many people. The link never gets used up: the first time someone opens it they get their own private copy, so people never share progress and nobody is told the link "has already been used". Personal seeds and referral links still work once. In Admin, a broadcast link shows as "Reusable" with how many people opened it and joined.
