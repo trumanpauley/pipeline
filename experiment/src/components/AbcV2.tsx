@@ -1,141 +1,152 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { AbcV2Question, AbcV2Scenario, AbcV2State, Experiment, IntermediaryType } from '../lib/api';
-import { CircularSlider } from './CircularSlider';
-import { ScaleQuestion } from './Relationship';
 import { Button, ErrorText, Sheet } from './ui';
 
+const SCALE = [1, 2, 3, 4, 5] as const;
+const QUESTION = 'How likely are you to respond?';
+
 /**
- * ABC V2: the same hypothetical Jane/John in up to three scenarios that differ
- * only in what they share with the participant and how they get in touch:
- *   university    shares the university, reaches out directly
- *   shared_group  shares the group (e.g. the team), reaches out directly
- *   warm          shares the group, introduced by someone the participant knows
+ * ABC V2: "Would you respond?" The same hypothetical Jane/John in up to three
+ * situations that change one thing at a time:
+ *   university    shares the university, messages them directly
+ *   shared_group  shares the group (e.g. the team), messages them directly
+ *   warm          shares the group, introduced by someone they know
  * in a random order chosen (and stored) by the server.
  *
- * A named broadcast link first asks "How well do you know {sender}?" on the
- * circular dial, with "I don't know {sender} personally" underneath; not knowing
- * them skips the warm question. The dial needs a deliberate drag before
- * Continue works, so its starting position is never recorded by accident.
- *
- * Used for real participants (answers go to Supabase) and by the admin
- * simulator (answers stay in the browser), via the callbacks.
+ * Three quick taps: the description is the main text, the way they get in touch
+ * sits in its own small box, and the question is always the same. Tapping a
+ * circle saves and moves on; Back changes an earlier answer (until the last one
+ * is in). Used for real participants and by the admin simulator via the callbacks.
  */
 export function AbcV2Flow({
   state,
   onClassify,
-  onKnows,
   onAnswer,
   onClose,
   onDone,
 }: {
   state: AbcV2State;
   onClassify: (key: string) => Promise<void>;
-  onKnows: (knows: boolean, strength: number | null, responseMs: number) => Promise<void>;
   onAnswer: (q: AbcV2Question, value: number) => Promise<void>;
-  /** "Not now": close without finishing (it can be resumed later). */
+  /** Skip / close: nothing is lost, and it can be finished later. */
   onClose: () => void;
   onDone: () => void;
 }) {
+  const order = state.order ?? [];
+  const answers = state.answers ?? {};
+  const firstOpen = order.findIndex((q) => answers[q] == null);
+  const [step, setStep] = useState<'intro' | 'done' | number>(() =>
+    state.completed || (order.length > 0 && firstOpen === -1) ? 'done'
+    : firstOpen <= 0 ? 'intro' : firstOpen);
+  const [picked, setPicked] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [introSeen, setIntroSeen] = useState(false);
-  const shownAt = useRef(performance.now());
-  const order = state.order ?? [];
-  const answered = (q: AbcV2Question) => state.answers?.[q] != null;
-  const next = order.find((q) => !answered(q));
-  const sender = state.intermediary?.name ?? 'them';
-
-  const run = async (fn: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await fn();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   if (state.needs_classification) {
     return (
       <Sheet onClose={onClose}>
-        <div className="stack fade-up abc" data-step="classify" data-version="v2">
-          <p className="eyebrow">A few quick scenarios</p>
-          <h1 className="question">Which describes you?</h1>
+        <div className="abc2 fade-up" data-step="classify" data-version="v2">
+          <h1 className="abc2-title">Which describes you?</h1>
           <div className="category-options" role="radiogroup" aria-label="Which describes you?">
             {(state.groups ?? []).map((g) => (
               <button key={g.key} type="button" role="radio" aria-checked={false} className="chip" disabled={busy}
-                onClick={() => void run(() => onClassify(g.key))}>
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try { await onClassify(g.key); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+                }}>
                 {g.label}
               </button>
             ))}
           </div>
           <ErrorText error={error} />
-          <button type="button" className="link center-link" onClick={onClose}>Not now</button>
+          <button type="button" className="link center-link abc2-skip" onClick={onClose}>Skip for now</button>
         </div>
       </Sheet>
     );
   }
 
-  if (state.needs_knows) {
-    return (
-      <Sheet onClose={onClose}>
-        <div className="stack fade-up abc abc-knows" data-step="knows" data-version="v2">
-          <p className="eyebrow">First, one question</p>
-          <CircularSlider
-            name={sender}
-            question={`How well do you know ${sender}?`}
-            onConfirm={(v, ms) => void run(() => onKnows(true, v, ms))}
-          />
-          <button type="button" className="link center-link abc-dont-know" disabled={busy}
-            onClick={() => void run(() => onKnows(false, null, Math.round(performance.now() - shownAt.current)))}>
-            I don’t know {sender} personally
-          </button>
-          <ErrorText error={error} />
-        </div>
-      </Sheet>
-    );
-  }
+  const choose = async (q: AbcV2Question, i: number, v: number) => {
+    if (busy) return;
+    setPicked(v);
+    setBusy(true);
+    setError(null);
+    // A short beat so the choice registers before the next situation slides in.
+    await new Promise((r) => window.setTimeout(r, 180));
+    try {
+      await onAnswer(q, v);
+      setStep(i + 1 < order.length ? i + 1 : 'done');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPicked(null);
+      setBusy(false);
+    }
+  };
 
-  const step: 'intro' | AbcV2Question | 'done' =
-    state.completed || !next ? 'done' : !introSeen && !order.some(answered) ? 'intro' : next;
-  const q = step !== 'intro' && step !== 'done' ? state.questions?.[step] : undefined;
+  const count = order.length === 2 ? 'two' : 'three';
 
   return (
     <Sheet onClose={onClose}>
-      <div className="stack abc" data-step={step} data-version="v2" data-order={order.join('>')} data-name={state.name}>
+      <div className="abc2" data-step={typeof step === 'number' ? order[step] : step} data-version="v2"
+        data-order={order.join('>')} data-name={state.name}>
         {step === 'intro' && (
-          <div className="stack fade-up">
-            <p className="eyebrow">{order.length === 3 ? 'Three quick scenarios' : 'Two quick scenarios'}</p>
-            <h1 className="question">How would you respond?</h1>
-            <p className="muted">Each one changes a single detail. There are no right answers.</p>
-            <Button onClick={() => setIntroSeen(true)}>Continue</Button>
-            <button type="button" className="link center-link" onClick={onClose}>Not now</button>
+          <div className="abc2-intro abc2-in">
+            <h1 className="abc2-title">Would you respond?</h1>
+            <p className="abc2-lede">Imagine someone reaches out to you for advice. Tell us how likely you would be to respond in {count} different situations.</p>
+            <Button onClick={() => setStep(0)}>Let’s go</Button>
+            <button type="button" className="link center-link abc2-skip" onClick={onClose}>Skip for now</button>
           </div>
         )}
-        {q && step !== 'intro' && step !== 'done' && (
-          <div className="fade-up" key={step}>
-            <p className="eyebrow abc-progress">{order.indexOf(step) + 1} of {order.length}</p>
-            <ScaleQuestion
-              testId={`abc-v2-${step}`}
-              context={q.scenario}
-              question={q.question}
-              low="Very unlikely"
-              high="Very likely"
-              onSelect={(v) => void run(() => onAnswer(step, v))}
-            />
-            <ErrorText error={error} />
-          </div>
-        )}
+
+        {typeof step === 'number' && order[step] && (() => {
+          const q = order[step];
+          const text = state.questions?.[q];
+          const current = picked ?? answers[q] ?? null;
+          return (
+            <div className="abc2-q-wrap">
+              <div className="abc2-top">
+                <button type="button" className="abc2-back" onClick={() => setStep(step - 1)} disabled={step === 0 || busy}
+                  aria-label="Previous situation" style={{ visibility: step === 0 ? 'hidden' : 'visible' }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </button>
+                <div className="abc2-progress" role="progressbar" aria-valuemin={1} aria-valuemax={order.length} aria-valuenow={step + 1}
+                  aria-label={`Situation ${step + 1} of ${order.length}`}>
+                  {order.map((x, i) => (
+                    <span key={x} className={`abc2-seg ${i < step || answers[x] != null ? 'is-done' : ''} ${i === step ? 'is-current' : ''}`} />
+                  ))}
+                </div>
+                <span className="abc2-back-spacer" aria-hidden="true" />
+              </div>
+
+              <div className="abc2-card abc2-in" key={q} data-testid={`abc-v2-${q}`}>
+                <p className="abc2-desc">{text?.scenario}</p>
+                <p className="abc2-contact">{text?.contact}</p>
+              </div>
+
+              <p className="abc2-ask">{QUESTION}</p>
+              <div className="abc2-scale" role="radiogroup" aria-label={QUESTION}>
+                {SCALE.map((v) => (
+                  <button key={v} type="button" role="radio" aria-checked={current === v}
+                    className={`abc2-dot ${current === v ? 'is-chosen' : ''}`} disabled={busy && picked !== v}
+                    onClick={() => void choose(q, step, v)}
+                    aria-label={`${v} of 5${v === 1 ? ' (very unlikely)' : v === 5 ? ' (very likely)' : ''}`}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <div className="abc2-labels" aria-hidden="true"><span>Very unlikely</span><span>Very likely</span></div>
+              <ErrorText error={error} />
+            </div>
+          );
+        })()}
+
         {step === 'done' && (
-          <div className="stack fade-up text-center">
+          <div className="abc2-intro abc2-in text-center">
             <div className="ready-mark" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="28" height="28"><path d="M5 12.5 10 17 19 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
-            <h1 className="title">Thank you.</h1>
-            <p className="muted">That really helps.</p>
+            <h1 className="abc2-title">Thank you.</h1>
             <Button onClick={onDone}>Continue</Button>
           </div>
         )}
@@ -144,29 +155,44 @@ export function AbcV2Flow({
   );
 }
 
-/** Default V2 groups for a new experiment (the same as the database default). */
+/** Default V2 wording for a new experiment (the same as the database default). */
 export const DEFAULT_V2_SCENARIOS: AbcV2Scenario[] = [
   {
     key: 'student',
     label: 'Current Harvard student',
-    university: 'Imagine {name} is a Harvard first-year looking for advice about which classes to take.',
-    group: 'Imagine {name} is a Harvard first-year in {group} looking for advice about which classes to take.',
-    direct_question: 'How likely would you be to respond if {name} reached out to you directly?',
-    warm_question: 'How likely would you be to respond if {inviter} personally introduced {name} to you?',
+    university: '{name} is a Harvard first-year looking for advice on which classes to take.',
+    group: '{name} is a Harvard first-year {group} looking for advice on which classes to take.',
+    direct_contact: '{name} messages you directly.',
+    warm_contact: '{inviter} personally introduces you to {name}.',
   },
   {
     key: 'alumni',
     label: 'Harvard alumnus/alumna',
-    university: 'Imagine {name} is a Harvard junior looking for advice about internship opportunities.',
-    group: 'Imagine {name} is a Harvard junior in {group} looking for advice about internship opportunities.',
-    direct_question: 'How likely would you be to respond if {name} reached out to you directly?',
-    warm_question: 'How likely would you be to respond if {inviter} personally introduced {name} to you?',
+    university: '{name} is a Harvard junior looking for internship advice.',
+    group: '{name} is a Harvard junior {group} looking for internship advice.',
+    direct_contact: '{name} messages you directly.',
+    warm_contact: '{inviter} personally introduces you to {name}.',
   },
 ];
 
-/** Same placeholders as the server's px_abc_v2_render. */
+/** Fills in any wording missing from an older saved version with the defaults. */
+export const withV2Defaults = (groups: Partial<AbcV2Scenario>[] | undefined): AbcV2Scenario[] =>
+  (groups?.length ? groups : DEFAULT_V2_SCENARIOS).map((g) => {
+    const d = DEFAULT_V2_SCENARIOS.find((x) => x.key === g.key) ?? DEFAULT_V2_SCENARIOS[1];
+    return {
+      key: g.key ?? d.key,
+      label: g.label ?? d.label,
+      university: g.university || d.university,
+      group: g.group || d.group,
+      direct_contact: g.direct_contact || d.direct_contact,
+      warm_contact: g.warm_contact || d.warm_contact,
+    };
+  });
+
+/** Same placeholders and tidying as the server's px_abc_v2_render. */
 export const renderV2 = (text: string, name: string, inviter: string | null, group: string) =>
-  text.split('{name}').join(name).split('{inviter}').join(inviter || 'the person who invited you').split('{group}').join(group);
+  text.split('{name}').join(name).split('{inviter}').join(inviter || 'someone you know')
+    .split('{group}').join(group.trim()).replace(/\s{2,}/g, ' ').trim();
 
 /**
  * The V2 questionnaire built in the browser exactly as the server would build it,
@@ -177,29 +203,22 @@ export function previewV2State(opts: {
   groupKey: string | undefined;
   name: 'Jane' | 'John';
   intermediary: { type: IntermediaryType; name: string | null };
-  /** Named broadcast only: null = not answered yet (shows the dial). */
-  knows: boolean | null;
   order: AbcV2Question[];
   answers: Partial<Record<AbcV2Question, number>>;
 }): AbcV2State {
   const { experiment: e, intermediary } = opts;
-  const groups = e.abc_v2_scenarios?.length ? e.abc_v2_scenarios : DEFAULT_V2_SCENARIOS;
+  const groups = withV2Defaults(e.abc_v2_scenarios);
   const g = groups.find((x) => x.key === opts.groupKey) ?? groups[0];
-  if (intermediary.type === 'broadcast_sender' && opts.knows === null) {
-    return { eligible: true, version: 'v2', needs_knows: true, intermediary };
-  }
-  const warm = intermediary.type === 'inviter' || intermediary.type === 'seed_sender' || (intermediary.type === 'broadcast_sender' && opts.knows === true);
+  const warm = intermediary.type !== 'none';
   const order = opts.order.filter((q) => q !== 'warm' || warm);
-  const community = e.community_name?.trim() || e.name;
-  const r = (t: string) => renderV2(t, opts.name, intermediary.name, community);
+  const r = (t: string) => renderV2(t, opts.name, intermediary.name, e.abc_v2_group ?? '');
   const questions: AbcV2State['questions'] = {
-    university: { scenario: r(g.university), question: r(g.direct_question) },
-    shared_group: { scenario: r(g.group), question: r(g.direct_question) },
-    ...(warm ? { warm: { scenario: r(g.group), question: r(g.warm_question) } } : {}),
+    university: { scenario: r(g.university), contact: r(g.direct_contact), question: QUESTION },
+    shared_group: { scenario: r(g.group), contact: r(g.direct_contact), question: QUESTION },
+    ...(warm ? { warm: { scenario: r(g.group), contact: r(g.warm_contact), question: QUESTION } } : {}),
   };
-  const completed = order.every((q) => opts.answers[q] != null);
   return {
     eligible: true, version: 'v2', name: opts.name, order, questions, answers: opts.answers,
-    classification: g.key, intermediary: { ...intermediary, knows: opts.knows }, completed,
+    classification: g.key, intermediary, completed: order.every((q) => opts.answers[q] != null),
   };
 }

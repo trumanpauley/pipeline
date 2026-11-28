@@ -50,6 +50,9 @@ export function InvitePage({ token, session }: { token: string; session: Session
   // One open per visit (and per session change): React's dev mode runs effects
   // twice, which would otherwise log two opens.
   const opening = useRef<{ key: string; result: Promise<OpenResult> } | null>(null);
+  // Broadcast link: the visitor was just signed in from "Enter the Experiment", so carry on to the
+  // questions instead of showing the landing again.
+  const continueAfterSignIn = useRef(false);
 
   const senderName = info?.sender_name || 'the person who invited you';
 
@@ -121,6 +124,10 @@ export function InvitePage({ token, session }: { token: string; session: Session
           restoreProgress();
           return setStep(afterAnswer());
         }
+        if (continueAfterSignIn.current) {
+          continueAfterSignIn.current = false;
+          return setStep(firstQuestion(r));
+        }
         return setStep('intro');
       }
       // Refresh mid-onboarding: go back to where this device left off. (The
@@ -144,6 +151,34 @@ export function InvitePage({ token, session }: { token: string; session: Session
       void accept({ name: 'x', research: true });
     }
   }, [step, info, session, accept]);
+
+  /** The first onboarding question for this link. */
+  function firstQuestion(r: OpenResult | null): Step {
+    if (!skipsQuestion(r)) return 'classify';
+    progress.set(token, { answered: true });
+    return 'closeness';
+  }
+
+  // "Enter the Experiment". On a broadcast link, everyone shares the link itself, so the visitor is
+  // signed in (anonymously, as at join) first: their answers then go on their own copy of the link.
+  const enter = async () => {
+    if (busy) return;
+    if (info?.reusable && !session) {
+      setBusy(true);
+      try {
+        const { error: authError } = await supabase.auth.signInAnonymously({ options: { captchaToken: await captchaToken() } });
+        if (authError) throw new Error('We couldn’t start your session. Please try again.');
+        continueAfterSignIn.current = true;
+        setStep('loading'); // the session change re-opens the link (now their own copy)
+      } catch (e) {
+        show('Something went wrong.', (e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    setStep(firstQuestion(info));
+  };
 
   function restoreProgress() {
     const saved = progress.get(token);
@@ -249,11 +284,7 @@ export function InvitePage({ token, session }: { token: string; session: Session
         <LandingIntro
           senderName={info?.sender_name ?? null}
           experiment={info?.experiment ?? null}
-          onEnter={() => {
-            if (!skipsQuestion(info)) return setStep('classify');
-            progress.set(token, { answered: true });
-            setStep('closeness');
-          }}
+          onEnter={() => void enter()}
         />
       </Screen>
     );

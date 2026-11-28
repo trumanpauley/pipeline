@@ -824,10 +824,39 @@ a.early-card { text-decoration: none; }
 .join-disclosure { margin: 0 0 4px; text-align: left; }
 .seed-sender { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
-/* ABC V2 (migration 021) */
-.abc-knows .circular { margin-top: 4px; }
-.abc-dont-know { margin-top: -6px; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
-.abc-progress { margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+/* ABC V2 (migration 021): three quick situations */
+.abc2 { display: flex; flex-direction: column; gap: 18px; min-height: 380px; }
+.abc2-intro { display: flex; flex-direction: column; gap: 16px; margin: auto 0; }
+.abc2-title { margin: 0; font-size: 27px; line-height: 1.15; letter-spacing: -0.022em; font-weight: 620; }
+.abc2-lede { margin: 0 0 6px; color: var(--text-2); }
+.abc2-skip { font-size: 14px; color: var(--text-3); }
+.abc2-q-wrap { display: flex; flex-direction: column; gap: 18px; }
+.abc2-top { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; gap: 10px; padding-right: 30px; }
+.abc2-back { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; border: 0; background: transparent; color: var(--text-2); cursor: pointer; }
+.abc2-back:hover { background: var(--surface-2); color: var(--text); }
+.abc2-progress { display: flex; gap: 6px; }
+.abc2-seg { flex: 1; height: 3px; border-radius: 3px; background: var(--line-strong); transition: background 0.2s; }
+.abc2-seg.is-done { background: var(--text-2); }
+.abc2-seg.is-current { background: var(--text); }
+/* Fixed height so the circles stay put whatever the text length. */
+.abc2-card { display: flex; flex-direction: column; justify-content: flex-start; gap: 12px; min-height: 168px; }
+.abc2-desc { margin: 0; font-size: 23px; line-height: 1.3; letter-spacing: -0.015em; font-weight: 600; }
+.abc2-contact { margin: 0; align-self: flex-start; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text-2); font-size: 15px; }
+.abc2-ask { margin: 4px 0 0; color: var(--text-2); font-size: 15px; }
+.abc2-scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.abc2-dot {
+  aspect-ratio: 1; width: 100%; max-width: 58px; justify-self: center; border-radius: 50%;
+  border: 1.5px solid var(--line-strong); background: transparent; color: var(--text); font: inherit; font-size: 17px; font-weight: 560;
+  cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s var(--ease);
+}
+.abc2-dot:hover { border-color: var(--text-2); }
+.abc2-dot:active { transform: scale(0.95); }
+.abc2-dot.is-chosen { background: var(--text); color: var(--bg); border-color: var(--text); }
+.abc2-dot:disabled:not(.is-chosen) { opacity: 0.5; cursor: default; }
+.abc2-labels { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-3); margin-top: -8px; }
+.abc2-in { animation: abc2In 0.18s var(--ease) both; }
+@keyframes abc2In { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .abc2-in { animation: none; } }
 .abc-v2-groups { display: grid; gap: 12px; }
 .abc-v2-group { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; }
 .abc-v2-group .link { justify-self: start; padding: 0; }

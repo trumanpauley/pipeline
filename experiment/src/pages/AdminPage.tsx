@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import type { Session } from '@supabase/supabase-js';
 import { abcModeOf, adminErrorText, api, inviteUrl, shareText, type AbcMode, type AbcV2Question, type AbcV2Scenario, type AdminAbcV2Stats, type IntermediaryType, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminFeedbackList, type AdminLaunchAnalytics, type AdminOverview, type AdminWaitlistOverview, type Ratio, REFERRAL_KIND_LABEL, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
 import { AbcFlow } from '../components/Abc';
-import { AbcV2Flow, DEFAULT_V2_SCENARIOS, previewV2State } from '../components/AbcV2';
+import { AbcV2Flow, DEFAULT_V2_SCENARIOS, previewV2State, renderV2, withV2Defaults } from '../components/AbcV2';
 import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, PRIVATE_NOTE, ScaleQuestion } from '../components/Relationship';
 import { JoinForm } from '../components/JoinForm';
 import { LandingIntro } from '../components/LandingIntro';
@@ -607,6 +607,7 @@ type ExperimentDraft = {
   abc_mode_saved: AbcMode;
   abc_min_depth: number;
   abc_v2_scenarios: AbcV2Scenario[];
+  abc_v2_group: string;
 };
 
 const draftOf = (e?: Experiment): ExperimentDraft => ({
@@ -639,7 +640,8 @@ const draftOf = (e?: Experiment): ExperimentDraft => ({
   abc_mode: abcModeOf(e),
   abc_mode_saved: abcModeOf(e),
   abc_min_depth: e?.abc_min_depth ?? 3,
-  abc_v2_scenarios: e?.abc_v2_scenarios?.length ? e.abc_v2_scenarios : DEFAULT_V2_SCENARIOS,
+  abc_v2_scenarios: withV2Defaults(e?.abc_v2_scenarios),
+  abc_v2_group: e?.abc_v2_group ?? '',
 });
 
 /** Fired after an experiment's settings are saved, so other panels (the simulator) reload them. */
@@ -686,7 +688,8 @@ const saveDraftSteps = async (d: ExperimentDraft) => {
     throw err;
   }
   try {
-    await api.adminSaveExperimentAbc(saved.id, d.abc_mode, Number(d.abc_min_depth), d.abc_mode === 'v2' ? d.abc_v2_scenarios : null);
+    await api.adminSaveExperimentAbc(saved.id, d.abc_mode, Number(d.abc_min_depth),
+      d.abc_mode === 'v2' ? d.abc_v2_scenarios : null, d.abc_mode === 'v2' ? d.abc_v2_group.trim() || null : null);
   } catch (err) {
     // Before migration 021 only V1 exists; that's fine unless the ABC setting was changed here.
     if (/could not find the function|admin_save_experiment_abc/i.test((err as Error).message)) {
@@ -1203,12 +1206,12 @@ function AbcPanel({ refreshKey, fixedExperiment }: { refreshKey: number; fixedEx
 }
 
 const STRENGTH_BAND_LABEL: Record<string, string> = {
-  doesnt_know: 'Doesn’t know the sender',
+  no_intermediary: 'No introducer (unnamed link)',
   '0-24': 'Strength 0–24',
   '25-49': 'Strength 25–49',
   '50-74': 'Strength 50–74',
   '75-100': 'Strength 75–100',
-  unrated: 'Knows them, no rating',
+  unrated: 'Introducer not rated',
 };
 const V2_Q_LABEL: Record<AbcV2Question, string> = { university: 'Shared university', shared_group: 'Shared group', warm: 'Warm introduction' };
 
@@ -1269,9 +1272,9 @@ function AbcV2Panel({ refreshKey, fixedExperiment }: { refreshKey: number; fixed
             <Tile label="Group vs university" value={signed(st.paired.group_vs_university.diff)} sub={`${num(st.paired.group_vs_university.a)} → ${num(st.paired.group_vs_university.b)} · n=${st.paired.group_vs_university.n}`} />
             <Tile label="Warm vs group" value={signed(st.paired.warm_vs_group.diff)} sub={`${num(st.paired.warm_vs_group.a)} → ${num(st.paired.warm_vs_group.b)} · n=${st.paired.warm_vs_group.n}`} />
             <Tile label="Warm vs university" value={signed(st.paired.warm_vs_university.diff)} sub={`n=${st.paired.warm_vs_university.n}`} />
-            <Tile label="Named broadcast" value={st.participation.named_broadcast} sub={`${st.participation.knows_sender} know the sender · ${st.participation.doesnt_know_sender} don’t`} />
+            <Tile label="Broadcast links" value={st.participation.named_broadcast + st.participation.unnamed_broadcast} sub={`${st.participation.named_broadcast} named · ${st.participation.unnamed_broadcast} unnamed`} />
           </div>
-          <h3 className="abc-h">Warm introduction by connection strength to the intermediary</h3>
+          <h3 className="abc-h">By connection strength to the introducer <span className="muted">(their own onboarding rating, 0–100)</span></h3>
           <Table head={head('Connection')} rows={st.by_strength.map((b) => [STRENGTH_BAND_LABEL[b.band] ?? b.band, ...row(b)])} />
           <h3 className="abc-h">Broadcast link vs personal referral</h3>
           <Table head={head('Joined through')} rows={st.by_link.map((b) => [b.link === 'broadcast' ? 'Broadcast link' : 'Personal link', ...row(b)])} />
@@ -1284,7 +1287,7 @@ function AbcV2Panel({ refreshKey, fixedExperiment }: { refreshKey: number; fixed
             <Table head={['Wording revision', 'People']} rows={st.by_revision.map((r) => [r.revision, r.n])} />
           )}
           <div className="export-row"><ExportButton kind="abc_v2" /></div>
-          <p className="muted small">abc_v2.csv has random ids only (no names or emails), one row per person, with blanks (not zeros) for questions they weren’t asked. A named broadcast sender is recorded as such, never as a referral.</p>
+          <p className="muted small">abc_v2.csv has random ids only (no names or emails), one row per person, with blanks (not zeros) for questions they weren’t asked. A named broadcast sender is recorded as such, never as a referral or as someone they know.</p>
         </>
       )}
     </Panel>
@@ -1340,8 +1343,8 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
   const [simVersion, setSimVersion] = useState<'auto' | 'v1' | 'v2'>('auto');
   const [link, setLink] = useState<'referral' | 'seed' | 'broadcast_named' | 'broadcast_unnamed'>('referral');
   const [v2, setV2] = useState<{
-    knows: boolean | null; strength: number | null; order: AbcV2Question[]; answers: Partial<Record<AbcV2Question, number>>; groupKey?: string;
-  }>({ knows: null, strength: null, order: ['university', 'shared_group', 'warm'], answers: {} });
+    order: AbcV2Question[]; answers: Partial<Record<AbcV2Question, number>>; groupKey?: string;
+  }>({ order: ['university', 'shared_group', 'warm'], answers: {} });
   const [answers, setAnswers] = useState<{
     relationship?: string; closeness?: number; comfort?: number; name?: string; category?: string | null; cold?: number; warm?: number;
   }>({});
@@ -1371,8 +1374,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
   const v2Group = (label: string | null) => (e?.abc_v2_scenarios ?? []).find((g) => label && g.label.toLowerCase() === label.toLowerCase())?.key
     ?? scenarioKeyFor(e, label);
   const v2State = e ? previewV2State({
-    experiment: e, groupKey: v2.groupKey, name, intermediary, knows: link === 'broadcast_named' ? v2.knows : null,
-    order: v2.order, answers: v2.answers,
+    experiment: e, groupKey: v2.groupKey, name, intermediary, order: v2.order, answers: v2.answers,
   }) : null;
   const inviterFirst = inviter.trim() || 'the person who invited you';
   const key = scenarioKeyFor(e, answers.category ?? null);
@@ -1386,7 +1388,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
     setAnswers({});
     const shuffled = (['university', 'shared_group', 'warm'] as AbcV2Question[])
       .map((q) => [Math.random(), q] as const).sort((a, b) => a[0] - b[0]).map(([, q]) => q);
-    setV2({ knows: null, strength: null, order: shuffled, answers: {} });
+    setV2({ order: shuffled, answers: {} });
     setStep('landing');
   };
   const afterRating = () => setStep('join');
@@ -1446,7 +1448,7 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
       <p className="muted small" data-testid="preview-eligibility">
         {version === 'v2'
           ? (link.startsWith('broadcast')
-            ? `Broadcast-link joiners get ABC V2${link === 'broadcast_named' ? `, starting with “How well do you know ${senderShown ?? 'them'}?” (the warm question only if they know them)` : ' (no sender: questions 1 and 2 only)'}.`
+            ? `Broadcast-link joiners get ABC V2${link === 'broadcast_named' ? `: all three situations, introduced by ${senderShown ?? 'the sender'}` : ' (no sender: situations 1 and 2 only)'}.${e && !e.abc_v2_group ? ' This group has no shared group set yet.' : ''}`
             : `Generation ${simDepth} ${eligible ? 'gets' : 'doesn’t get'} ABC V2 (from generation ${minDepth}).`)
           : `Generation ${simDepth} ${eligible ? 'gets' : 'doesn’t get'} ABC V1 in ${e?.name ?? 'this group'} (from generation ${minDepth}${viaSeed ? '; seed-link joiners never get V1' : ''}).`}
         {e && !e.abc_enabled && simVersion === 'auto' ? ' ABC is switched off for this group.' : ''}
@@ -1514,7 +1516,6 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
         <AbcV2Flow
           state={v2State}
           onClassify={async (key) => { setV2((x) => ({ ...x, groupKey: key })); }}
-          onKnows={async (knows, strength) => { setV2((x) => ({ ...x, knows, strength: knows ? strength : null })); }}
           onAnswer={async (q, val) => { setV2((x) => ({ ...x, answers: { ...x.answers, [q]: val } })); }}
           onClose={() => setStep('summary')}
           onDone={() => setStep('summary')}
@@ -1545,13 +1546,10 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
                 ['ABC V1 · warm (introduction)', answers.warm ?? (eligible ? '—' : 'not shown')],
                 ['Introduction advantage', answers.cold && answers.warm ? signed(answers.warm - answers.cold) : '—'],
               ] : [
-                ['ABC V2 · knows the sender', link === 'broadcast_named'
-                  ? (v2.knows === null ? '—' : v2.knows ? `Yes · strength ${v2.strength}` : 'No (“I don’t know them personally”)')
-                  : link === 'broadcast_unnamed' ? 'no sender' : 'personal link (implied)'],
                 ['ABC V2 · order shown', v2State?.order?.map((q) => V2_Q_LABEL[q]).join(' → ') ?? '—'],
                 ...(['university', 'shared_group', 'warm'] as AbcV2Question[]).map((q) => [
                   `ABC V2 · ${V2_Q_LABEL[q]}`,
-                  v2.answers[q] ?? (!eligible ? 'not shown' : v2State?.order?.includes(q) ? '—' : 'skipped (not asked)'),
+                  v2.answers[q] ?? (!eligible ? 'not shown' : v2State?.order?.includes(q) ? '—' : 'not asked (no introducer)'),
                 ]),
               ]),
             ] as [string, string | number][]}
@@ -1896,16 +1894,16 @@ function abcSummary(e: Experiment) {
   if (mode === 'none') return <span className="muted">Off</span>;
   if (mode === 'v1') return <>V1 · cold vs introduced · from generation {e.abc_min_depth}</>;
   return (
-    <>V2 · university, group, introduction · broadcast-link joiners and generation {e.abc_min_depth}+
+    <>V2 · {e.abc_v2_group ? <>shared group “{e.abc_v2_group}”</> : <strong>shared group not set (nobody gets it yet)</strong>} · broadcast-link joiners and generation {e.abc_min_depth}+
       <span className="muted"> · wording revision {e.abc_v2_revision ?? 1}</span></>
   );
 }
 
-const V2_FIELDS: { k: keyof AbcV2Scenario; label: string; rows: number }[] = [
-  { k: 'university', label: 'Question 1 scenario (shares the university)', rows: 2 },
-  { k: 'group', label: 'Questions 2 and 3 scenario (shares the group)', rows: 2 },
-  { k: 'direct_question', label: 'Questions 1 and 2 (reached out directly)', rows: 1 },
-  { k: 'warm_question', label: 'Question 3 (introduced)', rows: 1 },
+const V2_FIELDS: { k: keyof AbcV2Scenario; label: string; rows: number; max: number }[] = [
+  { k: 'university', label: 'Who they are · shares the university (situation 1)', rows: 2, max: 400 },
+  { k: 'group', label: 'Who they are · shares the group (situations 2 and 3)', rows: 2, max: 400 },
+  { k: 'direct_contact', label: 'How they get in touch · directly (situations 1 and 2)', rows: 1, max: 200 },
+  { k: 'warm_contact', label: 'How they get in touch · introduced (situation 3)', rows: 1, max: 200 },
 ];
 
 /**
@@ -1942,12 +1940,21 @@ function AbcSettings({ d, set }: {
       <p className="muted small">
         {d.abc_mode === 'none' && 'Nobody is asked the ABC questions.'}
         {d.abc_mode === 'v1' && 'Cold message vs. introduced by the person who invited them. Needs an inviter, so seed-link joiners (generation 1) never get it.'}
-        {d.abc_mode === 'v2' && 'Shares the university → shares the group → introduced by someone they know, in a random order. Broadcast-link joiners always get it (a named link first asks how well they know the sender); everyone else from the starting generation.'}
+        {d.abc_mode === 'v2' && '“How likely are you to respond?” in three situations, in a random order: shares the university, shares the group, introduced by someone they know. Broadcast-link joiners always get it (an unnamed link skips the introduction); everyone else from the starting generation.'}
         {switching && ' Switching between V1 and V2 only works before anyone has answered; otherwise create a new experiment.'}
       </p>
       {d.abc_mode === 'v2' && (
         <div className="abc-v2-groups">
-          <p className="muted small">Placeholders: <code>{'{name}'}</code> Jane/John · <code>{'{inviter}'}</code> the person introducing · <code>{'{group}'}</code> the community name. Keep everything but the affiliation and the introduction the same. Changing the wording starts a new revision; earlier answers keep the wording they saw.</p>
+          <label>Shared group <span className="muted">(as it reads in a sentence; never the experiment’s internal name)</span>
+            <input className="input" value={d.abc_v2_group} maxLength={80} placeholder="on the Harvard Baseball team"
+              onChange={(e) => set('abc_v2_group', e.target.value)} aria-label="ABC V2 shared group" />
+          </label>
+          {d.abc_v2_group.trim() && groups[0] && (
+            <p className="muted small" data-testid="abc-v2-group-example">
+              Reads as: “{renderV2(groups[groups.length - 1].group, 'Jane', 'Ryan', d.abc_v2_group)}”
+            </p>
+          )}
+          <p className="muted small">Placeholders: <code>{'{name}'}</code> Jane/John · <code>{'{group}'}</code> the shared group above · <code>{'{inviter}'}</code> the person introducing. Keep everything but the group and the way they get in touch the same. Changing the wording starts a new revision; earlier answers keep the wording they saw.</p>
           {groups.map((g, i) => (
             <div className="abc-v2-group" key={i}>
               <div className="experiment-form-row">
@@ -1960,7 +1967,7 @@ function AbcSettings({ d, set }: {
               </div>
               {V2_FIELDS.map((f) => (
                 <label key={f.k}>{f.label}
-                  <textarea className="input" rows={f.rows} maxLength={400} value={g[f.k]}
+                  <textarea className="input" rows={f.rows} maxLength={f.max} value={g[f.k]}
                     onChange={(e) => setGroup(i, { [f.k]: e.target.value })} aria-label={`ABC V2 group ${i + 1} ${f.label}`} />
                 </label>
               ))}

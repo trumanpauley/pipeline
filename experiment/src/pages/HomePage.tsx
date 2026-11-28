@@ -464,7 +464,6 @@ function Home({ session }: { session: Session }) {
         <AbcV2Flow
           state={abcV2}
           onClassify={async (key) => { setAbcV2(await api.setAbcV2Group(key)); }}
-          onKnows={async (knows, strength, ms) => { setAbcV2(await api.setAbcV2Knows(knows, strength, ms)); }}
           onAnswer={async (q, v) => { setAbcV2(await api.answerAbcV2(q, v)); }}
           onClose={() => setAbcV2(null)}
           onDone={() => {

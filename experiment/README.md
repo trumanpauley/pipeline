@@ -873,24 +873,20 @@ To add or change the name on a link you've already made, use **Add name** / **Ed
 
 Each experiment chooses **No ABC**, **ABC V1** or **ABC V2** (Admin → Edit → *ABC experiment*). Every existing experiment stays on V1, and V1's questions, eligibility and `abc_responses` are unchanged. Switching an experiment between V1 and V2 is refused once anyone has answered, so one experiment never mixes versions; make a new experiment for the other version.
 
-V2 asks about one hypothetical Jane/John in three scenarios, in a random order that is stored:
+V2 is three quick taps. After "Would you respond?" (with *Let's go* and *Skip for now*), each screen shows who Jane/John is, how they get in touch in a small box underneath, and the same question, "How likely are you to respond?", with five identical circles. Tapping one saves it and moves on; *Back* changes an earlier answer until the last one is in. The order is random and stored, and each situation appears exactly once:
 
-| Question | Jane/John shares… | Gets in touch by… |
+| Situation | Jane/John… | Gets in touch by… |
 |---|---|---|
-| `university` | the university | reaching out directly |
-| `shared_group` | the group (e.g. the team) | reaching out directly |
-| `warm` | the group | being introduced by the intermediary |
+| `university` | shares the university | messaging directly |
+| `shared_group` | is in the shared group too | messaging directly |
+| `warm` | is in the shared group too | being introduced by the intermediary |
 
-Who gets which questions:
+- **Shared group** is a phrase set per experiment, as it reads in a sentence: "on the Harvard Baseball team", "in the Fly Club". It fills `{group}` in the wording. The experiment's internal name is never used, and nobody gets V2 until it's set.
+- **Who gets the introduction situation:** personal referrals (the inviter), personal seed links (the founder) and named broadcast links (the sender, e.g. "Ryan Mooney") get all three; unnamed broadcast links get the first two. Broadcast-link joiners always get V2; everyone else from the starting generation.
+- **Data:** `abc_v2_responses`, one row per person. Skipped situations are `NULL` with `warm_eligible = false`, never 0. A broadcast sender is stored as `intermediary_type = 'broadcast_sender'`; it never becomes a referral, parent or connection, and knowing them is not assumed (`knows_intermediary` is `NULL`). `connection_strength` (0–100) is copied from the person's own onboarding rating of the intermediary.
+- **Wording** is set per participant type with `{name}`, `{group}` and `{inviter}`. Saving new wording or a new shared group bumps `abc_v2_revision`; each answer keeps the revision and exact text it was shown.
+- **Results:** Admin → *ABC V2* shows paired differences (group − university, warm − group, warm − university), results by connection strength, by link type, by participant type and by which situation came first; `abc_v2.csv` exports it with random ids only. These are stated intentions about a hypothetical person, not observed replies.
 
-- **Personal referral or personal seed link:** all three; the intermediary is the inviter (or the founder named on the seed link). Generation must be at least the experiment's starting generation.
-- **Named broadcast link** (e.g. "Ryan Mooney"): always eligible. They first see "How well do you know Ryan?" on the circular dial (Continue needs a deliberate drag), with "I don't know Ryan personally" underneath. Knowing him at any strength gives all three questions; not knowing him gives `university` and `shared_group` only.
-- **Unnamed broadcast link:** `university` and `shared_group` only.
-
-Skipped questions are stored as `NULL` with `warm_eligible = false`, never as 0. A broadcast sender is stored as `intermediary_type = 'broadcast_sender'` with a self-reported `knows_intermediary`; it never becomes a referral, parent or connection.
-
-Wording is set per participant type in the experiment's settings, with `{name}`, `{inviter}` and `{group}` (the community name, else the experiment name). Saving new wording bumps `abc_v2_revision`; each answer keeps the revision and the exact text it was shown (`scenario_text`).
-
-Data: `abc_v2_responses` (one row per participant). Admin → *ABC V2* shows paired differences (group − university, warm − group, warm − university), results by connection strength, by link type, by participant type and by which question came first; `abc_v2.csv` exports it with random ids only. These are stated intentions about a hypothetical person, not observed replies.
+**Broadcast links and onboarding answers (fixed in 021).** Before 021, a visitor on a broadcast link answered the onboarding questions (where they know the sender from, closeness, comfort) before being signed in, so the answers were saved on the shared link itself: each visitor overwrote the last and none were tied to a person. Now `open_invitation` marks a broadcast link `reusable`, and the invitation page signs the visitor in anonymously when they tap *Enter the Experiment*, so their answers go on their own copy of the link.
 
 Try it locally without touching Supabase: the demo build runs every migration in the browser (`VITE_DEMO=1 VITE_DEMO_LOCAL=1 VITE_HASH_ROUTER=1 VITE_SUPABASE_URL=http://local.demo VITE_SUPABASE_PUBLISHABLE_KEY=demo npx vite`, admin `admin@demo.dev`, code `123456`). The admin *Participant experience simulator* previews V1 or V2 for any link type without saving anything.

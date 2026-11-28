@@ -4,20 +4,21 @@
 -- experiment stays on V1, keeps its settings, and its answers stay in abc_responses with the same
 -- meaning. Nothing is migrated to V2 automatically.
 --
--- ABC V2 is chosen per experiment (experiments.abc_version = 'v2') and asks, about the same
--- hypothetical Jane/John:
---   1. university    shares only the university                    reached out directly
---   2. shared_group  shares the specific group (e.g. the team)     reached out directly
---   3. warm          shares the specific group                     introduced by the intermediary
--- in a random order that is stored. Question 3 is asked only when there is an intermediary the
--- participant personally knows:
---   * personal referral (the inviter) or personal seed link (the founder who sent it): yes
---   * named broadcast link: only if they don't tick "I don't know {sender} personally" on the
---     connection-strength dial (any strength counts; there is no minimum)
+-- ABC V2 is chosen per experiment (experiments.abc_version = 'v2') and asks "How likely are you
+-- to respond?" about the same hypothetical Jane/John in three situations:
+--   1. university    shares only the university                    messages them directly
+--   2. shared_group  shares the experiment's group (abc_v2_group)   messages them directly
+--   3. warm          shares the group                               introduced by the intermediary
+-- in a random order that is stored, each question exactly once. Question 3 needs an intermediary:
+--   * personal referral (the inviter), personal seed link (the founder) or named broadcast link
+--     (the sender, e.g. Ryan): all three
 --   * unnamed broadcast link: no intermediary, so questions 1 and 2 only
 -- A skipped question is stored as NULL (never 0), with warm_eligible = false.
--- A named broadcast sender is recorded as intermediary_type = 'broadcast_sender' with a
--- self-reported "knows them" answer. It is never turned into a referral or a connection.
+-- The shared group is a phrase set per experiment (e.g. "on the Harvard Baseball team"); the
+-- experiment's internal name is never used for it.
+-- A named broadcast sender is recorded as intermediary_type = 'broadcast_sender'. It is never
+-- turned into a referral or a connection, and knowing them is not assumed (knows_intermediary
+-- stays NULL); the onboarding connection-strength answer about them is copied when there is one.
 --
 -- ADDITIVE and safe to run more than once. Run after 020.
 
@@ -25,19 +26,26 @@
 -- abc_enabled stays the on/off switch. abc_version picks V1 or V2 when it's on.
 alter table public.experiments
   add column if not exists abc_version text not null default 'v1',
-  add column if not exists abc_v2_scenarios jsonb not null default '[
-    {"key": "student", "label": "Current Harvard student",
-     "university": "Imagine {name} is a Harvard first-year looking for advice about which classes to take.",
-     "group": "Imagine {name} is a Harvard first-year in {group} looking for advice about which classes to take.",
-     "direct_question": "How likely would you be to respond if {name} reached out to you directly?",
-     "warm_question": "How likely would you be to respond if {inviter} personally introduced {name} to you?"},
-    {"key": "alumni", "label": "Harvard alumnus/alumna",
-     "university": "Imagine {name} is a Harvard junior looking for advice about internship opportunities.",
-     "group": "Imagine {name} is a Harvard junior in {group} looking for advice about internship opportunities.",
-     "direct_question": "How likely would you be to respond if {name} reached out to you directly?",
-     "warm_question": "How likely would you be to respond if {inviter} personally introduced {name} to you?"}
-  ]'::jsonb,
+  add column if not exists abc_v2_scenarios jsonb not null default '[]'::jsonb,
+  -- The shared group as it reads in a sentence, e.g. "on the Harvard Baseball team".
+  add column if not exists abc_v2_group text,
   add column if not exists abc_v2_revision integer not null default 1;
+
+-- Default wording per participant type. {name} = Jane/John, {group} = abc_v2_group,
+-- {inviter} = the intermediary's first name.
+alter table public.experiments alter column abc_v2_scenarios set default '[
+  {"key": "student", "label": "Current Harvard student",
+   "university": "{name} is a Harvard first-year looking for advice on which classes to take.",
+   "group": "{name} is a Harvard first-year {group} looking for advice on which classes to take.",
+   "direct_contact": "{name} messages you directly.",
+   "warm_contact": "{inviter} personally introduces you to {name}."},
+  {"key": "alumni", "label": "Harvard alumnus/alumna",
+   "university": "{name} is a Harvard junior looking for internship advice.",
+   "group": "{name} is a Harvard junior {group} looking for internship advice.",
+   "direct_contact": "{name} messages you directly.",
+   "warm_contact": "{inviter} personally introduces you to {name}."}
+]'::jsonb;
+update public.experiments set abc_v2_scenarios = default where abc_v2_scenarios = '[]'::jsonb;
 
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'experiments_abc_version_check') then
@@ -45,6 +53,9 @@ do $$ begin
   end if;
   if not exists (select 1 from pg_constraint where conname = 'experiments_abc_v2_scenarios_check') then
     alter table public.experiments add constraint experiments_abc_v2_scenarios_check check (jsonb_typeof(abc_v2_scenarios) = 'array');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'experiments_abc_v2_group_check') then
+    alter table public.experiments add constraint experiments_abc_v2_group_check check (abc_v2_group is null or char_length(abc_v2_group) <= 80);
   end if;
 end $$;
 
@@ -65,10 +76,10 @@ create table if not exists public.abc_v2_responses (
   intermediary_type text not null check (intermediary_type in ('inviter', 'seed_sender', 'broadcast_sender', 'none')),
   intermediary_participant_id uuid references public.participants(id) on delete set null,
   intermediary_name text,            -- first name as shown in the question
-  knows_intermediary boolean,        -- NULL when there's no one to know
+  knows_intermediary boolean,        -- true for a personal link; NULL when not asked (broadcast)
   knows_source text check (knows_source in ('self_report', 'referral')),
   connection_strength smallint check (connection_strength between 0 and 100),
-  strength_source text check (strength_source in ('v2_dial', 'referral_rating')),
+  strength_source text,              -- 'referral_rating' / 'onboarding_rating' (see below)
   knows_response_ms integer check (knows_response_ms is null or knows_response_ms between 0 and 3600000),
   fictional_name text not null check (fictional_name in ('Jane', 'John')),
   scenario_revision integer not null,
@@ -88,6 +99,14 @@ create table if not exists public.abc_v2_responses (
 );
 
 create index if not exists abc_v2_responses_experiment_idx on public.abc_v2_responses (experiment_id);
+
+-- connection_strength comes from the onboarding rating of the intermediary (0–100):
+-- 'referral_rating' for a personal link, 'onboarding_rating' for a named broadcast sender.
+do $$ begin
+  alter table public.abc_v2_responses drop constraint if exists abc_v2_responses_strength_source_check;
+  alter table public.abc_v2_responses add constraint abc_v2_responses_strength_source_check
+    check (strength_source in ('referral_rating', 'onboarding_rating', 'v2_dial'));
+end $$;
 alter table public.abc_v2_responses enable row level security;
 revoke all on public.abc_v2_responses from anon, authenticated;
 
@@ -119,7 +138,8 @@ begin
     return jsonb_build_object('eligible', false);
   end if;
   select * into e from public.experiments where id = me.experiment_id;
-  if not found or not e.abc_enabled or e.abc_version <> 'v2' then
+  -- Without the shared group, questions 1 and 2 would read the same: nobody gets V2 until it's set.
+  if not found or not e.abc_enabled or e.abc_version <> 'v2' or nullif(btrim(e.abc_v2_group), '') is null then
     return jsonb_build_object('eligible', false);
   end if;
   select * into inv from public.invitations where id = me.invitation_id;
@@ -157,11 +177,12 @@ returns jsonb language sql stable security definer set search_path = public as $
 $$;
 
 -- Fill the placeholders: {name} (Jane/John), {inviter} (intermediary's first name),
--- {group} (the community name, else the experiment name).
+-- {group} (the experiment's abc_v2_group phrase; never its internal name). Spaces are tidied
+-- so an empty phrase can't leave a double space.
 create or replace function public.px_abc_v2_render(p_text text, p_name text, p_inviter text, p_group text)
 returns text language sql immutable as $$
-  select replace(replace(replace(coalesce(p_text, ''), '{name}', p_name),
-    '{inviter}', coalesce(p_inviter, 'the person who invited you')), '{group}', coalesce(p_group, ''))
+  select btrim(regexp_replace(replace(replace(replace(coalesce(p_text, ''), '{name}', p_name),
+    '{inviter}', coalesce(p_inviter, 'someone you know')), '{group}', btrim(coalesce(p_group, ''))), '\s{2,}', ' ', 'g'))
 $$;
 
 create or replace function public.px_abc_v2_payload(r public.abc_v2_responses)
@@ -180,8 +201,7 @@ returns jsonb language sql stable security definer set search_path = public as $
 $$;
 
 -- Creates the participant's V2 row: random Jane/John and question order, the wording as shown.
-create or replace function public.px_abc_v2_start(me public.participants, ctx jsonb, g jsonb,
-  p_knows boolean, p_strength integer, p_ms integer)
+create or replace function public.px_abc_v2_start(me public.participants, ctx jsonb, g jsonb)
 returns public.abc_v2_responses language plpgsql volatile security definer set search_path = public as $$
 declare
   e public.experiments;
@@ -190,21 +210,20 @@ declare
   v_iname text := ctx ->> 'name';
   v_name text := case when random() < 0.5 then 'Jane' else 'John' end;
   v_group text;
-  v_warm boolean;
+  v_warm boolean := v_type in ('inviter', 'seed_sender', 'broadcast_sender');
   v_knows boolean;
   v_source text;
   v_strength integer;
-  v_strength_src text;
   v_order text[];
   v_text jsonb;
+  v_direct text := coalesce(nullif(btrim(g ->> 'direct_contact'), ''), '{name} messages you directly.');
+  v_intro text := coalesce(nullif(btrim(g ->> 'warm_contact'), ''), '{inviter} personally introduces you to {name}.');
+  q text := 'How likely are you to respond?';
 begin
   select * into e from public.experiments where id = me.experiment_id;
-  v_group := coalesce(nullif(btrim(e.community_name), ''), e.name);
-  if v_type in ('inviter', 'seed_sender') then
-    -- A personal link: they were invited by this person, and rated them while joining.
-    v_knows := true;
-    v_source := 'referral';
-    v_warm := true;
+  v_group := e.abc_v2_group;
+  if v_warm then
+    -- Their own rating of the intermediary while joining (0–100), if there is one.
     select round(public.px_strength_score(c.method, c.value) * 100) into v_strength
       from public.classifications c
       where c.invitation_id = me.invitation_id and c.direction = 'inbound' limit 1;
@@ -213,38 +232,35 @@ begin
         from public.relationship_ratings rr
         where rr.invitation_id = me.invitation_id and rr.direction = 'inbound' and rr.closeness is not null limit 1;
     end if;
-    v_strength_src := case when v_strength is not null then 'referral_rating' end;
-  elsif v_type = 'broadcast_sender' then
-    v_knows := p_knows;
-    v_source := 'self_report';
-    v_warm := p_knows;
-    v_strength := case when p_knows then p_strength end;
-    v_strength_src := case when p_knows then 'v2_dial' end;
-  else
-    v_warm := false;
   end if;
-  select array_agg(q order by random()) into v_order
+  if v_type in ('inviter', 'seed_sender') then
+    -- A personal link: this person invited them.
+    v_knows := true;
+    v_source := 'referral';
+  end if;
+  select array_agg(x order by random()) into v_order
     from unnest(case when v_warm then array['university', 'shared_group', 'warm']
-                     else array['university', 'shared_group'] end) q;
+                     else array['university', 'shared_group'] end) x;
   v_text := jsonb_build_object(
     'university', jsonb_build_object(
       'scenario', public.px_abc_v2_render(g ->> 'university', v_name, v_iname, v_group),
-      'question', public.px_abc_v2_render(g ->> 'direct_question', v_name, v_iname, v_group)),
+      'contact', public.px_abc_v2_render(v_direct, v_name, v_iname, v_group), 'question', q),
     'shared_group', jsonb_build_object(
       'scenario', public.px_abc_v2_render(g ->> 'group', v_name, v_iname, v_group),
-      'question', public.px_abc_v2_render(g ->> 'direct_question', v_name, v_iname, v_group)));
+      'contact', public.px_abc_v2_render(v_direct, v_name, v_iname, v_group), 'question', q));
   if v_warm then
     v_text := v_text || jsonb_build_object('warm', jsonb_build_object(
       'scenario', public.px_abc_v2_render(g ->> 'group', v_name, v_iname, v_group),
-      'question', public.px_abc_v2_render(g ->> 'warm_question', v_name, v_iname, v_group)));
+      'contact', public.px_abc_v2_render(v_intro, v_name, v_iname, v_group), 'question', q));
   end if;
   insert into public.abc_v2_responses (participant_id, experiment_id, invitation_id, link_kind, depth,
     classification, intermediary_type, intermediary_participant_id, intermediary_name,
-    knows_intermediary, knows_source, connection_strength, strength_source, knows_response_ms,
+    knows_intermediary, knows_source, connection_strength, strength_source,
     fictional_name, scenario_revision, scenario_text, question_order, warm_eligible)
   values (me.id, me.experiment_id, me.invitation_id, ctx ->> 'link_kind', me.depth,
     g ->> 'key', v_type, (ctx ->> 'participant_id')::uuid, v_iname,
-    v_knows, v_source, v_strength, v_strength_src, p_ms,
+    v_knows, v_source, v_strength,
+    case when v_strength is null then null when v_type = 'broadcast_sender' then 'onboarding_rating' else 'referral_rating' end,
     v_name, e.abc_v2_revision, v_text, v_order, v_warm)
   on conflict (participant_id) do nothing
   returning * into r;
@@ -254,9 +270,13 @@ begin
   return r;
 end $$;
 
+-- The earlier draft's 6-argument version and the "do you know the sender" step are gone.
+drop function if exists public.px_abc_v2_start(public.participants, jsonb, jsonb, boolean, integer, integer);
+drop function if exists public.set_abc_v2_knows(boolean, integer, integer);
+
 -- ───────────── 5. Participant RPCs ─────────────
--- Everything the V2 screens need, in order: the group question (if needed), then for a named
--- broadcast link "How well do you know {sender}?", then the questions.
+-- Everything the V2 screens need: the group question (only if their join answer didn't map to
+-- one), then the questions.
 create or replace function public.get_abc_v2()
 returns jsonb language plpgsql volatile security definer set search_path = public as $$
 declare
@@ -280,11 +300,7 @@ begin
       'groups', (select coalesce(jsonb_agg(jsonb_build_object('key', s ->> 'key', 'label', s ->> 'label')), '[]'::jsonb)
                  from jsonb_array_elements(e.abc_v2_scenarios) s));
   end if;
-  if ctx ->> 'type' = 'broadcast_sender' then
-    return jsonb_build_object('eligible', true, 'version', 'v2', 'needs_knows', true,
-      'intermediary', jsonb_build_object('type', 'broadcast_sender', 'name', ctx ->> 'name'));
-  end if;
-  r := public.px_abc_v2_start(me, ctx, g, null, null, null);
+  r := public.px_abc_v2_start(me, ctx, g);
   return public.px_abc_v2_payload(r);
 end $$;
 
@@ -308,38 +324,8 @@ begin
   return public.get_abc_v2();
 end $$;
 
--- Named broadcast link: "How well do you know {sender}?" (0–100 on the dial), or
--- "I don't know {sender} personally" (p_knows = false, no strength).
-create or replace function public.set_abc_v2_knows(p_knows boolean, p_strength integer default null, p_response_ms integer default null)
-returns jsonb language plpgsql volatile security definer set search_path = public as $$
-declare
-  me public.participants := public.px_me();
-  ctx jsonb := public.px_abc_v2_context(me);
-  e public.experiments;
-  g jsonb;
-  r public.abc_v2_responses;
-begin
-  if not coalesce((ctx ->> 'eligible')::boolean, false) or ctx ->> 'type' <> 'broadcast_sender' then
-    return jsonb_build_object('error', 'not_participant');
-  end if;
-  if p_knows is null or (p_knows and (p_strength is null or p_strength not between 0 and 100))
-     or (p_response_ms is not null and p_response_ms not between 0 and 3600000) then
-    return jsonb_build_object('error', 'invalid_value');
-  end if;
-  if exists (select 1 from public.abc_v2_responses where participant_id = me.id) then
-    return jsonb_build_object('error', 'abc_started');
-  end if;
-  select * into e from public.experiments where id = me.experiment_id;
-  g := public.px_abc_v2_group(e, me);
-  if g is null then
-    return jsonb_build_object('error', 'needs_classification');
-  end if;
-  perform public.px_rate_limit('abc', public.px_client_ip(), 'abc_answers_per_ip_hour', interval '1 hour');
-  r := public.px_abc_v2_start(me, ctx, g, p_knows, case when p_knows then p_strength end, p_response_ms);
-  return public.px_abc_v2_payload(r);
-end $$;
-
--- One answer at a time (resumable); complete once every question in their order is answered.
+-- One answer at a time. Until the last one is in, an answer can be changed (the Back button);
+-- complete, and locked, once every question in their order is answered.
 create or replace function public.answer_abc_v2(p_question text, p_value integer)
 returns jsonb language plpgsql volatile security definer set search_path = public as $$
 declare
@@ -373,6 +359,21 @@ begin
     update public.abc_v2_responses set completed_at = now() where participant_id = me.id returning * into r;
   end if;
   return public.px_abc_v2_payload(r);
+end $$;
+
+-- Broadcast links: the invitation page needs to know a link is reusable, so it can sign the visitor
+-- in (anonymously) before the onboarding questions. Until then their answers were saved on the
+-- shared link itself, where the next visitor overwrote them and they were never tied to a person.
+create or replace function public.open_invitation(p_token text, p_device text default null)
+returns jsonb language plpgsql volatile security definer set search_path = public as $$
+declare
+  v jsonb := public.px_open_invitation_v19(public.px_resolve_token(p_token), p_device);
+begin
+  if exists (select 1 from public.invitations
+             where token = p_token and kind = 'seed_broadcast' and broadcast_parent is null and status <> 'revoked') then
+    v := v || jsonb_build_object('reusable', true);
+  end if;
+  return v;
 end $$;
 
 -- The home screen's ABC card: V1 as before (now labelled), or V2.
@@ -419,14 +420,18 @@ end $$;
 -- ───────────── 6. Admin ─────────────
 -- Choose None / V1 / V2, the starting generation, and the V2 scenarios. Switching between V1 and
 -- V2 is refused once anyone has answered in that experiment, so the two never mix.
+drop function if exists public.admin_save_experiment_abc(uuid, text, integer, jsonb);
+
 create or replace function public.admin_save_experiment_abc(
-  p_experiment_id uuid, p_mode text, p_min_depth integer default null, p_v2_scenarios jsonb default null
+  p_experiment_id uuid, p_mode text, p_min_depth integer default null, p_v2_scenarios jsonb default null,
+  p_v2_group text default null
 ) returns jsonb language plpgsql volatile security definer set search_path = public as $$
 declare
   e public.experiments;
   s jsonb;
   v_version text;
   v_keys text[] := '{}';
+  v_group text := nullif(btrim(p_v2_group), '');
 begin
   perform public.px_require_admin();
   select * into e from public.experiments where id = p_experiment_id for update;
@@ -437,6 +442,13 @@ begin
     raise exception 'invalid_value' using errcode = '22023';
   end if;
   v_version := case when p_mode = 'none' then e.abc_version else p_mode end;
+  -- V2 needs the shared group ("on the Harvard Baseball team"); the internal name is never used.
+  if p_mode = 'v2' and coalesce(v_group, nullif(btrim(e.abc_v2_group), '')) is null then
+    raise exception 'invalid_group' using errcode = '22023';
+  end if;
+  if char_length(coalesce(v_group, '')) > 80 then
+    raise exception 'invalid_group' using errcode = '22023';
+  end if;
   if v_version <> e.abc_version and (
        exists (select 1 from public.abc_responses where experiment_id = e.id)
     or exists (select 1 from public.abc_v2_responses where experiment_id = e.id)) then
@@ -451,15 +463,15 @@ begin
          or char_length(btrim(coalesce(s ->> 'label', ''))) not between 1 and 80
          or char_length(btrim(coalesce(s ->> 'university', ''))) not between 1 and 400
          or char_length(btrim(coalesce(s ->> 'group', ''))) not between 1 and 400
-         or char_length(btrim(coalesce(s ->> 'direct_question', ''))) not between 1 and 400
-         or char_length(btrim(coalesce(s ->> 'warm_question', ''))) not between 1 and 400 then
+         or char_length(btrim(coalesce(s ->> 'direct_contact', ''))) not between 1 and 200
+         or char_length(btrim(coalesce(s ->> 'warm_contact', ''))) not between 1 and 200 then
         raise exception 'invalid_scenarios' using errcode = '22023';
       end if;
       v_keys := v_keys || (s ->> 'key');
     end loop;
     select jsonb_agg(jsonb_build_object('key', x ->> 'key', 'label', btrim(x ->> 'label'),
              'university', btrim(x ->> 'university'), 'group', btrim(x ->> 'group'),
-             'direct_question', btrim(x ->> 'direct_question'), 'warm_question', btrim(x ->> 'warm_question')))
+             'direct_contact', btrim(x ->> 'direct_contact'), 'warm_contact', btrim(x ->> 'warm_contact')))
       into s from jsonb_array_elements(p_v2_scenarios) x;
   end if;
   update public.experiments set
@@ -467,8 +479,10 @@ begin
     abc_version = v_version,
     abc_min_depth = coalesce(p_min_depth, abc_min_depth),
     abc_v2_scenarios = coalesce(s, abc_v2_scenarios),
+    abc_v2_group = coalesce(v_group, abc_v2_group),
     -- A new wording is a new revision; answers keep the revision (and exact text) they saw.
-    abc_v2_revision = abc_v2_revision + case when s is not null and s is distinct from abc_v2_scenarios then 1 else 0 end,
+    abc_v2_revision = abc_v2_revision + case when (s is not null and s is distinct from abc_v2_scenarios)
+                                               or (v_group is not null and v_group is distinct from abc_v2_group) then 1 else 0 end,
     updated_at = now()
   where id = e.id;
   return jsonb_build_object('ok', true);
@@ -490,7 +504,7 @@ begin
     select a.*,
       case when a.link_kind = 'seed_broadcast' then 'broadcast' else 'personal' end as link_group,
       case
-        when a.knows_intermediary is false then 'doesnt_know'
+        when not a.warm_eligible then 'no_intermediary'
         when a.connection_strength is null then 'unrated'
         when a.connection_strength < 25 then '0-24'
         when a.connection_strength < 50 then '25-49'
@@ -521,15 +535,14 @@ begin
       'completed', (select count(*) from r where completed_at is not null),
       'warm_eligible', (select count(*) from r where warm_eligible),
       'named_broadcast', (select count(*) from r where intermediary_type = 'broadcast_sender'),
-      'knows_sender', (select count(*) from r where intermediary_type = 'broadcast_sender' and knows_intermediary),
-      'doesnt_know_sender', (select count(*) from r where intermediary_type = 'broadcast_sender' and knows_intermediary is false)),
+      'unnamed_broadcast', (select count(*) from r where intermediary_type = 'none')),
     'paired', (select jsonb_build_object(
       'group_vs_university', jsonb_build_object('n', n_group_uni, 'a', round(uni_in_pair, 2), 'b', round(group_in_pair, 2), 'diff', round(diff_group_uni, 2)),
       'warm_vs_group', jsonb_build_object('n', n_warm_group, 'a', round(group_in_warm_pair, 2), 'b', round(warm_in_pair, 2), 'diff', round(diff_warm_group, 2)),
       'warm_vs_university', jsonb_build_object('n', n_warm_uni, 'diff', round(diff_warm_uni, 2))) from pairs),
     'by_strength', coalesce((select jsonb_agg(jsonb_build_object('band', band, 'n', n, 'completed', c,
         'avg_university', au, 'avg_group', ag, 'avg_warm', aw, 'group_minus_university', d1, 'warm_minus_group', d2)
-        order by case band when 'doesnt_know' then 0 when '0-24' then 1 when '25-49' then 2 when '50-74' then 3 when '75-100' then 4 else 5 end)
+        order by case band when 'no_intermediary' then 0 when '0-24' then 1 when '25-49' then 2 when '50-74' then 3 when '75-100' then 4 else 5 end)
       from (select strength_band as band, count(*) as n, count(*) filter (where completed_at is not null) as c,
               round(avg(university), 2) au, round(avg(shared_group), 2) ag, round(avg(warm), 2) aw,
               round(avg(shared_group - university), 2) d1, round(avg(warm - shared_group), 2) d2
@@ -593,26 +606,26 @@ revoke execute on function public.px_abc_v2_context(public.participants) from pu
 revoke execute on function public.px_abc_v2_group(public.experiments, public.participants) from public, anon, authenticated;
 revoke execute on function public.px_abc_v2_render(text, text, text, text) from public, anon, authenticated;
 revoke execute on function public.px_abc_v2_payload(public.abc_v2_responses) from public, anon, authenticated;
-revoke execute on function public.px_abc_v2_start(public.participants, jsonb, jsonb, boolean, integer, integer) from public, anon, authenticated;
+revoke execute on function public.px_abc_v2_start(public.participants, jsonb, jsonb) from public, anon, authenticated;
 revoke execute on function public.px_get_my_state_v21() from public, anon, authenticated;
 revoke execute on function public.px_delete_my_data_v21() from public, anon, authenticated;
 revoke execute on function public.px_admin_export_v21(text) from public, anon, authenticated;
 
+revoke execute on function public.open_invitation(text, text) from public;
+grant execute on function public.open_invitation(text, text) to anon, authenticated;
 revoke execute on function public.get_abc_v2() from public, anon;
 revoke execute on function public.set_abc_v2_group(text) from public, anon;
-revoke execute on function public.set_abc_v2_knows(boolean, integer, integer) from public, anon;
 revoke execute on function public.answer_abc_v2(text, integer) from public, anon;
 revoke execute on function public.get_my_state() from public, anon;
 revoke execute on function public.delete_my_data() from public, anon;
-revoke execute on function public.admin_save_experiment_abc(uuid, text, integer, jsonb) from public, anon;
+revoke execute on function public.admin_save_experiment_abc(uuid, text, integer, jsonb, text) from public, anon;
 revoke execute on function public.admin_abc_v2_stats(uuid, text) from public, anon;
 revoke execute on function public.admin_export(text) from public, anon;
 grant execute on function public.get_abc_v2() to authenticated;
 grant execute on function public.set_abc_v2_group(text) to authenticated;
-grant execute on function public.set_abc_v2_knows(boolean, integer, integer) to authenticated;
 grant execute on function public.answer_abc_v2(text, integer) to authenticated;
 grant execute on function public.get_my_state() to authenticated;
 grant execute on function public.delete_my_data() to authenticated;
-grant execute on function public.admin_save_experiment_abc(uuid, text, integer, jsonb) to authenticated;
+grant execute on function public.admin_save_experiment_abc(uuid, text, integer, jsonb, text) to authenticated;
 grant execute on function public.admin_abc_v2_stats(uuid, text) to authenticated;
 grant execute on function public.admin_export(text) to authenticated;
