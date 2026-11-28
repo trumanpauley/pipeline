@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "experiment-demo",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--prefix", "experiment", "vite", "experiment", "--port", "5199", "--strictPort"],
+      "port": 5199,
+      "env": {
+        "VITE_DEMO": "1",
+        "VITE_DEMO_LOCAL": "1",
+        "VITE_HASH_ROUTER": "1",
+        "VITE_SUPABASE_URL": "http://local.demo",
+        "VITE_SUPABASE_PUBLISHABLE_KEY": "demo"
+      }
+    }
+  ]
+}

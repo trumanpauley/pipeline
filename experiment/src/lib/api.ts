@@ -199,6 +199,14 @@ export interface Experiment extends ExperimentInfo {
   /** Generation from which participants get the ABC experiment (seed-link joiners are 1). */
   abc_min_depth: number;
   abc_scenarios: AbcScenario[];
+  /** Which ABC questionnaire this experiment uses when abc_enabled (migration 021; absent before = v1). */
+  abc_version?: AbcVersion;
+  abc_v2_scenarios?: AbcV2Scenario[];
+  /** V2's shared group as it reads in a sentence, e.g. "on the Harvard Baseball team". */
+  abc_v2_group?: string | null;
+  abc_v2_revision?: number;
+  /** The hypothetical person in ABC V1 and V2 (migration 021; absent before = random). */
+  abc_name_mode?: AbcNameMode;
   created_at: string;
   updated_at: string;
   stats: {
@@ -237,6 +245,50 @@ export interface ExperimentDetail {
   secondary: { from: string | null; to: string }[];
 }
 
+export type AbcVersion = 'v1' | 'v2';
+export type AbcNameMode = 'random' | 'jane' | 'john';
+/** "None" is abc_enabled = false; otherwise the version. */
+export type AbcMode = 'none' | AbcVersion;
+export const abcModeOf = (e?: Pick<Experiment, 'abc_enabled' | 'abc_version'>): AbcMode =>
+  !e ? 'v1' : !e.abc_enabled ? 'none' : (e.abc_version ?? 'v1');
+
+/**
+ * ABC V2 wording for one participant type (e.g. current students, alumni). Placeholders:
+ * {name} = Jane/John, {inviter} = the intermediary's first name, {group} = the
+ * experiment's shared group phrase (abc_v2_group).
+ */
+export interface AbcV2Scenario {
+  key: string;
+  label: string;
+  /** Situation 1: who they are, sharing only the university. */
+  university: string;
+  /** Situations 2 and 3: who they are, sharing the group. */
+  group: string;
+  /** Situations 1 and 2: how they get in touch (directly). */
+  direct_contact: string;
+  /** Situation 3: how they get in touch (introduced). */
+  warm_contact: string;
+}
+
+export type AbcV2Question = 'university' | 'shared_group' | 'warm';
+export type IntermediaryType = 'inviter' | 'seed_sender' | 'broadcast_sender' | 'none';
+
+/** The ABC V2 questionnaire, as the participant sees it. */
+export interface AbcV2State {
+  eligible: boolean;
+  version: 'v2';
+  needs_classification?: boolean;
+  groups?: { key: string; label: string }[];
+  name?: 'Jane' | 'John';
+  /** The questions they get, in the order shown (warm only when they know the intermediary). */
+  order?: AbcV2Question[];
+  questions?: Partial<Record<AbcV2Question, { scenario: string; contact: string; question: string }>>;
+  answers?: Partial<Record<AbcV2Question, number | null>>;
+  classification?: string;
+  intermediary?: { type: IntermediaryType; name: string | null; knows?: boolean | null };
+  completed?: boolean;
+}
+
 /** The ABC questionnaire, as the participant sees it. */
 export interface AbcState {
   eligible: boolean;
@@ -254,6 +306,24 @@ export interface AbcState {
 }
 
 type Avg = number | null;
+export interface AbcV2Row {
+  n: number; completed?: number;
+  avg_university: Avg; avg_group: Avg; avg_warm: Avg;
+  group_minus_university?: Avg; warm_minus_group?: Avg;
+}
+export interface AdminAbcV2Stats {
+  participation: { started: number; completed: number; warm_eligible: number; named_broadcast: number; unnamed_broadcast: number };
+  paired: {
+    group_vs_university: { n: number; a: Avg; b: Avg; diff: Avg };
+    warm_vs_group: { n: number; a: Avg; b: Avg; diff: Avg };
+    warm_vs_university: { n: number; diff: Avg };
+  };
+  by_strength: (AbcV2Row & { band: string })[];
+  by_link: (AbcV2Row & { link: 'broadcast' | 'personal' })[];
+  by_classification: (AbcV2Row & { classification: string })[];
+  by_first_question: (AbcV2Row & { first: AbcV2Question })[];
+  by_revision: { revision: number; n: number }[];
+}
 export interface AdminAbcStats {
   participation: { eligible: number; started: number; completed: number };
   by_experiment: { experiment_id: string; name: string; eligible: number; completed: number; avg_cold: Avg; avg_warm: Avg; avg_advantage: Avg }[];
@@ -287,6 +357,8 @@ export interface OpenResult {
   method?: MethodKey;
   answered?: boolean;
   already_participant?: boolean;
+  /** A broadcast link (one link for a whole group chat): sign in before answering (migration 021). */
+  reusable?: boolean;
 }
 
 export interface MyInvitation {
@@ -328,7 +400,7 @@ export interface MyState {
   experiment?: ExperimentInfo;
   /** Every experiment this person is in (same account). */
   experiments?: { id: string; name: string; current: boolean }[];
-  abc?: { eligible: boolean; completed: boolean };
+  abc?: { eligible: boolean; completed: boolean; version?: AbcVersion };
   feedback_question?: string;
   reveals?: { title: string }[];
   invitations?: MyInvitation[];
@@ -359,6 +431,9 @@ const MESSAGES: Record<string, string> = {
   sponsorship_language: 'The wording suggests official sponsorship or endorsement. Rephrase it, or tick “Officially authorized” if the organization has approved this experiment.',
   abc_completed: 'You’ve already answered these. Thank you!',
   abc_started: 'Your group can’t be changed now.',
+  needs_classification: 'Choose the option that describes you first.',
+  invalid_scenarios: 'Each ABC V2 participant type needs a short key (lowercase letters, numbers, _), a label, both descriptions and both contact lines.',
+  invalid_group: 'ABC V2 needs the shared group as it reads in a sentence (up to 80 characters), e.g. “on the Harvard Baseball team”.',
   invalid_name_format: 'Enter a first name and last initial, like “James P.”',
   category_required: 'Choose the option that describes you.',
   experiment_paused: 'This experiment is paused right now.',
@@ -444,6 +519,15 @@ export const api = {
   getAbc: () => rpc<AbcState>('get_abc'),
   setMyClassification: (key: string) => rpc('set_my_classification', { p_key: key }),
   answerAbc: (question: 'cold' | 'warm', value: number) => rpc<AbcState>('answer_abc', { p_question: question, p_value: value }),
+  getAbcV2: () => rpc<AbcV2State>('get_abc_v2'),
+  setAbcV2Group: (key: string) => rpc<AbcV2State>('set_abc_v2_group', { p_key: key }),
+  answerAbcV2: (question: AbcV2Question, value: number) => rpc<AbcV2State>('answer_abc_v2', { p_question: question, p_value: value }),
+  adminSaveExperimentAbc: (experimentId: string, mode: AbcMode, minDepth: number, scenarios: AbcV2Scenario[] | null, group: string | null, nameMode: AbcNameMode) =>
+    rpc('admin_save_experiment_abc', {
+      p_experiment_id: experimentId, p_mode: mode, p_min_depth: minDepth, p_v2_scenarios: scenarios, p_v2_group: group, p_name_mode: nameMode,
+    }),
+  adminAbcV2Stats: (experimentId: string | null, classification: string | null) =>
+    rpc<AdminAbcV2Stats>('admin_abc_v2_stats', { p_experiment_id: experimentId, p_classification: classification }),
   adminSetExperimentTest: (experimentId: string, isTest: boolean) =>
     rpc('admin_set_experiment_test', { p_experiment_id: experimentId, p_is_test: isTest }),
   adminAbcStats: (experimentId: string | null, classification: string | null) =>

@@ -20,12 +20,17 @@ import m013 from '../../supabase/migrations/013_copy_safe_name_check.sql?raw';
 import m014 from '../../supabase/migrations/014_community_onboarding.sql?raw';
 import m015 from '../../supabase/migrations/015_optional_relationship_question.sql?raw';
 import m016 from '../../supabase/migrations/016_invitation_sharing.sql?raw';
+import m017 from '../../supabase/migrations/017_waitlist_overview.sql?raw';
+import m018 from '../../supabase/migrations/018_launch_updates.sql?raw';
+import m019 from '../../supabase/migrations/019_broadcast_links.sql?raw';
+import m020 from '../../supabase/migrations/020_broadcast_sender_name.sql?raw';
+import m021 from '../../supabase/migrations/021_abc_v2.sql?raw';
 
 // Like PostgREST: arrays and objects are passed as JSON (not as Postgres arrays).
 const jsonArg = (v: unknown) => (v !== null && typeof v === 'object' ? JSON.stringify(v) : v);
 const CODE = '123456';
 const ADMIN = 'admin@demo.dev';
-const SQL = [shimSql, m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015, m016];
+const SQL = [shimSql, m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015, m016, m017, m018, m019, m020, m021];
 // A new schema gets a new database, so an old demo can't break a newer build.
 const DB_KEY = `pipeline-demo-${SQL.reduce((n, s) => n + s.length, 0)}`;
 
@@ -198,7 +203,7 @@ export async function localFetch(input: RequestInfo | URL, init?: RequestInit): 
         return new Response(null, { status: 204 });
     }
 
-    const m = url.pathname.match(/^\/rest\/v1\/rpc\/([a-z_]+)$/);
+    const m = url.pathname.match(/^\/rest\/v1\/rpc\/([a-z0-9_]+)$/);
     if (m) {
       const claims = claimsOf(bearer) ?? { role: 'anon' };
       const role = claims.role === 'authenticated' ? 'authenticated' : 'anon';

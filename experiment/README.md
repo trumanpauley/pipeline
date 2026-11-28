@@ -167,7 +167,7 @@ project still works if you have to.
    `010_multi_experiment.sql`, `011_early_access.sql`, `012_connection_strength_abc.sql` and
    `013_copy_safe_name_check.sql`, `014_community_onboarding.sql` and
    `015_optional_relationship_question.sql`, `016_invitation_sharing.sql` and
-   `017_waitlist_overview.sql`, `018_launch_updates.sql`, `019_broadcast_links.sql` and `020_broadcast_sender_name.sql`. If you've already run some,
+   `017_waitlist_overview.sql`, `018_launch_updates.sql`, `019_broadcast_links.sql`, `020_broadcast_sender_name.sql` and `021_abc_v2.sql`. If you've already run some,
    run only the ones after them.
    (013 matters if you pasted 005 or `setup.sql` from a browser: that can drop invisible
    characters and break every name check with "invalid regular expression".)
@@ -868,3 +868,25 @@ A *broadcast* seed link is made to be posted once in a group chat and used by ma
 A broadcast link can say who it's from. In Admin → Seed links, choose **Broadcast seed** and fill in the optional **Sender name** (e.g. "Ryan Mooney"); the teammate posts the one link in their group chat, and everyone who opens it sees "Ryan" on the invitation and, if the experiment asks relationship questions, answers them about Ryan. Leave the name empty for an anonymous broadcast link, as before.
 
 To add or change the name on a link you've already made, use **Add name** / **Edit** in the link's *From* column. On a broadcast link the change also reaches people who opened it but haven't joined yet; people who already joined keep the name they saw. A personal link's name can only change before it's opened. Participants see the first name only, and names go through the same moderation as everywhere else.
+
+### ABC V2 (migration 021)
+
+Each experiment chooses **No ABC**, **ABC V1** or **ABC V2** (Admin → Edit → *ABC experiment*). Every existing experiment stays on V1, and V1's questions, eligibility and `abc_responses` are unchanged. Switching an experiment between V1 and V2 is refused once anyone has answered, so one experiment never mixes versions; make a new experiment for the other version.
+
+V2 is three quick taps. After "Would you respond?" (with *Let's go* and *Skip for now*), each screen shows who Jane/John is, how they get in touch in a small box underneath, and the same question, "How likely are you to respond?", with five identical circles. Tapping one saves it and moves on; *Back* changes an earlier answer until the last one is in. The order is random and stored, and each situation appears exactly once:
+
+| Situation | Jane/John… | Gets in touch by… |
+|---|---|---|
+| `university` | shares the university | messaging directly |
+| `shared_group` | is in the shared group too | messaging directly |
+| `warm` | is in the shared group too | being introduced by the intermediary |
+
+- **Shared group** is a phrase set per experiment, as it reads in a sentence: "on the Harvard Baseball team", "in the Fly Club". It fills `{group}` in the wording. The experiment's internal name is never used, and nobody gets V2 until it's set.
+- **Who gets the introduction situation:** personal referrals (the inviter), personal seed links (the founder) and named broadcast links (the sender, e.g. "Ryan Mooney") get all three; unnamed broadcast links get the first two. Broadcast-link joiners always get V2; everyone else from the starting generation.
+- **Data:** `abc_v2_responses`, one row per person. Skipped situations are `NULL` with `warm_eligible = false`, never 0. A broadcast sender is stored as `intermediary_type = 'broadcast_sender'`; it never becomes a referral, parent or connection, and knowing them is not assumed (`knows_intermediary` is `NULL`). `connection_strength` (0–100) is copied from the person's own onboarding rating of the intermediary.
+- **Wording** is set per participant type with `{name}`, `{group}` and `{inviter}`. Saving new wording or a new shared group bumps `abc_v2_revision`; each answer keeps the revision and exact text it was shown.
+- **Results:** Admin → *ABC V2* shows paired differences (group − university, warm − group, warm − university), results by connection strength, by link type, by participant type and by which situation came first; `abc_v2.csv` exports it with random ids only. These are stated intentions about a hypothetical person, not observed replies.
+
+**Broadcast links and onboarding answers (fixed in 021).** Before 021, a visitor on a broadcast link answered the onboarding questions (where they know the sender from, closeness, comfort) before being signed in, so the answers were saved on the shared link itself: each visitor overwrote the last and none were tied to a person. Now `open_invitation` marks a broadcast link `reusable`, and the invitation page signs the visitor in anonymously when they tap *Enter the Experiment*, so their answers go on their own copy of the link.
+
+Try it locally without touching Supabase: the demo build runs every migration in the browser (`VITE_DEMO=1 VITE_DEMO_LOCAL=1 VITE_HASH_ROUTER=1 VITE_SUPABASE_URL=http://local.demo VITE_SUPABASE_PUBLISHABLE_KEY=demo npx vite`, admin `admin@demo.dev`, code `123456`). The admin *Participant experience simulator* previews V1 or V2 for any link type without saving anything.
