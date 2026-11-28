@@ -173,8 +173,27 @@ ok(v1.eligible && ['cold_first', 'warm_first'].includes(v1.order) && v1.inviter_
 ok((await one(h1, `select public.get_my_state()`)).abc.eligible === false, 'V1 generation 2 still not eligible');
 ok((await one(i3, `select public.get_abc_v2()`)).eligible === false, 'V2 functions do nothing in a V1 experiment');
 await as(i3, `select public.answer_abc('cold', 2)`);
-ok(/abc_version_locked/.test(await err(as(ADMIN, `select public.admin_save_experiment_abc($1, 'v2', 3, null, 'on a team')`, [v1Exp]))), 'a V1 experiment with answers can’t switch to V2');
-ok(/abc_version_locked/.test(await err(as(ADMIN, `select public.admin_save_experiment_abc($1, 'v1', 1, null, null)`, [hb]))), 'a V2 experiment with answers can’t switch to V1');
+
+step('Switching a live V1 experiment to V2 (existing links keep working)');
+await as(ADMIN, `select public.admin_save_experiment_abc($1, 'v2', 2, null, 'in the original group', 'jane')`, [v1Exp]);
+ex = (await db.query(`select * from public.experiments where id = $1`, [v1Exp])).rows[0];
+ok(ex.abc_version === 'v2' && ex.abc_name_mode === 'jane', 'an experiment with V1 answers can switch to V2');
+ok((await db.query(`select count(*)::int n from public.abc_responses where participant_id = (select id from public.participants where user_id = $1)`, [i3.sub])).rows[0].n === 1, 'earlier V1 answers are kept');
+ok((await one(i3, `select public.get_my_state()`)).abc.eligible === false && (await one(i3, `select public.get_abc_v2()`)).eligible === false, 'someone who answered V1 is not asked V2');
+const j4 = await join((await invite(i3, 'Jo J.')).token, 'Jo J.');
+let gj = await one(j4, `select public.get_abc_v2()`);
+ok(gj.eligible && gj.name === 'Jane' && gj.questions.shared_group.scenario.includes('in the original group'), 'their invitee gets V2 on the same links, with the chosen name (always Jane)');
+await as(ADMIN, `select public.admin_save_experiment_abc($1, 'v1', 3, null, null, 'john')`, [v1Exp]);
+ok((await one(j4, `select public.get_abc()`)).eligible === false, 'switching back: someone who answered V2 is not asked V1');
+const v1b = await join((await invite(i3, 'Ken K.')).token, 'Ken K.');
+const gk = await one(v1b, `select public.get_abc()`);
+ok(gk.eligible && gk.name === 'John', 'V1 follows the name setting too (always John)');
+await as(ADMIN, `select public.admin_save_experiment_abc($1, 'v1', 3, null, null, 'random')`, [v1Exp]);
+ok(/invalid_value/.test(await err(as(ADMIN, `select public.admin_save_experiment_abc($1, 'v1', 3, null, null, 'bob')`, [v1Exp]))), 'only random, jane or john');
+
+step('Name setting: random by default, or fixed');
+const names = (await db.query(`select fictional_name n from public.abc_v2_responses a join public.experiments e on e.id = a.experiment_id where e.id in ($1, $2)`, [hb, club])).rows.map((r) => r.n);
+ok(names.includes('Jane') && names.includes('John'), `random by default: both names appear (${names.join(', ')})`);
 
 step('Analytics and export');
 const s2 = await one(ADMIN, `select public.admin_abc_v2_stats($1, null)`, [hb]);
@@ -183,7 +202,7 @@ ok(s2.paired.group_vs_university.n === 2 && s2.paired.warm_vs_group.n === 1, 'pa
 ok(s2.by_strength.some((b) => b.band === '75-100') && s2.by_strength.some((b) => b.band === 'no_intermediary'), 'by connection strength');
 ok((await one(ADMIN, `select public.admin_abc_v2_stats(null, null)`)).participation.started === 0, 'test experiments left out unless picked');
 const csv = await one(ADMIN, `select public.admin_export('abc_v2')`);
-ok(csv.length === 10 && !JSON.stringify(csv).includes('Alice'), 'abc_v2 export: one row each, no names');
+ok(csv.length === 11 && !JSON.stringify(csv).includes('Alice'), 'abc_v2 export: one row each, no names');
 ok(/permission denied/.test(await err(as({ role: 'anon' }, `select public.get_abc_v2()`))), 'logged-out visitors can’t call V2');
 ok(/permission denied/.test(await err(as(await newUser(), `select * from public.abc_v2_responses`))), 'participants can’t read the answers table');
 ok((await db.query(`select to_regprocedure('public.set_abc_v2_knows(boolean,integer,integer)') is null as gone`)).rows[0].gone, 'the "do you know the sender" step is removed');

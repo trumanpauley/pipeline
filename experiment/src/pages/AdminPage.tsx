@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { abcModeOf, adminErrorText, api, inviteUrl, shareText, type AbcMode, type AbcV2Question, type AbcV2Scenario, type AdminAbcV2Stats, type IntermediaryType, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminFeedbackList, type AdminLaunchAnalytics, type AdminOverview, type AdminWaitlistOverview, type Ratio, REFERRAL_KIND_LABEL, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
+import { abcModeOf, adminErrorText, api, inviteUrl, shareText, type AbcMode, type AbcNameMode, type AbcV2Question, type AbcV2Scenario, type AdminAbcV2Stats, type IntermediaryType, type AbcState, type AdminAbcStats, type AdminAccountStats, type AdminCommunityStats, type AdminMethodStats, type AdminFeedbackList, type AdminLaunchAnalytics, type AdminOverview, type AdminWaitlistOverview, type Ratio, REFERRAL_KIND_LABEL, type Experiment, type ExperimentDetail, type ExperimentInfo } from '../lib/api';
 import { AbcFlow } from '../components/Abc';
 import { AbcV2Flow, DEFAULT_V2_SCENARIOS, previewV2State, renderV2, withV2Defaults } from '../components/AbcV2';
 import { CLOSENESS_LABELS, COMFORT_QUESTION, ClosenessMeter, PRIVATE_NOTE, ScaleQuestion } from '../components/Relationship';
@@ -608,6 +608,7 @@ type ExperimentDraft = {
   abc_min_depth: number;
   abc_v2_scenarios: AbcV2Scenario[];
   abc_v2_group: string;
+  abc_name_mode: AbcNameMode;
 };
 
 const draftOf = (e?: Experiment): ExperimentDraft => ({
@@ -642,6 +643,7 @@ const draftOf = (e?: Experiment): ExperimentDraft => ({
   abc_min_depth: e?.abc_min_depth ?? 3,
   abc_v2_scenarios: withV2Defaults(e?.abc_v2_scenarios),
   abc_v2_group: e?.abc_v2_group ?? '',
+  abc_name_mode: e?.abc_name_mode ?? 'random',
 });
 
 /** Fired after an experiment's settings are saved, so other panels (the simulator) reload them. */
@@ -689,11 +691,11 @@ const saveDraftSteps = async (d: ExperimentDraft) => {
   }
   try {
     await api.adminSaveExperimentAbc(saved.id, d.abc_mode, Number(d.abc_min_depth),
-      d.abc_mode === 'v2' ? d.abc_v2_scenarios : null, d.abc_mode === 'v2' ? d.abc_v2_group.trim() || null : null);
+      d.abc_mode === 'v2' ? d.abc_v2_scenarios : null, d.abc_mode === 'v2' ? d.abc_v2_group.trim() || null : null, d.abc_name_mode);
   } catch (err) {
     // Before migration 021 only V1 exists; that's fine unless the ABC setting was changed here.
     if (/could not find the function|admin_save_experiment_abc/i.test((err as Error).message)) {
-      if (d.abc_mode !== d.abc_mode_saved || d.abc_mode === 'v2') {
+      if (d.abc_mode !== d.abc_mode_saved || d.abc_mode === 'v2' || d.abc_name_mode !== 'random') {
         throw new Error('Saved, except the ABC experiment setting: run migration 021 in the Supabase SQL Editor first, then save again.');
       }
       return saved;
@@ -1357,6 +1359,11 @@ function AbcPreviewPanel({ experimentId }: { experimentId?: string }) {
     return () => window.removeEventListener(EXPERIMENTS_CHANGED, loadExperiments);
   }, [loadExperiments]);
   const e = experiments.find((x) => x.id === expId) ?? experiments[0];
+  // The simulator's name follows the group's setting (Jane / John); "random" leaves the choice here.
+  useEffect(() => {
+    if (e?.abc_name_mode === 'jane') setName('Jane');
+    else if (e?.abc_name_mode === 'john') setName('John');
+  }, [e?.id, e?.abc_name_mode]);
   const minDepth = e?.abc_min_depth ?? 3;
   const version: 'v1' | 'v2' = simVersion === 'auto' ? (e?.abc_version ?? 'v1') : simVersion;
   const viaSeed = link !== 'referral';
@@ -1888,14 +1895,17 @@ function MethodStatsPanel({ stats }: { stats: AdminMethodStats }) {
   );
 }
 
+const NAME_MODE_LABEL: Record<AbcNameMode, string> = { random: 'Jane or John at random', jane: 'always Jane', john: 'always John' };
+
 /** One line for the experiment card. */
 function abcSummary(e: Experiment) {
   const mode = abcModeOf(e);
   if (mode === 'none') return <span className="muted">Off</span>;
-  if (mode === 'v1') return <>V1 · cold vs introduced · from generation {e.abc_min_depth}</>;
+  const who = NAME_MODE_LABEL[e.abc_name_mode ?? 'random'];
+  if (mode === 'v1') return <>V1 · cold vs introduced · from generation {e.abc_min_depth} · {who}</>;
   return (
     <>V2 · {e.abc_v2_group ? <>shared group “{e.abc_v2_group}”</> : <strong>shared group not set (nobody gets it yet)</strong>} · broadcast-link joiners and generation {e.abc_min_depth}+
-      <span className="muted"> · wording revision {e.abc_v2_revision ?? 1}</span></>
+      {' · '}{who}<span className="muted"> · wording revision {e.abc_v2_revision ?? 1}</span></>
   );
 }
 
@@ -1931,6 +1941,15 @@ function AbcSettings({ d, set }: {
           </select>
         </label>
         {d.abc_mode !== 'none' && (
+          <label>Hypothetical person
+            <select className="input" value={d.abc_name_mode} onChange={(e) => set('abc_name_mode', e.target.value as AbcNameMode)} aria-label="ABC hypothetical person">
+              <option value="random">Jane or John at random</option>
+              <option value="jane">Always Jane</option>
+              <option value="john">Always John</option>
+            </select>
+          </label>
+        )}
+        {d.abc_mode !== 'none' && (
           <label>Starting generation
             <input className="input" type="number" min={1} max={50} value={d.abc_min_depth}
               onChange={(e) => set('abc_min_depth', Math.max(1, Number(e.target.value) || 1))} aria-label="ABC starting generation" />
@@ -1941,7 +1960,7 @@ function AbcSettings({ d, set }: {
         {d.abc_mode === 'none' && 'Nobody is asked the ABC questions.'}
         {d.abc_mode === 'v1' && 'Cold message vs. introduced by the person who invited them. Needs an inviter, so seed-link joiners (generation 1) never get it.'}
         {d.abc_mode === 'v2' && '“How likely are you to respond?” in three situations, in a random order: shares the university, shares the group, introduced by someone they know. Broadcast-link joiners always get it (an unnamed link skips the introduction); everyone else from the starting generation.'}
-        {switching && ' Switching between V1 and V2 only works before anyone has answered; otherwise create a new experiment.'}
+        {switching && ' Switching keeps everyone’s earlier answers in their own version; people who already answered aren’t asked again, and existing links carry on with the new version.'}
       </p>
       {d.abc_mode === 'v2' && (
         <div className="abc-v2-groups">

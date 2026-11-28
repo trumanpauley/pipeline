@@ -205,6 +205,8 @@ export interface Experiment extends ExperimentInfo {
   /** V2's shared group as it reads in a sentence, e.g. "on the Harvard Baseball team". */
   abc_v2_group?: string | null;
   abc_v2_revision?: number;
+  /** The hypothetical person in ABC V1 and V2 (migration 021; absent before = random). */
+  abc_name_mode?: AbcNameMode;
   created_at: string;
   updated_at: string;
   stats: {
@@ -244,6 +246,7 @@ export interface ExperimentDetail {
 }
 
 export type AbcVersion = 'v1' | 'v2';
+export type AbcNameMode = 'random' | 'jane' | 'john';
 /** "None" is abc_enabled = false; otherwise the version. */
 export type AbcMode = 'none' | AbcVersion;
 export const abcModeOf = (e?: Pick<Experiment, 'abc_enabled' | 'abc_version'>): AbcMode =>
@@ -429,7 +432,6 @@ const MESSAGES: Record<string, string> = {
   abc_completed: 'You’ve already answered these. Thank you!',
   abc_started: 'Your group can’t be changed now.',
   needs_classification: 'Choose the option that describes you first.',
-  abc_version_locked: 'People have already answered this experiment’s ABC questions, so it can’t switch between V1 and V2. Create a new experiment for the other version.',
   invalid_scenarios: 'Each ABC V2 participant type needs a short key (lowercase letters, numbers, _), a label, both descriptions and both contact lines.',
   invalid_group: 'ABC V2 needs the shared group as it reads in a sentence (up to 80 characters), e.g. “on the Harvard Baseball team”.',
   invalid_name_format: 'Enter a first name and last initial, like “James P.”',
@@ -520,8 +522,10 @@ export const api = {
   getAbcV2: () => rpc<AbcV2State>('get_abc_v2'),
   setAbcV2Group: (key: string) => rpc<AbcV2State>('set_abc_v2_group', { p_key: key }),
   answerAbcV2: (question: AbcV2Question, value: number) => rpc<AbcV2State>('answer_abc_v2', { p_question: question, p_value: value }),
-  adminSaveExperimentAbc: (experimentId: string, mode: AbcMode, minDepth: number, scenarios: AbcV2Scenario[] | null, group: string | null) =>
-    rpc('admin_save_experiment_abc', { p_experiment_id: experimentId, p_mode: mode, p_min_depth: minDepth, p_v2_scenarios: scenarios, p_v2_group: group }),
+  adminSaveExperimentAbc: (experimentId: string, mode: AbcMode, minDepth: number, scenarios: AbcV2Scenario[] | null, group: string | null, nameMode: AbcNameMode) =>
+    rpc('admin_save_experiment_abc', {
+      p_experiment_id: experimentId, p_mode: mode, p_min_depth: minDepth, p_v2_scenarios: scenarios, p_v2_group: group, p_name_mode: nameMode,
+    }),
   adminAbcV2Stats: (experimentId: string | null, classification: string | null) =>
     rpc<AdminAbcV2Stats>('admin_abc_v2_stats', { p_experiment_id: experimentId, p_classification: classification }),
   adminSetExperimentTest: (experimentId: string, isTest: boolean) =>

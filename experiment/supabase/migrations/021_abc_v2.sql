@@ -20,6 +20,11 @@
 -- turned into a referral or a connection, and knowing them is not assumed (knows_intermediary
 -- stays NULL); the onboarding connection-strength answer about them is copied when there is one.
 --
+-- Switching an experiment between V1 and V2 keeps every earlier answer in its own table, and
+-- nobody is asked both: someone who has answered (or started) one version isn't asked the other.
+-- experiments.abc_name_mode chooses the hypothetical person for both versions: 'random' (Jane or
+-- John, as before), 'jane' or 'john'.
+--
 -- ADDITIVE and safe to run more than once. Run after 020.
 
 -- ───────────── 1. Per-experiment settings ─────────────
@@ -29,7 +34,9 @@ alter table public.experiments
   add column if not exists abc_v2_scenarios jsonb not null default '[]'::jsonb,
   -- The shared group as it reads in a sentence, e.g. "on the Harvard Baseball team".
   add column if not exists abc_v2_group text,
-  add column if not exists abc_v2_revision integer not null default 1;
+  add column if not exists abc_v2_revision integer not null default 1,
+  -- Jane, John, or a random one of the two (the original behaviour), for V1 and V2.
+  add column if not exists abc_name_mode text not null default 'random';
 
 -- Default wording per participant type. {name} = Jane/John, {group} = abc_v2_group,
 -- {inviter} = the intermediary's first name.
@@ -53,6 +60,9 @@ do $$ begin
   end if;
   if not exists (select 1 from pg_constraint where conname = 'experiments_abc_v2_scenarios_check') then
     alter table public.experiments add constraint experiments_abc_v2_scenarios_check check (jsonb_typeof(abc_v2_scenarios) = 'array');
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'experiments_abc_name_mode_check') then
+    alter table public.experiments add constraint experiments_abc_name_mode_check check (abc_name_mode in ('random', 'jane', 'john'));
   end if;
   if not exists (select 1 from pg_constraint where conname = 'experiments_abc_v2_group_check') then
     alter table public.experiments add constraint experiments_abc_v2_group_check check (abc_v2_group is null or char_length(abc_v2_group) <= 80);
@@ -111,15 +121,63 @@ alter table public.abc_v2_responses enable row level security;
 revoke all on public.abc_v2_responses from anon, authenticated;
 
 -- ───────────── 3. V1 stays V1 ─────────────
--- Same rule as before, plus "this experiment uses V1". Every existing experiment does, so
--- nothing changes for them; a V2 experiment never creates V1 rows.
+-- Same rule as before, plus "this experiment uses V1" and "hasn't answered V2". Every existing
+-- experiment is on V1, so nothing changes for them; a V2 experiment never creates V1 rows.
 create or replace function public.px_abc_eligible(me public.participants)
 returns boolean language sql stable security definer set search_path = public as $$
   select me.id is not null and me.deleted_at is null and me.suspended_at is null and me.parent_id is not null
     and exists (select 1 from public.experiments e
                 where e.id = me.experiment_id and e.abc_enabled and e.abc_version = 'v1'
                   and me.depth >= e.abc_min_depth)
+    and not exists (select 1 from public.abc_v2_responses v where v.participant_id = me.id)
 $$;
+
+-- The hypothetical person: the experiment's choice, or Jane/John at random.
+create or replace function public.px_abc_name(p_experiment uuid)
+returns text language sql volatile security definer set search_path = public as $$
+  select case (select abc_name_mode from public.experiments where id = p_experiment)
+    when 'jane' then 'Jane' when 'john' then 'John'
+    else case when random() < 0.5 then 'Jane' else 'John' end end
+$$;
+
+-- V1's get_abc, unchanged except that the name follows abc_name_mode (random by default).
+create or replace function public.get_abc()
+returns jsonb language plpgsql volatile security definer set search_path = public as $$
+declare
+  me public.participants := public.px_me();
+  e public.experiments;
+  r public.abc_responses;
+  v_scenario text;
+  v_name text;
+begin
+  if not public.px_abc_eligible(me) then
+    return jsonb_build_object('eligible', false);
+  end if;
+  select * into r from public.abc_responses where participant_id = me.id;
+  if found then
+    return public.px_abc_payload(r);
+  end if;
+  select * into e from public.experiments where id = me.experiment_id;
+  select s ->> 'scenario' into v_scenario from jsonb_array_elements(e.abc_scenarios) s
+    where s ->> 'key' = me.classification limit 1;
+  if me.classification is null or v_scenario is null then
+    return jsonb_build_object('eligible', true, 'needs_classification', true,
+      'groups', (select coalesce(jsonb_agg(jsonb_build_object('key', s ->> 'key', 'label', s ->> 'label')), '[]'::jsonb)
+                 from jsonb_array_elements(e.abc_scenarios) s));
+  end if;
+  v_name := public.px_abc_name(e.id);
+  insert into public.abc_responses (participant_id, experiment_id, invitation_id, inviter_id, depth,
+    classification, fictional_name, scenario, question_order)
+  values (me.id, me.experiment_id, me.invitation_id, me.parent_id, me.depth, me.classification, v_name,
+    replace(v_scenario, '{name}', v_name),
+    case when random() < 0.5 then 'cold_first' else 'warm_first' end)
+  on conflict (participant_id) do nothing
+  returning * into r;
+  if r.participant_id is null then
+    select * into r from public.abc_responses where participant_id = me.id;
+  end if;
+  return public.px_abc_payload(r);
+end $$;
 
 -- ───────────── 4. V2 helpers ─────────────
 -- Who could introduce Jane/John to this participant, and whether they get V2 at all.
@@ -140,6 +198,10 @@ begin
   select * into e from public.experiments where id = me.experiment_id;
   -- Without the shared group, questions 1 and 2 would read the same: nobody gets V2 until it's set.
   if not found or not e.abc_enabled or e.abc_version <> 'v2' or nullif(btrim(e.abc_v2_group), '') is null then
+    return jsonb_build_object('eligible', false);
+  end if;
+  -- Nobody answers both versions: someone who has answered (or started) V1 isn't asked V2.
+  if exists (select 1 from public.abc_responses a where a.participant_id = me.id) then
     return jsonb_build_object('eligible', false);
   end if;
   select * into inv from public.invitations where id = me.invitation_id;
@@ -208,7 +270,7 @@ declare
   r public.abc_v2_responses;
   v_type text := ctx ->> 'type';
   v_iname text := ctx ->> 'name';
-  v_name text := case when random() < 0.5 then 'Jane' else 'John' end;
+  v_name text := public.px_abc_name(me.experiment_id);
   v_group text;
   v_warm boolean := v_type in ('inviter', 'seed_sender', 'broadcast_sender');
   v_knows boolean;
@@ -418,13 +480,15 @@ begin
 end $$;
 
 -- ───────────── 6. Admin ─────────────
--- Choose None / V1 / V2, the starting generation, and the V2 scenarios. Switching between V1 and
--- V2 is refused once anyone has answered in that experiment, so the two never mix.
+-- Choose None / V1 / V2, the starting generation, the V2 wording and shared group, and the name
+-- (Jane / John / random). Switching versions keeps earlier answers in their own table; nobody who
+-- answered one version is asked the other.
 drop function if exists public.admin_save_experiment_abc(uuid, text, integer, jsonb);
+drop function if exists public.admin_save_experiment_abc(uuid, text, integer, jsonb, text);
 
 create or replace function public.admin_save_experiment_abc(
   p_experiment_id uuid, p_mode text, p_min_depth integer default null, p_v2_scenarios jsonb default null,
-  p_v2_group text default null
+  p_v2_group text default null, p_name_mode text default null
 ) returns jsonb language plpgsql volatile security definer set search_path = public as $$
 declare
   e public.experiments;
@@ -438,7 +502,8 @@ begin
   if not found then
     raise exception 'not_found' using errcode = '22023';
   end if;
-  if p_mode not in ('none', 'v1', 'v2') or (p_min_depth is not null and p_min_depth not between 1 and 50) then
+  if p_mode not in ('none', 'v1', 'v2') or (p_min_depth is not null and p_min_depth not between 1 and 50)
+     or (p_name_mode is not null and p_name_mode not in ('random', 'jane', 'john')) then
     raise exception 'invalid_value' using errcode = '22023';
   end if;
   v_version := case when p_mode = 'none' then e.abc_version else p_mode end;
@@ -448,11 +513,6 @@ begin
   end if;
   if char_length(coalesce(v_group, '')) > 80 then
     raise exception 'invalid_group' using errcode = '22023';
-  end if;
-  if v_version <> e.abc_version and (
-       exists (select 1 from public.abc_responses where experiment_id = e.id)
-    or exists (select 1 from public.abc_v2_responses where experiment_id = e.id)) then
-    raise exception 'abc_version_locked' using errcode = '22023';
   end if;
   if p_v2_scenarios is not null then
     if jsonb_typeof(p_v2_scenarios) <> 'array' or jsonb_array_length(p_v2_scenarios) not between 1 and 8 then
@@ -480,6 +540,7 @@ begin
     abc_min_depth = coalesce(p_min_depth, abc_min_depth),
     abc_v2_scenarios = coalesce(s, abc_v2_scenarios),
     abc_v2_group = coalesce(v_group, abc_v2_group),
+    abc_name_mode = coalesce(p_name_mode, abc_name_mode),
     -- A new wording is a new revision; answers keep the revision (and exact text) they saw.
     abc_v2_revision = abc_v2_revision + case when (s is not null and s is distinct from abc_v2_scenarios)
                                                or (v_group is not null and v_group is distinct from abc_v2_group) then 1 else 0 end,
@@ -618,7 +679,10 @@ revoke execute on function public.set_abc_v2_group(text) from public, anon;
 revoke execute on function public.answer_abc_v2(text, integer) from public, anon;
 revoke execute on function public.get_my_state() from public, anon;
 revoke execute on function public.delete_my_data() from public, anon;
-revoke execute on function public.admin_save_experiment_abc(uuid, text, integer, jsonb, text) from public, anon;
+revoke execute on function public.admin_save_experiment_abc(uuid, text, integer, jsonb, text, text) from public, anon;
+revoke execute on function public.px_abc_name(uuid) from public, anon, authenticated;
+revoke execute on function public.get_abc() from public, anon;
+grant execute on function public.get_abc() to authenticated;
 revoke execute on function public.admin_abc_v2_stats(uuid, text) from public, anon;
 revoke execute on function public.admin_export(text) from public, anon;
 grant execute on function public.get_abc_v2() to authenticated;
@@ -626,6 +690,6 @@ grant execute on function public.set_abc_v2_group(text) to authenticated;
 grant execute on function public.answer_abc_v2(text, integer) to authenticated;
 grant execute on function public.get_my_state() to authenticated;
 grant execute on function public.delete_my_data() to authenticated;
-grant execute on function public.admin_save_experiment_abc(uuid, text, integer, jsonb, text) to authenticated;
+grant execute on function public.admin_save_experiment_abc(uuid, text, integer, jsonb, text, text) to authenticated;
 grant execute on function public.admin_abc_v2_stats(uuid, text) to authenticated;
 grant execute on function public.admin_export(text) to authenticated;
